@@ -1,139 +1,138 @@
 <!-- ======= Sidebar ======= -->
-  <aside id="sidebar" class="sidebar">
+<!-- ======= Sidebar ======= -->
+<aside id="sidebar" class="sidebar" style="right: 0; left: auto;" dir="rtl">
 
-    <ul class="sidebar-nav" id="sidebar-nav">
+  <ul class="sidebar-nav" id="sidebar-nav">
 
-      <li class="nav-item">
-        <a class="nav-link collapsed" href="{{ url_for('main.index') }}">
-          <i class="bi bi-grid"></i>
-          <span>Dashboard</span>
-        </a>
-      </li><!-- End Dashboard Nav -->
+    <li class="nav-item">
+      <a class="nav-link collapsed" href="{{ url_for('main.index') }}">
+        <i class="bi bi-grid"></i>
+        <span>דף הבית</span>
+      </a>
+    </li>
 
-      <li class="nav-item">
-        <a class="nav-link collapsed" data-bs-target="#inventory-nav" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-journal-text"></i><span>Inventory</span><i class="bi bi-chevron-down ms-auto"></i>
-        </a>
-        <ul id="inventory-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
-          <li id="countStock">
-            <a href="{{ url_for('main.count_stock') }}">
-              <i class="bi bi-circle"></i><span>Stock Count</span>
-            </a>
-          </li>
-          <li id="orderStock">
-            <a href="{{ url_for('main.order_stock') }}">
-              <i class="bi bi-circle"></i><span>Order Stock</span>
-            </a>
-          </li>
-          <li id="receiveStock">
-            <a href="{{ url_for('main.receive_stock') }}">
-              <i class="bi bi-circle"></i><span>Receive Stock</span>
-              <span class="badge bg-primary badge-number" id="receive_stock_counter"></span>
-            </a>
-          </li>
-          <li id="interTransfer">
-            <a href="{{ url_for('main.inter_replenish_stock') }}">
-              <i class="bi bi-circle"></i><span>Inter Transfer</span>
-            </a>
-          </li>
-          <li id="replenishment">
-            <a href="{{ url_for('main.replenish_stock') }}">
-              <i class="bi bi-circle"></i><span>Replenishment</span>
-            </a>
-          </li>
-          <li id="viewOrders">
-            <a href="{{ url_for('main.view_orders') }}">
-              <i class="bi bi-circle"></i><span>View Orders</span>
-            </a>
-          </li>
+    <li class="nav-item">
+      <a class="nav-link collapsed" data-bs-target="#inventory-nav" data-bs-toggle="collapse" href="#">
+        <i class="bi bi-journal-text"></i><span>מבוטחים</span><i class="bi bi-chevron-down me-auto"></i>
+      </a>
+      <ul id="inventory-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
+        <li id="countStock">
+          <a href="{{ url_for('main.admin_insured') }}">
+            <i class="bi bi-circle"></i><span>ניהול מבוטחים</span>
+          </a>
+        </li>
+        <li id="orderStock">
+          <a href="{{ url_for('main.order_stock') }}">
+            <i class="bi bi-circle"></i><span>הזמנת מלאי</span>
+          </a>
+        </li>
+        <li id="receiveStock">
+          <a href="{{ url_for('main.receive_stock') }}">
+            <i class="bi bi-circle"></i><span>קליטת מלאי</span>
+            <span class="badge bg-primary badge-number" id="receive_stock_counter"></span>
+          </a>
+        </li>
+        <li id="interTransfer">
+          <a href="{{ url_for('main.inter_replenish_stock') }}">
+            <i class="bi bi-circle"></i><span>העברה פנימית</span>
+          </a>
+        </li>
+        <li id="replenishment">
+          <a href="{{ url_for('main.replenish_stock') }}">
+            <i class="bi bi-circle"></i><span>חידוש מלאי</span>
+          </a>
+        </li>
+        <li id="viewOrders">
+          <a href="{{ url_for('main.view_orders') }}">
+            <i class="bi bi-circle"></i><span>הזמנות</span>
+          </a>
+        </li>
+      </ul>
+    </li>
 
-        </ul>
-      </li><!-- End Forms Nav -->
+    <li class="nav-item">
+      <a class="nav-link collapsed" data-bs-target="#reports-nav" data-bs-toggle="collapse" href="#">
+        <i class="bi bi-bar-chart"></i><span>דוחות</span><i class="bi bi-chevron-down me-auto"></i>
+      </a>
+      <ul id="reports-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
+        <li id="salesReport">
+          <a href="{{ url_for('main.sales_report') }}">
+            <i class="bi bi-circle"></i><span>דוח מכירות</span>
+          </a>
+        </li>
+        <li id="varianceReport">
+          <a href="{{ url_for('main.variance_report') }}">
+            <i class="bi bi-circle"></i><span>דוח מלאי</span>
+          </a>
+        </li>
+      </ul>
+    </li>
 
-        <li class="nav-item">
-        <a class="nav-link collapsed" data-bs-target="#reports-nav" data-bs-toggle="collapse" href="#">
-          <i class="bi bi-bar-chart"></i><span>Reports</span><i class="bi bi-chevron-down ms-auto"></i>
-        </a>
-        <ul id="reports-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
-          <li id="salesReport">
-            <a href="{{ url_for('main.sales_report') }}">
-              <i class="bi bi-circle"></i><span>Sales Reports</span>
-            </a>
-          </li>
-          <li id="varianceReport">
-            <a href="{{ url_for('main.variance_report') }}">
-              <i class="bi bi-circle"></i><span>Inventory Reports</span>
-            </a>
-          </li>
-        </ul>
-      </li><!-- End Forms Nav -->
+    <li class="nav-item">
+      <a class="nav-link collapsed" data-bs-target="#admin-nav" data-bs-toggle="collapse">
+        <i class="bi bi-wrench"></i><span>עדכוני מערכת</span><i class="bi bi-chevron-down me-auto"></i>
+      </a>
+      <ul id="admin-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
+        <li id="admin">
+          <a href="{{ url_for('main.admin_users') }}">
+            <i class="bi bi-circle"></i><span>משתמשים</span>
+          </a>
+        </li>
+        <li id="Products">
+          <a href="{{ url_for('main.admin_products') }}">
+            <i class="bi bi-circle"></i><span>מוצרים</span>
+          </a>
+        </li>
+        <li id="logs">
+          <a href="{{ url_for('main.admin_logs') }}">
+            <i class="bi bi-circle"></i><span>לוגים</span>
+          </a>
+        </li>
+        <li id="userActivity">
+          <a href="{{ url_for('main.user_activity') }}">
+            <i class="bi bi-circle"></i><span>פעילות משתמש</span>
+          </a>
+        </li>
+      </ul>
+    </li>
 
-      <li class="nav-item">
-        <a class="nav-link collapsed" data-bs-target="#admin-nav" data-bs-toggle="collapse" >
-          <i class="bi bi-wrench"></i><span>Admin</span><i class="bi bi-chevron-down ms-auto"></i>
-        </a>
-        <ul id="admin-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
-          <li id="admin">
-            <a href="{{ url_for('main.admin_users') }}">
-              <i class="bi bi-circle"></i><span>Users</span>
-            </a>
-          </li>
-          <li id="Products">
-            <a href="{{ url_for('main.admin_products') }}">
-              <i class="bi bi-circle"></i><span>Products</span>
-            </a>
-          </li>
-           <li id="logs">
-            <a href="{{ url_for('main.admin_logs') }}">
-              <i class="bi bi-circle"></i><span>System Logs</span>
-            </a>
-          </li>
-          <li id="userActivity">
-            <a href="{{ url_for('main.user_activity') }}">
-              <i class="bi bi-circle"></i><span>User Activity</span>
-            </a>
-          </li>
-        </ul>
-      </li><!-- End Forms Nav -->
+    <li class="nav-item">
+      <a class="nav-link collapsed" data-bs-target="#casual-nav" data-bs-toggle="collapse">
+        <i class="bi bi-calendar-check"></i><span>יומן ארועים</span><i class="bi bi-chevron-down me-auto"></i>
+      </a>
+      <ul id="casual-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
+        <li id="casualTimesheet">
+          <a href="{{ url_for('main.casual_timesheet') }}">
+            <i class="bi bi-circle"></i><span>דיווח שעות</span>
+          </a>
+        </li>
+        <li id="CasualHistory">
+          <a href="{{ url_for('main.timesheet_history') }}">
+            <i class="bi bi-circle"></i><span>היסטוריה</span>
+          </a>
+        </li>
+      </ul>
+    </li>
 
-      <li class="nav-item">
-        <a class="nav-link collapsed" data-bs-target="#casual-nav" data-bs-toggle="collapse" >
-          <i class="bi bi-calendar-check"></i><span>Timesheet</span><i class="bi bi-chevron-down ms-auto"></i>
-        </a>
-        <ul id="casual-nav" class="nav-content collapse " data-bs-parent="#sidebar-nav">
-          <li id="casualTimesheet">
-            <a href="{{ url_for('main.casual_timesheet') }}">
-              <i class="bi bi-circle"></i><span>Casuals Timesheet</span>
-            </a>
-          </li>
-          <li id="CasualHistory">
-            <a href="{{ url_for('main.timesheet_history') }}">
-              <i class="bi bi-circle"></i><span>History</span>
-            </a>
-          </li>
-        </ul>
-      </li><!-- End Forms Nav -->
+    <li class="nav-item" id="openai">
+      <a class="nav-link collapsed" href="{{ url_for('main.ChatGPT') }}">
+        <i class="bi bi-robot"></i>
+        <span>360 עוזר חכם</span>
+      </a>
+    </li>
 
-  <li class="nav-item" id="openai">
-    <a class="nav-link collapsed" href="{{ url_for('main.ChatGPT') }}">
-      <i class="bi bi-robot"></i>  <!-- UPDATED icon here -->
-      <span>360 AI Assistant
-<!--        <span class="badge bg-warning text-dark ms-2">NEW</span>-->
-      </span>
-    </a>
-  </li><!-- End Dashboard Nav -->
+    <li class="nav-item" id="agents">
+      <a class="nav-link collapsed" href="{{ url_for('main.ChatGPT') }}">
+        <i class="bi bi-robot"></i>
+        <span>סוכנים</span>
+      </a>
+    </li>
+
+  </ul>
+</aside>
 
 
-
-
-
-
-
-    </ul>
-
-<!---->
-
-  </aside><!-- End Sidebar-->
+<!-- End Sidebar-->
 
 <script src="static/assets/js/functions.js"></script>
 

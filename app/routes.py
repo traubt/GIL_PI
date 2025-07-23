@@ -2871,6 +2871,54 @@ SELECT * FROM toc_ls_sales LIMIT 10;
 ############################## END OPENAI section######################################
 
 
+############################## GIL CUSTOMIZATION ######################################
+
+
+
+@main.route('/admin_insured')
+def admin_insured():
+
+    # session context
+    user_data = session.get('user')
+    user = json.loads(user_data) if user_data else {}
+    shop_data = session.get('shop')
+    shop = json.loads(shop_data) if shop_data else {}
+
+    # role list
+    roles = db.session.query(TocRole).all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    # base query
+    query = db.session.query(GilInsured)
+
+    # filters
+    insurance = request.args.get('insurance')
+    status = request.args.get('status')
+    name = request.args.get('name')
+
+    if insurance:
+        query = query.filter(GilInsured.insurance == insurance)
+    if status:
+        query = query.filter(GilInsured.status == status)
+    if name:
+        query = query.filter(
+            (GilInsured.first_name.ilike(f"%{name}%")) |
+            (GilInsured.last_name.ilike(f"%{name}%"))
+        )
+
+    insured_list = query.order_by(GilInsured.received_date.desc()).all()
+
+    return render_template(
+        'insured_admin.html',
+        user=user,
+        shop=shop,
+        roles=roles_list,
+        insured_list=insured_list
+    )
+
+
+############################################################################
+
 if __name__ == '__main__':
     app.run(debug=True)
 

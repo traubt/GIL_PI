@@ -7,10 +7,10 @@ import pandas as pd
 
 # Database connection details
 db_config = {
-    'host': '176.58.117.107',
-    'user': 'tasteofc_wp268',
-    'password': ']44p7214)S',
-    'database': 'tasteofc_wp268'
+    'host': '172.234.160.57',
+    'user': 'dor_pi',
+    'password': 'T0m3r!970',
+    'database': 'dor_pi'
 }
 
 def get_db_connection():

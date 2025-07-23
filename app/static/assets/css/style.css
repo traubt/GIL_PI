@@ -757,6 +757,19 @@ h6 {
   background-color: #4154f1;
 }
 
+.sidebar {
+  left: auto !important;
+  right: 0 !important;
+}
+
+@media (min-width: 1200px) {
+  #main,
+  #footer {
+    margin-right: 240px !important;
+    margin-left: 0 !important;
+  }
+}
+
 /*--------------------------------------------------------------
 # Dashboard
 --------------------------------------------------------------*/
@@ -1509,6 +1522,75 @@ table.dataTable thead {
     border-color: #007bff; /* Change border color to blue when focused */
     outline: none; /* Remove the default outline */
 }
+
+/*   GIL INVESTIGATION CUSTOMIZATION */
+
+/* Custom dark header override */
+.header {
+  background-color: #1e1e1e !important;
+  color: white !important;
+}
+
+.header a,
+.header .nav-icon,
+.header .nav-profile span {
+  color: white !important;
+}
+
+.logo span {
+  color: white !important;
+}
+
+/* RTL Sidebar toggle fix */
+body.toggle-sidebar .sidebar {
+  right: -300px !important;
+}
+
+@media (min-width: 1200px) {
+  body.toggle-sidebar #main,
+  body.toggle-sidebar #footer {
+    margin-right: 0 !important;
+  }
+}
+
+/* Sidebar RTL setup */
+.sidebar {
+  position: fixed;
+  top: 60px;
+  right: 0;
+  width: 250px;
+  height: 100%;
+  background-color: #fff;
+  z-index: 996;
+  transition: all 0.3s ease;
+  overflow-y: auto;
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+}
+
+/* When burger is clicked, hide sidebar */
+body.toggle-sidebar .sidebar {
+  right: -270px !important;
+  left: auto !important;
+}
+
+
+/* Optional: shift main content */
+@media (min-width: 1200px) {
+  body:not(.toggle-sidebar) #main {
+    margin-right: 250px;
+  }
+  body.toggle-sidebar #main {
+    margin-right: 0;
+  }
+}
+
+.logo img {
+  height: 56px !important;
+  max-height: 73px !important;
+}
+
+
+
 
 
 

@@ -302,3 +302,31 @@ class TocShipday(db.Model):
     shipday_id = db.Column(db.String(45), nullable=True)
     total_amt = db.Column(db.Float, nullable=True)
     closest_shop_json = db.Column(db.JSON)
+
+
+    ###################  GIL INSURANCE  ######################
+
+class GilInsured(db.Model):
+    __tablename__ = 'gil_insured'
+
+    id = db.Column(db.Integer, primary_key=True)
+    received_date = db.Column(db.Date)
+    first_name = db.Column(db.String(100))
+    last_name = db.Column(db.String(100))
+    birth_date = db.Column(db.Date)
+    father_name = db.Column(db.String(255))
+    id_number = db.Column(db.String(10))
+    claim_number = db.Column(db.String(20))
+    status = db.Column(db.String(10))
+    city = db.Column(db.String(100))
+    address = db.Column(db.String(255))
+    phone = db.Column(db.String(50))
+    koopa = db.Column(db.String(50))  # Health fund
+    clinic = db.Column(db.String(100))
+    recurring_appointments = db.Column(db.String(100))
+    insurance = db.Column(db.String(20))
+    notes = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
