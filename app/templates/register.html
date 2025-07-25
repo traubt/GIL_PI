@@ -2,47 +2,39 @@
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-md-6">
-    <h2>Register</h2>
+  <div class="col-md-6" dir="rtl" style="text-align: right;">
+    <h2 style="text-align: right;">הרשמה</h2>
     <form method="POST" action="{{ url_for('main.register_post') }}">
       <div class="form-group">
-        <label for="username">Username</label>
-        <input type="text" class="form-control" id="username" name="username" required>
+        <label for="username">שם משתמש</label>
+        <input type="text" class="form-control" id="username" name="username" required style="text-align: right;">
       </div>
       <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" class="form-control" id="password" name="password" required>
+        <label for="password">סיסמה</label>
+        <input type="password" class="form-control" id="password" name="password" required style="text-align: right;">
       </div>
       <div class="form-group">
-        <label for="first_name">First Name</label>
-        <input type="text" class="form-control" id="first_name" name="first_name" required>
+        <label for="first_name">שם פרטי</label>
+        <input type="text" class="form-control" id="first_name" name="first_name" required style="text-align: right;">
       </div>
       <div class="form-group">
-        <label for="last_name">Last Name</label>
-        <input type="text" class="form-control" id="last_name" name="last_name" required>
+        <label for="last_name">שם משפחה</label>
+        <input type="text" class="form-control" id="last_name" name="last_name" required style="text-align: right;">
       </div>
       <div class="form-group">
-        <label for="email">Email</label>
-        <input type="email" class="form-control" id="email" name="email" required>
+        <label for="email">אימייל</label>
+        <input type="email" class="form-control" id="email" name="email" required style="text-align: right;">
       </div>
-      <div class="form-group">
-        <label for="shop">Shop</label>
-        <select class="form-control" id="shop" name="shop" required>
-          {% for shop in shops %}
-            <option value="{{ shop.blName }}">{{ shop.blName }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="form-group">
-      <label for="role">Role</label>
-      <select class="form-control" id="role" name="role" required>
-        {% for role in roles %}
-          <option value="{{ role }}">{{ role }}</option>
-        {% endfor %}
-      </select>
-      </div>
-      <button type="submit" class="btn btn-primary">Register</button>
+
+      <!-- Hidden default Shop -->
+      <input type="hidden" name="shop" value="Head Office">
+
+      <!-- Hidden default Role -->
+      <input type="hidden" name="role" value="Admin">
+
+      <button type="submit" class="btn btn-primary">הרשמה</button>
     </form>
   </div>
 </div>
+
 {% endblock %}

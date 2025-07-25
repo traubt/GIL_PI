@@ -2,22 +2,23 @@
 
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-md-6">
-    <h2>Login</h2>
+  <div class="col-md-6" dir="rtl" style="text-align: right;">
+    <h2 style="text-align: right;">התחברות</h2>
     <form method="POST" action="{{ url_for('main.login_post') }}">
       <div class="form-group">
-        <label for="username">Username</label>
-        <input type="text" class="form-control" id="username" name="username" required>
+        <label for="username">שם משתמש</label>
+        <input type="text" class="form-control" id="username" name="username" required style="text-align: right;">
       </div>
       <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" class="form-control" id="password" name="password" required>
+        <label for="password">סיסמה</label>
+        <input type="password" class="form-control" id="password" name="password" required style="text-align: right;">
       </div>
-      <button type="submit" id="submit" class="btn btn-primary">Login</button>
-<!--      <a id="register" href="{{ url_for('main.register') }}" class="btn btn-secondary">Register</a>-->
+      <button type="submit" id="submit" class="btn btn-primary">התחבר</button>
     </form>
   </div>
 </div>
+
+
 
 <script>
      $("#register").on("click", function(event) {

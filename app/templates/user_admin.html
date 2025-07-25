@@ -82,119 +82,203 @@
       <div class="row">
         <div class="col-lg-12">
 
-        <div class="card">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-center">
-              <h5 class="card-title mb-0">Users</h5>
-<!--              <div class="d-flex gap-2">-->
-<!--                <label for="orderName" class="form-label mb-0">Select Order:</label>-->
-<!--                <select id="orderName" class="form-control">-->
-<!--                  <option value="" disabled selected>No Order Found</option>-->
-<!--                  &lt;!&ndash; Options will be populated dynamically &ndash;&gt;-->
-<!--                </select>-->
-<!--              </div>-->
-<!-- <div class="d-inline-flex align-items-center gap-2">-->
-<!--  <label for="orderName" class="form-label mb-0">Select Order:</label>-->
-<!--  <select id="orderName" class="form-select">-->
-<!--    <option value="" disabled selected>No Order Found</option>-->
-<!--    &lt;!&ndash; Options will be populated dynamically &ndash;&gt;-->
-<!--  </select>-->
-<!--</div>-->
+          <div class="card" dir="rtl">
+  <div class="card-body">
+    <div class="d-flex justify-content-between align-items-center">
+      <h5 class="card-title mb-0">משתמשים</h5>
+    </div>
 
-            </div>
-            <div class="d-flex gap-1 mt-3">
-              <button class="btn btn-primary" id="getUsers" >Get Users</button>
-              <button class="btn btn-primary" id="createUser" >Create User</button>
-<!--              <button class="btn btn-primary" id="saveOrder"   disabled >Confirm Stock</button>-->
-<!--&lt;!&ndash;              <button class="btn btn-primary" id="submitOrder" data-bs-placement="bottom" data-bs-original-title="Notify order to head quarter" disabled>Submit Order</button>&ndash;&gt;-->
-<!--              <button class="btn btn-primary" id="closeOrder"   disabled>Close Form</button>-->
-<!--&lt;!&ndash;              <button class="btn btn-danger" id="cancelOrder" data-bs-placement="bottom" data-bs-original-title="Delete current order" disabled>Cancel Order</button>&ndash;&gt;-->
-<!--              <button class="btn btn-danger" id="resetQty" data-bs-placement="bottom" data-bs-original-title="Reset all order quantity to zero" disabled>Reset Count</button>-->
-            </div>
+    <div class="d-flex gap-1 mt-3">
+      <button class="btn btn-primary" id="getUsers">טען משתמשים</button>
+      <button class="btn btn-primary" id="createUser">צור משתמש</button>
+    </div>
 
-              <!--Handle the csv file -->
+    <!-- טבלת משתמשים -->
+    <table id="Users" border="1" class="table table-bordered mt-3">
+      <thead></thead>
+      <tbody></tbody>
+    </table>
+  </div>
+</div>
 
-<table id="Users" border="1">
-    <thead></thead>
-    <tbody></tbody>
-</table>
-
-
-          </div>
-        </div>
-
-<!-- User Update Modal -->
-<div class="modal fade" id="updateModal" tabindex="-1" aria-labelledby="updateModalLabel" aria-hidden="true">
+<!-- חלון עדכון משתמש -->
+<div class="modal fade" id="updateModal" tabindex="-1" aria-labelledby="updateModalLabel" aria-hidden="true" dir="rtl">
   <div class="modal-dialog">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="updateModalLabel">Update User</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="updateModalLabel">עדכון משתמש</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
       </div>
       <div class="modal-body">
         <form id="updateUserForm">
-          <!-- Hidden field for User ID -->
           <input type="hidden" id="userId" name="userId">
 
-          <!-- First Name (disabled) -->
+          <!-- שם פרטי -->
           <div class="mb-3">
-            <label for="firstName" class="form-label">First Name</label>
+            <label for="firstName" class="form-label">שם פרטי</label>
             <input type="text" class="form-control" id="firstName" name="firstName" disabled>
           </div>
 
-          <!-- Last Name (disabled) -->
+          <!-- שם משפחה -->
           <div class="mb-3">
-            <label for="lastName" class="form-label">Last Name</label>
+            <label for="lastName" class="form-label">שם משפחה</label>
             <input type="text" class="form-control" id="lastName" name="lastName" disabled>
           </div>
 
-          <!-- Last Name (disabled) -->
+          <!-- שם משתמש -->
           <div class="mb-3">
-            <label for="userName" class="form-label">Username</label>
+            <label for="userName" class="form-label">שם משתמש</label>
             <input type="text" class="form-control" id="userName" name="userName" disabled>
           </div>
 
-          <!-- Email (editable) -->
+          <!-- אימייל -->
           <div class="mb-3">
-            <label for="email" class="form-label">Email</label>
+            <label for="email" class="form-label">אימייל</label>
             <input type="email" class="form-control" id="email" name="email" required>
           </div>
 
-          <!-- Password (editable) -->
+          <!-- סיסמה -->
           <div class="mb-3">
-            <label for="password" class="form-label">Password</label>
+            <label for="password" class="form-label">סיסמה</label>
             <input type="text" class="form-control" id="password" name="password" required>
           </div>
 
-          <!-- Role (editable) -->
+          <!-- תפקיד -->
           <div class="mb-3">
-              <label for="role" class="form-label">Role</label>
-              <select class="form-control" id="role" name="role" required>
-                  <option value="" disabled selected>Select a role</option>
-              </select>
+            <label for="role" class="form-label">תפקיד</label>
+            <select class="form-control" id="role" name="role" required>
+              <option value="" disabled selected>בחר תפקיד</option>
+            </select>
           </div>
 
-
-                    <!-- Shop (editable) -->
+          <!-- סניף -->
           <div class="mb-3">
-              <label for="shop" class="form-label">Shop</label>
-              <select class="form-control" id="shop" name="shop" required>
-                  <option value="" disabled selected>Select a shop</option>
-              </select>
+            <label for="shop" class="form-label">סניף</label>
+            <select class="form-control" id="shop" name="shop" required>
+              <option value="" disabled selected>בחר סניף</option>
+            </select>
           </div>
-
         </form>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-        <button type="button" class="btn btn-primary" id="saveChangesButton">Update</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+        <button type="button" class="btn btn-primary" id="saveChangesButton">עדכן</button>
       </div>
     </div>
   </div>
 </div>
 
 
+<!--        <div class="card">-->
+<!--          <div class="card-body">-->
+<!--            <div class="d-flex justify-content-between align-items-center">-->
+<!--              <h5 class="card-title mb-0">Users</h5>-->
+<!--&lt;!&ndash;              <div class="d-flex gap-2">&ndash;&gt;-->
+<!--&lt;!&ndash;                <label for="orderName" class="form-label mb-0">Select Order:</label>&ndash;&gt;-->
+<!--&lt;!&ndash;                <select id="orderName" class="form-control">&ndash;&gt;-->
+<!--&lt;!&ndash;                  <option value="" disabled selected>No Order Found</option>&ndash;&gt;-->
+<!--&lt;!&ndash;                  &lt;!&ndash; Options will be populated dynamically &ndash;&gt;&ndash;&gt;-->
+<!--&lt;!&ndash;                </select>&ndash;&gt;-->
+<!--&lt;!&ndash;              </div>&ndash;&gt;-->
+<!--&lt;!&ndash; <div class="d-inline-flex align-items-center gap-2">&ndash;&gt;-->
+<!--&lt;!&ndash;  <label for="orderName" class="form-label mb-0">Select Order:</label>&ndash;&gt;-->
+<!--&lt;!&ndash;  <select id="orderName" class="form-select">&ndash;&gt;-->
+<!--&lt;!&ndash;    <option value="" disabled selected>No Order Found</option>&ndash;&gt;-->
+<!--&lt;!&ndash;    &lt;!&ndash; Options will be populated dynamically &ndash;&gt;&ndash;&gt;-->
+<!--&lt;!&ndash;  </select>&ndash;&gt;-->
+<!--&lt;!&ndash;</div>&ndash;&gt;-->
 
+<!--            </div>-->
+<!--            <div class="d-flex gap-1 mt-3">-->
+<!--              <button class="btn btn-primary" id="getUsers" >Get Users</button>-->
+<!--              <button class="btn btn-primary" id="createUser" >Create User</button>-->
+<!--&lt;!&ndash;              <button class="btn btn-primary" id="saveOrder"   disabled >Confirm Stock</button>&ndash;&gt;-->
+<!--&lt;!&ndash;&lt;!&ndash;              <button class="btn btn-primary" id="submitOrder" data-bs-placement="bottom" data-bs-original-title="Notify order to head quarter" disabled>Submit Order</button>&ndash;&gt;&ndash;&gt;-->
+<!--&lt;!&ndash;              <button class="btn btn-primary" id="closeOrder"   disabled>Close Form</button>&ndash;&gt;-->
+<!--&lt;!&ndash;&lt;!&ndash;              <button class="btn btn-danger" id="cancelOrder" data-bs-placement="bottom" data-bs-original-title="Delete current order" disabled>Cancel Order</button>&ndash;&gt;&ndash;&gt;-->
+<!--&lt;!&ndash;              <button class="btn btn-danger" id="resetQty" data-bs-placement="bottom" data-bs-original-title="Reset all order quantity to zero" disabled>Reset Count</button>&ndash;&gt;-->
+<!--            </div>-->
+
+<!--              &lt;!&ndash;Handle the csv file &ndash;&gt;-->
+
+<!--<table id="Users" border="1">-->
+<!--    <thead></thead>-->
+<!--    <tbody></tbody>-->
+<!--</table>-->
+
+
+<!--          </div>-->
+<!--        </div>-->
+
+<!--&lt;!&ndash; User Update Modal &ndash;&gt;-->
+<!--<div class="modal fade" id="updateModal" tabindex="-1" aria-labelledby="updateModalLabel" aria-hidden="true">-->
+<!--  <div class="modal-dialog">-->
+<!--    <div class="modal-content">-->
+<!--      <div class="modal-header">-->
+<!--        <h5 class="modal-title" id="updateModalLabel">Update User</h5>-->
+<!--        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>-->
+<!--      </div>-->
+<!--      <div class="modal-body">-->
+<!--        <form id="updateUserForm">-->
+<!--          &lt;!&ndash; Hidden field for User ID &ndash;&gt;-->
+<!--          <input type="hidden" id="userId" name="userId">-->
+
+<!--          &lt;!&ndash; First Name (disabled) &ndash;&gt;-->
+<!--          <div class="mb-3">-->
+<!--            <label for="firstName" class="form-label">First Name</label>-->
+<!--            <input type="text" class="form-control" id="firstName" name="firstName" disabled>-->
+<!--          </div>-->
+
+<!--          &lt;!&ndash; Last Name (disabled) &ndash;&gt;-->
+<!--          <div class="mb-3">-->
+<!--            <label for="lastName" class="form-label">Last Name</label>-->
+<!--            <input type="text" class="form-control" id="lastName" name="lastName" disabled>-->
+<!--          </div>-->
+
+<!--          &lt;!&ndash; Last Name (disabled) &ndash;&gt;-->
+<!--          <div class="mb-3">-->
+<!--            <label for="userName" class="form-label">Username</label>-->
+<!--            <input type="text" class="form-control" id="userName" name="userName" disabled>-->
+<!--          </div>-->
+
+<!--          &lt;!&ndash; Email (editable) &ndash;&gt;-->
+<!--          <div class="mb-3">-->
+<!--            <label for="email" class="form-label">Email</label>-->
+<!--            <input type="email" class="form-control" id="email" name="email" required>-->
+<!--          </div>-->
+
+<!--          &lt;!&ndash; Password (editable) &ndash;&gt;-->
+<!--          <div class="mb-3">-->
+<!--            <label for="password" class="form-label">Password</label>-->
+<!--            <input type="text" class="form-control" id="password" name="password" required>-->
+<!--          </div>-->
+
+<!--          &lt;!&ndash; Role (editable) &ndash;&gt;-->
+<!--          <div class="mb-3">-->
+<!--              <label for="role" class="form-label">Role</label>-->
+<!--              <select class="form-control" id="role" name="role" required>-->
+<!--                  <option value="" disabled selected>Select a role</option>-->
+<!--              </select>-->
+<!--          </div>-->
+
+
+<!--                    &lt;!&ndash; Shop (editable) &ndash;&gt;-->
+<!--          <div class="mb-3">-->
+<!--              <label for="shop" class="form-label">Shop</label>-->
+<!--              <select class="form-control" id="shop" name="shop" required>-->
+<!--                  <option value="" disabled selected>Select a shop</option>-->
+<!--              </select>-->
+<!--          </div>-->
+
+<!--        </form>-->
+<!--      </div>-->
+<!--      <div class="modal-footer">-->
+<!--        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>-->
+<!--        <button type="button" class="btn btn-primary" id="saveChangesButton">Update</button>-->
+<!--      </div>-->
+<!--    </div>-->
+<!--  </div>-->
+<!--</div>-->
 
 <script>
 
