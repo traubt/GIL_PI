@@ -317,6 +317,7 @@ class GilInsured(db.Model):
     father_name = db.Column(db.String(255))
     id_number = db.Column(db.String(10))
     claim_number = db.Column(db.String(20))
+    claim_type = db.Column(db.String(20), nullable=False)
     status = db.Column(db.String(10))
     city = db.Column(db.String(100))
     address = db.Column(db.String(255))
