@@ -5,7 +5,7 @@
   <ul class="sidebar-nav" id="sidebar-nav">
 
     <li class="nav-item">
-      <a class="nav-link collapsed" href="{{ url_for('main.index') }}">
+      <a class="nav-link collapsed" href="{{ url_for('main.admin_insured') }}">
         <i class="bi bi-grid"></i>
         <span>דף הבית</span>
       </a>
@@ -21,52 +21,10 @@
             <i class="bi bi-circle"></i><span>ניהול מבוטחים</span>
           </a>
         </li>
-        <li id="orderStock">
-          <a href="{{ url_for('main.order_stock') }}">
-            <i class="bi bi-circle"></i><span>הזמנת מלאי</span>
-          </a>
-        </li>
-        <li id="receiveStock">
-          <a href="{{ url_for('main.receive_stock') }}">
-            <i class="bi bi-circle"></i><span>קליטת מלאי</span>
-            <span class="badge bg-primary badge-number" id="receive_stock_counter"></span>
-          </a>
-        </li>
-        <li id="interTransfer">
-          <a href="{{ url_for('main.inter_replenish_stock') }}">
-            <i class="bi bi-circle"></i><span>העברה פנימית</span>
-          </a>
-        </li>
-        <li id="replenishment">
-          <a href="{{ url_for('main.replenish_stock') }}">
-            <i class="bi bi-circle"></i><span>חידוש מלאי</span>
-          </a>
-        </li>
-        <li id="viewOrders">
-          <a href="{{ url_for('main.view_orders') }}">
-            <i class="bi bi-circle"></i><span>הזמנות</span>
-          </a>
-        </li>
+
       </ul>
     </li>
 
-    <li class="nav-item">
-      <a class="nav-link collapsed" data-bs-target="#reports-nav" data-bs-toggle="collapse" href="#">
-        <i class="bi bi-bar-chart"></i><span>דוחות</span><i class="bi bi-chevron-down me-auto"></i>
-      </a>
-      <ul id="reports-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
-        <li id="salesReport">
-          <a href="{{ url_for('main.sales_report') }}">
-            <i class="bi bi-circle"></i><span>דוח מכירות</span>
-          </a>
-        </li>
-        <li id="varianceReport">
-          <a href="{{ url_for('main.variance_report') }}">
-            <i class="bi bi-circle"></i><span>דוח מלאי</span>
-          </a>
-        </li>
-      </ul>
-    </li>
 
     <li class="nav-item">
       <a class="nav-link collapsed" data-bs-target="#admin-nav" data-bs-toggle="collapse">
@@ -96,23 +54,7 @@
       </ul>
     </li>
 
-    <li class="nav-item">
-      <a class="nav-link collapsed" data-bs-target="#casual-nav" data-bs-toggle="collapse">
-        <i class="bi bi-calendar-check"></i><span>יומן ארועים</span><i class="bi bi-chevron-down me-auto"></i>
-      </a>
-      <ul id="casual-nav" class="nav-content collapse" data-bs-parent="#sidebar-nav">
-        <li id="casualTimesheet">
-          <a href="{{ url_for('main.casual_timesheet') }}">
-            <i class="bi bi-circle"></i><span>דיווח שעות</span>
-          </a>
-        </li>
-        <li id="CasualHistory">
-          <a href="{{ url_for('main.timesheet_history') }}">
-            <i class="bi bi-circle"></i><span>היסטוריה</span>
-          </a>
-        </li>
-      </ul>
-    </li>
+
 
     <li class="nav-item" id="openai">
       <a class="nav-link collapsed" href="{{ url_for('main.ChatGPT') }}">

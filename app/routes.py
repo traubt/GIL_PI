@@ -212,7 +212,7 @@ def login_post():
     db.session.commit()
 
 
-    return redirect(url_for('main.index'))
+    return redirect(url_for('main.admin_insured'))
 
 @main.route('/welcome/<username>')
 def welcome(username):
@@ -2915,6 +2915,135 @@ def admin_insured():
         roles=roles_list,
         insured_list=insured_list
     )
+
+from datetime import datetime, date
+
+from datetime import datetime, date
+from flask import render_template, request, redirect, url_for, current_app
+from werkzeug.utils import secure_filename
+import os
+
+@main.route('/insured/create', methods=['GET', 'POST'])
+def create_insured():
+    upload_folder = current_app.config.get('UPLOAD_FOLDER')
+    if upload_folder and not os.path.exists(upload_folder):
+        os.makedirs(upload_folder, exist_ok=True)
+
+    if request.method == 'POST':
+        try:
+            received_date_str = request.form.get('received_date')
+            received_date = datetime.strptime(received_date_str, "%Y-%m-%d") if received_date_str else None
+            claim_type = request.form.get('claim_type') or 'סיעוד'
+            insurance = request.form.get('insurance')
+            notes = request.form.get('notes')
+
+            first_name = request.form.get('first_name')
+            last_name = request.form.get('last_name')
+            birth_date_str = request.form.get('birth_date')
+            birth_date = datetime.strptime(birth_date_str, "%Y-%m-%d") if birth_date_str else None
+            father_name = request.form.get('father_name')
+            id_number = request.form.get('id_number')
+            claim_number = request.form.get('claim_number')
+            gender = request.form.get('gender')
+            status = request.form.get('status')
+            city = request.form.get('city')
+            address = request.form.get('address')
+            phone = request.form.get('phone')
+            koopa = request.form.get('koopa')
+            clinic = request.form.get('clinic')
+            recurring_appointments = request.form.get('recurring_appointments')
+
+            photo = request.files.get('photo')
+            photo_filename = None
+            if photo and '.' in photo.filename:
+                ext = photo.filename.rsplit('.', 1)[1].lower()
+                if ext in {'jpg', 'jpeg', 'png'}:
+                    photo_filename = f"{id_number}_{photo.filename}"
+                    photo.save(os.path.join(upload_folder, photo_filename))
+                else:
+                    return redirect(url_for('main.create_insured', status='error', message='רק קבצי JPG או PNG מותרים'))
+
+            new_insured = GilInsured(
+                received_date=received_date,
+                first_name=first_name,
+                last_name=last_name,
+                birth_date=birth_date,
+                father_name=father_name,
+                id_number=id_number,
+                claim_number=claim_number,
+                claim_type=claim_type,
+                gender=gender,
+                status=status,
+                city=city,
+                address=address,
+                phone=phone,
+                koopa=koopa,
+                clinic=clinic,
+                recurring_appointments=recurring_appointments,
+                insurance=insurance,
+                notes=notes,
+                photo=photo_filename,
+            )
+            db.session.add(new_insured)
+            db.session.commit()
+
+            return redirect(url_for('main.create_insured', status='success', message='המבוטח נשמר בהצלחה. נא לחץ על חזור כדי לחזור לרשימת המבוטחים'))
+
+        except Exception as e:
+            return redirect(url_for('main.create_insured', status='error', message='אירעה שגיאה בשמירת המבוטח'))
+
+    current_date = date.today().strftime("%Y-%m-%d")
+    return render_template('insured_create.html', current_date=current_date,  is_edit=False)
+
+
+@main.route('/insured/<int:id>/edit', methods=['GET', 'POST'])
+def edit_insured(id):
+    insured = GilInsured.query.get_or_404(id)
+    upload_folder = current_app.config.get('UPLOAD_FOLDER')
+
+    if request.method == 'POST':
+        try:
+            insured.first_name = request.form.get('first_name')
+            insured.last_name = request.form.get('last_name')
+            insured.birth_date = request.form.get('birth_date')
+            insured.father_name = request.form.get('father_name')
+            insured.id_number = request.form.get('id_number')
+            insured.claim_number = request.form.get('claim_number')
+            insured.claim_type = request.form.get('claim_type')
+            insured.gender = request.form.get('gender')
+            insured.status = request.form.get('status')
+            insured.city = request.form.get('city')
+            insured.address = request.form.get('address')
+            insured.phone = request.form.get('phone')
+            insured.koopa = request.form.get('koopa')
+            insured.clinic = request.form.get('clinic')
+            insured.recurring_appointments = request.form.get('recurring_appointments')
+            insured.insurance = request.form.get('insurance')
+            insured.notes = request.form.get('notes')
+            insured.received_date = request.form.get('received_date')
+
+            photo = request.files.get('photo')
+            if photo and photo.filename:
+                ext = photo.filename.rsplit('.', 1)[1].lower()
+                if ext in {'jpg', 'jpeg', 'png'}:
+                    photo_filename = f"{insured.id_number}_{secure_filename(photo.filename)}"
+                    os.makedirs(upload_folder, exist_ok=True)
+                    photo.save(os.path.join(upload_folder, photo_filename))
+                    insured.photo = photo_filename
+                else:
+                    return redirect(url_for('main.edit_insured', id=id, status='error', message='רק קבצי JPG או PNG מותרים'))
+
+            db.session.commit()
+            return redirect(url_for('main.edit_insured', id=id, status='success',
+                                    message='פרטי המבוטח עודכנו בהצלחה. נא לחץ על חזור כדי לחזור לרשימת המבוטחים'))
+
+
+        except Exception as e:
+            return redirect(url_for('main.edit_insured', id=id, status='error', message='שגיאה בעדכון פרטי המבוטח'))
+
+    return render_template('insured_edit.html', insured=insured, is_edit=True)
+
+
 
 
 ############################################################################

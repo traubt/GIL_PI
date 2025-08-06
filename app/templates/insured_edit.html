@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <title>פרטי מבוטח</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+  <style>
+    .card { border-radius: 12px; box-shadow: 0 2px 6px rgba(0,0,0,0.1); }
+    .photo-preview { width: 120px; height: 120px; object-fit: cover; border-radius: 50%; }
+  </style>
+</head>
+<body class="container mt-4">
+
+  <h3 class="mb-4">
+  {% if insured %}עדכן פרטי מבוטח{% else %}צור תיק מבוטח{% endif %}
+  </h3>
+
+  <form method="POST" action="{{ url_for('main.edit_insured', id=insured.id) }}">
+    <div class="row">
+      <!-- Right column -->
+      <div class="col-md-6">
+        <div class="mb-3">
+          <label for="first_name" class="form-label">שם פרטי</label>
+          <input type="text" id="first_name" name="first_name" value="{{ insured.first_name }}" class="form-control" required>
+        </div>
+        <div class="mb-3">
+          <label for="last_name" class="form-label">שם משפחה</label>
+          <input type="text" id="last_name" name="last_name" value="{{ insured.last_name }}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label for="id_number" class="form-label">תעודת זהות</label>
+          <input type="text" id="id_number" name="id_number" value="{{ insured.id_number }}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label for="birth_date" class="form-label">תאריך לידה</label>
+          <input type="date" id="birth_date" name="birth_date" value="{{ insured.birth_date.strftime('%Y-%m-%d') if insured.birth_date else '' }}">
+
+        </div>
+        <div class="mb-3">
+          <label for="father_name" class="form-label">שם אב</label>
+          <input type="text" id="father_name" name="father_name" value="{{ insured.father_name }}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label for="city" class="form-label">עיר</label>
+          <input type="text" id="city" name="city" value="{{ insured.city }}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label for="address" class="form-label">כתובת</label>
+          <input type="text" id="address" name="address" value="{{ insured.address }}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label for="phone" class="form-label">טלפון</label>
+          <input type="text" id="phone" name="phone" value="{{ insured.phone }}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label for="koopa" class="form-label">קופה</label>
+          <input type="text" id="koopa" name="koopa" value="{{ insured.koopa }}" class="form-control">
+        </div>
+        <div class="mb-3">
+          <label for="clinic" class="form-label">מרפאה</label>
+          <input type="text" id="clinic" name="clinic" value="{{ insured.clinic }}" class="form-control">
+        </div>
+      </div>
+
+      <!-- Left column -->
+      <div class="col-md-6">
+        <div class="card mb-3">
+          <div class="card-header">תביעה</div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label for="received_date" class="form-label">תאריך קבלה</label>
+              <input type="date" id="received_date" name="received_date" value="{{ insured.received_date.strftime('%Y-%m-%d') if insured.received_date else '' }}">
+
+            </div>
+            <div class="mb-3">
+              <label for="claim_number" class="form-label">מספר תביעה</label>
+              <input type="text" id="claim_number" name="claim_number" value="{{ insured.claim_number }}" class="form-control">
+            </div>
+            <div class="mb-3">
+              <label for="claim_type" class="form-label">סוג תביעה</label>
+              <select id="claim_type" name="claim_type" class="form-select">
+                <option value="סיעוד" {% if insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
+                <option value="אכא" {% if insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
+                <option value="ביטוח" {% if insured.claim_type == 'ביטוח' %}selected{% endif %}>ביטוח</option>
+              </select>
+            </div>
+              <div class="mb-3">
+                <label for="insurance" class="form-label">ביטוח</label>
+                <select id="insurance" name="insurance" class="form-select" required>
+                  <option value="הפניקס" {% if insured.insurance == 'הפניקס' %}selected{% endif %}>הפניקס</option>
+                  <option value="מנורה" {% if insured.insurance == 'מנורה' %}selected{% endif %}>מנורה</option>
+                  <option value="שלמה" {% if insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>
+                </select>
+              </div>
+
+            <div class="mb-3">
+              <label for="status" class="form-label">סטטוס תביעה</label>
+              <select id="status" name="status" class="form-select">
+                <option value="פתוחה" {% if insured.status == 'פתוחה' %}selected{% endif %}>פתוחה</option>
+                <option value="הושלמה" {% if insured.status == 'הושלמה' %}selected{% endif %}>הושלמה</option>
+              </select>
+            </div>
+            <div class="mb-3">
+              <label for="notes" class="form-label">הערות</label>
+              <textarea id="notes" name="notes" class="form-control">{{ insured.notes }}</textarea>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="mb-3">
+          <label for="photo" class="form-label">תמונה</label><br>
+          {% if insured.photo %}
+            <img src="/static/uploads/insured_photos/{{ insured.photo }}" class="img-thumbnail mb-2" style="width: 100px;">
+          {% endif %}
+          <input type="file" id="photo" name="photo" class="form-control">
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="btn btn-success">שמור</button>
+    <a href="{{ url_for('main.admin_insured') }}" class="btn btn-secondary">חזור</a>
+  </form>
+
+
+<script>
+  function getQueryParams() {
+    const params = {};
+    window.location.search.substring(1).split("&").forEach(function (pair) {
+      const [key, value] = pair.split("=");
+      if (key) {
+        params[decodeURIComponent(key)] = decodeURIComponent((value || "").replace(/\+/g, ' '));
+      }
+    });
+    return params;
+  }
+
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const params = getQueryParams();
+    if (params.status && params.message) {
+      if (params.status === 'success') {
+        alert("✅ " + params.message);
+      } else {
+        alert("❌ " + params.message);
+      }
+
+      // Remove query params to prevent repeat alert
+      const url = new URL(window.location);
+      url.search = "";
+      window.history.replaceState({}, document.title, url);
+    }
+  });
+</script>
+
+
+</body>
+</html>

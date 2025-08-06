@@ -317,7 +317,8 @@ class GilInsured(db.Model):
     father_name = db.Column(db.String(255))
     id_number = db.Column(db.String(10))
     claim_number = db.Column(db.String(20))
-    claim_type = db.Column(db.String(20), nullable=False)
+    claim_type = db.Column(db.String(20), nullable=False, default='סיעוד')
+    gender = db.Column(db.String(20))
     status = db.Column(db.String(10))
     city = db.Column(db.String(100))
     address = db.Column(db.String(255))
@@ -327,6 +328,7 @@ class GilInsured(db.Model):
     recurring_appointments = db.Column(db.String(100))
     insurance = db.Column(db.String(20))
     notes = db.Column(db.Text)
+    photo = db.Column(db.String(255))  # store the filename only
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
