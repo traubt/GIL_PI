@@ -42,7 +42,10 @@
           </select>
         </div>
         <div class="mb-2"><label>תעודת זהות</label><input type="text" class="form-control" name="id_number" required></div>
-        <input type="date" name="birth_date" value="{{ insured.birth_date.strftime('%Y-%m-%d') if insured and insured.birth_date else '' }}">
+        <div class="mb-2">
+          <label for="birth_date" class="form-label">תאריך לידה</label>
+          <input type="date" id="birth_date" class="form-control" name="birth_date" value="{{ insured.birth_date.strftime('%Y-%m-%d') if insured and insured.birth_date else '' }}">
+        </div>
         <div class="mb-2"><label>שם אב</label><input type="text" class="form-control" name="father_name"></div>
         <div class="mb-2"><label>עיר</label><input type="text" class="form-control" name="city"></div>
         <div class="mb-2"><label>כתובת</label><input type="text" class="form-control" name="address"></div>

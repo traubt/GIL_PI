@@ -57,6 +57,60 @@ DB_CONFIG = {
     'cursorclass': pymysql.cursors.DictCursor  # Return rows as dictionaries
 }
 
+import dropbox
+from dropbox.exceptions import ApiError
+from werkzeug.utils import secure_filename
+
+# Dropbox setup
+DROPBOX_REFRESH_TOKEN = 'YjUT_g2Om4wAAAAAAAAAATogIV7e_NrU4uRcaIfo2WUOxiTwfg-brX6-3u5M991-'
+DROPBOX_APP_KEY = '078cfveyiewj0ay'
+DROPBOX_APP_SECRET = '9h1uxluft07vap1'
+
+dbx = dropbox.Dropbox(
+    oauth2_refresh_token=DROPBOX_REFRESH_TOKEN,
+    app_key=DROPBOX_APP_KEY,
+    app_secret=DROPBOX_APP_SECRET
+)
+
+def build_dropbox_folder_path(insurance, claim_type, last_name, first_name, id_number, claim_number):
+    base_path = f"/360/ביטוח/{insurance}/{claim_type}"
+    full_name = f"{last_name} {first_name}"
+
+    if insurance == 'מנורה':
+        folder_name = f"{full_name} - {id_number} - {claim_number}"
+    elif insurance == 'הפניקס':
+        folder_name = f"{full_name} - {claim_number}"
+    elif insurance == 'שלמה' and claim_type == 'אכע':
+        folder_name = f"{full_name} - {id_number} - {claim_number}"
+    elif insurance == 'איילון' and claim_type == 'אכע':
+        folder_name = f"{full_name} - {id_number} - {claim_number}"
+    else:
+        return None
+
+    return f"{base_path}/{folder_name}"
+
+def sync_insured_to_dropbox(insured, photo_path=None):
+    folder_path = build_dropbox_folder_path(
+        insured.insurance, insured.claim_type,
+        insured.last_name, insured.first_name,
+        insured.id_number, insured.claim_number
+    )
+    if not folder_path:
+        return
+
+    try:
+        dbx.files_create_folder_v2(folder_path)
+    except ApiError as e:
+        if not (e.error.is_path() and e.error.get_path().is_conflict()):
+            raise
+
+    # Upload photo if path is provided
+    if photo_path:
+        dropbox_path = f"{folder_path}/{secure_filename(insured.photo)}"
+        with open(photo_path, "rb") as f:
+            dbx.files_upload(f.read(), dropbox_path, mode=dropbox.files.WriteMode.overwrite)
+
+
 
 # Function to send email
 def send_email(recipients, subject, body):
@@ -2987,6 +3041,9 @@ def create_insured():
             db.session.add(new_insured)
             db.session.commit()
 
+            photo_path = os.path.join(upload_folder, photo_filename) if photo_filename else None
+            sync_insured_to_dropbox(new_insured, photo_path=photo_path)
+
             return redirect(url_for('main.create_insured', status='success', message='המבוטח נשמר בהצלחה. נא לחץ על חזור כדי לחזור לרשימת המבוטחים'))
 
         except Exception as e:
@@ -3021,6 +3078,8 @@ def edit_insured(id):
             insured.insurance = request.form.get('insurance')
             insured.notes = request.form.get('notes')
             insured.received_date = request.form.get('received_date')
+            old_id = insured.id_number
+            old_claim = insured.claim_number
 
             photo = request.files.get('photo')
             if photo and photo.filename:
@@ -3034,6 +3093,14 @@ def edit_insured(id):
                     return redirect(url_for('main.edit_insured', id=id, status='error', message='רק קבצי JPG או PNG מותרים'))
 
             db.session.commit()
+
+            # Dropbox folder needs sync if ID or claim number changed
+            id_or_claim_changed = insured.id_number != old_id or insured.claim_number != old_claim
+
+            if id_or_claim_changed or photo:
+                photo_path = os.path.join(upload_folder, insured.photo) if photo else None
+                sync_insured_to_dropbox(insured, photo_path=photo_path if photo else None)
+
             return redirect(url_for('main.edit_insured', id=id, status='success',
                                     message='פרטי המבוטח עודכנו בהצלחה. נא לחץ על חזור כדי לחזור לרשימת המבוטחים'))
 
