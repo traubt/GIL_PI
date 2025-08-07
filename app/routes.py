@@ -2977,92 +2977,76 @@ from flask import render_template, request, redirect, url_for, current_app
 from werkzeug.utils import secure_filename
 import os
 
+from flask import jsonify
+
 @main.route('/insured/create', methods=['GET', 'POST'])
 def create_insured():
     upload_folder = current_app.config.get('UPLOAD_FOLDER')
-    if upload_folder and not os.path.exists(upload_folder):
-        os.makedirs(upload_folder, exist_ok=True)
+    birth_date_str = request.form.get('birth_date')
+
 
     if request.method == 'POST':
         try:
-            received_date_str = request.form.get('received_date')
-            received_date = datetime.strptime(received_date_str, "%Y-%m-%d") if received_date_str else None
-            claim_type = request.form.get('claim_type') or 'סיעוד'
-            insurance = request.form.get('insurance')
-            notes = request.form.get('notes')
-
-            first_name = request.form.get('first_name')
-            last_name = request.form.get('last_name')
-            birth_date_str = request.form.get('birth_date')
-            birth_date = datetime.strptime(birth_date_str, "%Y-%m-%d") if birth_date_str else None
-            father_name = request.form.get('father_name')
-            id_number = request.form.get('id_number')
-            claim_number = request.form.get('claim_number')
-            gender = request.form.get('gender')
-            status = request.form.get('status')
-            city = request.form.get('city')
-            address = request.form.get('address')
-            phone = request.form.get('phone')
-            koopa = request.form.get('koopa')
-            clinic = request.form.get('clinic')
-            recurring_appointments = request.form.get('recurring_appointments')
+            insured = GilInsured(
+                first_name=request.form.get('first_name'),
+                last_name=request.form.get('last_name'),
+                birth_date=birth_date_str if birth_date_str else None,
+                father_name=request.form.get('father_name'),
+                id_number=request.form.get('id_number'),
+                claim_number=request.form.get('claim_number'),
+                claim_type=request.form.get('claim_type'),
+                gender=request.form.get('gender'),
+                status=request.form.get('status'),
+                city=request.form.get('city'),
+                address=request.form.get('address'),
+                phone=request.form.get('phone'),
+                koopa=request.form.get('koopa'),
+                clinic=request.form.get('clinic'),
+                recurring_appointments=request.form.get('recurring_appointments'),
+                insurance=request.form.get('insurance'),
+                notes=request.form.get('notes'),
+                received_date=request.form.get('received_date')
+            )
 
             photo = request.files.get('photo')
-            photo_filename = None
-            if photo and '.' in photo.filename:
-                ext = photo.filename.rsplit('.', 1)[1].lower()
+            if photo and photo.filename:
+                ext = photo.filename.rsplit('.', 1)[-1].lower()
                 if ext in {'jpg', 'jpeg', 'png'}:
-                    photo_filename = f"{id_number}_{photo.filename}"
+                    photo_filename = f"{insured.id_number}_{secure_filename(photo.filename)}"
+                    os.makedirs(upload_folder, exist_ok=True)
                     photo.save(os.path.join(upload_folder, photo_filename))
+                    insured.photo = photo_filename
                 else:
-                    return redirect(url_for('main.create_insured', status='error', message='רק קבצי JPG או PNG מותרים'))
+                    return jsonify({'message': 'רק קבצי JPG או PNG מותרים'}), 400
 
-            new_insured = GilInsured(
-                received_date=received_date,
-                first_name=first_name,
-                last_name=last_name,
-                birth_date=birth_date,
-                father_name=father_name,
-                id_number=id_number,
-                claim_number=claim_number,
-                claim_type=claim_type,
-                gender=gender,
-                status=status,
-                city=city,
-                address=address,
-                phone=phone,
-                koopa=koopa,
-                clinic=clinic,
-                recurring_appointments=recurring_appointments,
-                insurance=insurance,
-                notes=notes,
-                photo=photo_filename,
-            )
-            db.session.add(new_insured)
+            db.session.add(insured)
             db.session.commit()
 
-            photo_path = os.path.join(upload_folder, photo_filename) if photo_filename else None
-            sync_insured_to_dropbox(new_insured, photo_path=photo_path)
+            photo_path = os.path.join(upload_folder, insured.photo) if photo else None
+            sync_insured_to_dropbox(insured, photo_path=photo_path)
 
-            return redirect(url_for('main.create_insured', status='success', message='המבוטח נשמר בהצלחה. נא לחץ על חזור כדי לחזור לרשימת המבוטחים'))
+            return jsonify({'message': 'המבוטח נוצר בהצלחה'}), 200
 
         except Exception as e:
-            return redirect(url_for('main.create_insured', status='error', message='אירעה שגיאה בשמירת המבוטח'))
+            current_app.logger.error(f"Error creating insured: {str(e)}")
+            return jsonify({'message': 'שגיאה ביצירת מבוטח'}), 500
 
-    current_date = date.today().strftime("%Y-%m-%d")
-    return render_template('insured_create.html', current_date=current_date,  is_edit=False)
+    return render_template('insured_create.html', is_edit=False)
+
+
 
 
 @main.route('/insured/<int:id>/edit', methods=['GET', 'POST'])
 def edit_insured(id):
     insured = GilInsured.query.get_or_404(id)
     upload_folder = current_app.config.get('UPLOAD_FOLDER')
+    birth_date_str = request.form.get('birth_date')
 
     if request.method == 'POST':
         try:
             insured.first_name = request.form.get('first_name')
             insured.last_name = request.form.get('last_name')
-            insured.birth_date = request.form.get('birth_date')
+            insured.birth_date = birth_date_str if birth_date_str else None
             insured.father_name = request.form.get('father_name')
             insured.id_number = request.form.get('id_number')
             insured.claim_number = request.form.get('claim_number')
@@ -3083,32 +3067,31 @@ def edit_insured(id):
 
             photo = request.files.get('photo')
             if photo and photo.filename:
-                ext = photo.filename.rsplit('.', 1)[1].lower()
+                ext = photo.filename.rsplit('.', 1)[-1].lower()
                 if ext in {'jpg', 'jpeg', 'png'}:
                     photo_filename = f"{insured.id_number}_{secure_filename(photo.filename)}"
                     os.makedirs(upload_folder, exist_ok=True)
                     photo.save(os.path.join(upload_folder, photo_filename))
                     insured.photo = photo_filename
                 else:
-                    return redirect(url_for('main.edit_insured', id=id, status='error', message='רק קבצי JPG או PNG מותרים'))
+                    return jsonify({'message': 'רק קבצי JPG או PNG מותרים'}), 400
 
             db.session.commit()
 
             # Dropbox folder needs sync if ID or claim number changed
             id_or_claim_changed = insured.id_number != old_id or insured.claim_number != old_claim
-
             if id_or_claim_changed or photo:
                 photo_path = os.path.join(upload_folder, insured.photo) if photo else None
-                sync_insured_to_dropbox(insured, photo_path=photo_path if photo else None)
+                sync_insured_to_dropbox(insured, photo_path=photo_path)
 
-            return redirect(url_for('main.edit_insured', id=id, status='success',
-                                    message='פרטי המבוטח עודכנו בהצלחה. נא לחץ על חזור כדי לחזור לרשימת המבוטחים'))
-
+            return jsonify({'message': 'פרטי המבוטח עודכנו בהצלחה'}), 200
 
         except Exception as e:
-            return redirect(url_for('main.edit_insured', id=id, status='error', message='שגיאה בעדכון פרטי המבוטח'))
+            current_app.logger.error(f"Error updating insured: {str(e)}")
+            return jsonify({'message': 'שגיאה בעדכון פרטי המבוטח'}), 500
 
     return render_template('insured_edit.html', insured=insured, is_edit=True)
+
 
 
 

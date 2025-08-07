@@ -20,8 +20,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.3/jszip.min.js"></script>
 
    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
-
+    <script src="/static/assets/js/functions.js"></script>
 </head>
 
 <body>
@@ -141,6 +140,23 @@
           });
         }
       });
+    });
+
+//log activity
+    $(".btn").on("click", function () {
+        // Get the text of the clicked button
+        const buttonText = $(this).text().trim();
+
+        // Get the current file name without the ".html" postfix
+        const fileName = window.location.pathname.split("/").pop().replace(".html", "");
+
+        // Create a combined activity description
+        const activityDescription = `${fileName}: ${buttonText}`;
+
+        console.log("clicking on ",activityDescription);
+
+        // Call the logUserActivity function with the combined description
+        logUserActivity(activityDescription);
     });
 
   // Function to extract URL query parameters
