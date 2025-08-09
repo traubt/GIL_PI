@@ -24,7 +24,7 @@
 <body class="container mt-4">
 
   <h3 class="mb-4">
-  {% if insured %}עדכן פרטי מבוטח{% else %}צור תיק מבוטח{% endif %}
+  {% if insured %}עדכן תיק חקירה{% else %}צור תיק מבוטח{% endif %}
   </h3>
 
   <form id="insuredEditForm" method="POST" action="{{ url_for('main.edit_insured', id=insured.id) }}">
@@ -71,11 +71,31 @@
           <label for="clinic" class="form-label">מרפאה</label>
           <input type="text" id="clinic" name="clinic" value="{{ insured.clinic }}" class="form-control">
         </div>
+
+        <div class="mb-3">
+                <label for="insurance" class="form-label">ביטוח</label>
+                <select id="insurance" name="insurance" class="form-select" required>
+                  <option value="הפניקס" {% if insured.insurance == 'הפניקס' %}selected{% endif %}>הפניקס</option>
+                  <option value="מנורה" {% if insured.insurance == 'מנורה' %}selected{% endif %}>מנורה</option>
+                  <option value="שלמה" {% if insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>
+                  <option value="איילון" {% if insured.insurance == 'איילון' %}selected{% endif %}>איילון</option>
+                </select>
+        </div>
+        <div class="mb-3">
+              <label for="claim_type" class="form-label">סוג תביעה</label>
+              <select id="claim_type" name="claim_type" class="form-select">
+                <option value="סיעוד" {% if insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
+                <option value="אכא" {% if insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
+                <option value="פרטי" {% if insured.claim_type == 'פרטי' %}selected{% endif %}>פרטי</option>
+                <option value="מסחרי" {% if insured.claim_type == 'מסחרי' %}selected{% endif %}>מסחרי</option>
+              </select>
+        </div>
       </div>
 
       <!-- Left column -->
       <div class="col-md-6">
-        <div class="card mb-3">
+        <div class="col-md-6" id="claimDetailsCard">
+            <div class="card mb-3">
           <div class="card-header">תביעה</div>
           <div class="card-body">
             <div class="mb-3">
@@ -87,22 +107,6 @@
               <label for="claim_number" class="form-label">מספר תביעה</label>
               <input type="text" id="claim_number" name="claim_number" value="{{ insured.claim_number }}" class="form-control">
             </div>
-            <div class="mb-3">
-              <label for="claim_type" class="form-label">סוג תביעה</label>
-              <select id="claim_type" name="claim_type" class="form-select">
-                <option value="סיעוד" {% if insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
-                <option value="אכא" {% if insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
-                <option value="ביטוח" {% if insured.claim_type == 'ביטוח' %}selected{% endif %}>ביטוח</option>
-              </select>
-            </div>
-              <div class="mb-3">
-                <label for="insurance" class="form-label">ביטוח</label>
-                <select id="insurance" name="insurance" class="form-select" required>
-                  <option value="הפניקס" {% if insured.insurance == 'הפניקס' %}selected{% endif %}>הפניקס</option>
-                  <option value="מנורה" {% if insured.insurance == 'מנורה' %}selected{% endif %}>מנורה</option>
-                  <option value="שלמה" {% if insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>
-                </select>
-              </div>
 
             <div class="mb-3">
               <label for="status" class="form-label">סטטוס תביעה</label>
@@ -117,7 +121,7 @@
             </div>
           </div>
         </div>
-
+        </div>
 
         <div class="mb-3">
           <label for="photo" class="form-label">תמונה</label><br>
@@ -198,6 +202,32 @@
     });
     modal.show();
   }
+
+document.addEventListener("DOMContentLoaded", function () {
+  const claimTypeSelect = document.getElementById("claim_type");
+  const claimCard = document.getElementById("claimDetailsCard");
+
+  // Initial display on page load
+  if (claimTypeSelect.value === "סיעוד" || claimTypeSelect.value === "אכא") {
+    claimCard.style.display = "block";
+  } else {
+    claimCard.style.display = "none";
+  }
+
+  // Toggle on change
+  claimTypeSelect.addEventListener("change", function () {
+    const selectedValue = this.value.trim();
+    if (selectedValue === "סיעוד" || selectedValue === "אכא") {
+      claimCard.style.display = "block";
+    } else {
+      claimCard.style.display = "none";
+      document.getElementById("received_date").value = "";
+      document.getElementById("claim_number").value = "";
+      document.getElementById("claim_status").value = "";
+      document.getElementById("claim_notes").value = "";
+    }
+  });
+});
 </script>
 
 
