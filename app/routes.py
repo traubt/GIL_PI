@@ -3134,6 +3134,41 @@ def append_clinic(new_clinic):
     with open(current_app.config['CLINICS_FILE'], "w", encoding="utf-8") as f:
         json.dump(clinics, f, ensure_ascii=False, indent=2)
 
+@main.route('/contacts/add', methods=['POST'])
+def add_contact():
+    data = request.form
+    contact = GilContact(
+        insured_id=data.get('insured_id'),
+        full_name=data.get('full_name'),
+        relation=data.get('relation'),
+        phone_1=data.get('phone_1'),
+        phone_2=data.get('phone_2'),
+        social_media_1=data.get('social_media_1'),
+        social_media_2=data.get('social_media_2'),
+        notes=data.get('notes')
+    )
+    db.session.add(contact)
+    db.session.commit()
+
+    return jsonify({
+        'status': 'success',
+        'contact': {
+            'id': contact.id,
+            'full_name': contact.full_name,
+            'relation': contact.relation,
+            'phone_1': contact.phone_1,
+            'phone_2': contact.phone_2,
+            'social_media_1': contact.social_media_1,
+            'social_media_2': contact.social_media_2
+        }
+    })
+
+@main.route('/contacts/delete/<int:contact_id>', methods=['POST'])
+def delete_contact(contact_id):
+    contact = GilContact.query.get_or_404(contact_id)
+    db.session.delete(contact)
+    db.session.commit()
+    return jsonify({'status': 'success'})
 
 ############################################################################
 

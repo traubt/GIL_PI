@@ -139,11 +139,100 @@
       </div>
     </div>
 
+<!-- רשימת מקושרים -->
+<div class="card mt-4">
+  <div class="card-header">
+    רשימת מקושרים
+    <button type="button" class="btn btn-sm btn-primary float-end" id="addContactBtn">הוסף מקושר</button>
+  </div>
+  <div class="card-body">
+    <table class="table table-sm table-bordered" id="contactsTable">
+      <thead>
+        <tr>
+          <th>שם מלא</th>
+          <th>קשר</th>
+          <th>טלפון 1</th>
+          <th>טלפון 2</th>
+          <th>מדיה חברתית 1</th>
+          <th>מדיה חברתית 2</th>
+          <th>פעולות</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% if insured and insured.contacts %}
+          {% for c in insured.contacts %}
+          <tr data-id="{{ c.id }}">
+            <td>{{ c.full_name }}</td>
+            <td>{{ c.relation }}</td>
+            <td>{{ c.phone_1 }}</td>
+            <td>{{ c.phone_2 }}</td>
+            <td>{{ c.social_media_1 }}</td>
+            <td>{{ c.social_media_2 }}</td>
+            <td>
+              <button type="button" class="btn btn-danger btn-sm delete-contact">מחק</button>
+            </td>
+          </tr>
+          {% endfor %}
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+
 
 
   </div>
 </form>
 
+<!-- Add Contact Modal -->
+<div class="modal fade" id="addContactModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="addContactForm">
+        <div class="modal-header">
+          <h5 class="modal-title">הוסף מקושר חדש</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="insured_id" value="{{ insured.id if insured else '' }}">
+          <div class="mb-3">
+            <label class="form-label">שם מלא</label>
+            <input type="text" name="full_name" class="form-control" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">קשר</label>
+            <input type="text" name="relation" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">טלפון 1</label>
+            <input type="text" name="phone_1" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">טלפון 2</label>
+            <input type="text" name="phone_2" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">מדיה חברתית 1</label>
+            <input type="text" name="social_media_1" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">מדיה חברתית 2</label>
+            <input type="text" name="social_media_2" class="form-control">
+          </div>
+          <div class="mb-3">
+            <label class="form-label">הערות</label>
+            <textarea name="notes" class="form-control"></textarea>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" class="btn btn-primary">שמור</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
 
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
@@ -171,6 +260,51 @@ $(document).ready(function () {
             }
         });
     });
+
+    // Open modal
+    $('#addContactBtn').on('click', function() {
+        $('#addContactModal').modal('show');
+    });
+
+    // Add contact via Ajax
+    $('#addContactForm').on('submit', function(e) {
+        e.preventDefault();
+        $.post('/contacts/add', $(this).serialize(), function(response) {
+            if (response.status === 'success') {
+                let c = response.contact;
+                $('#contactsTable tbody').append(`
+                    <tr data-id="${c.id}">
+                        <td>${c.full_name}</td>
+                        <td>${c.relation}</td>
+                        <td>${c.phone_1 || ''}</td>
+                        <td>${c.phone_2 || ''}</td>
+                        <td>${c.social_media_1 || ''}</td>
+                        <td>${c.social_media_2 || ''}</td>
+                        <td><button type="button" class="btn btn-danger btn-sm delete-contact">מחק</button></td>
+                    </tr>
+                `);
+                $('#addContactModal').modal('hide');
+                $('#addContactForm')[0].reset();
+            } else {
+                alert(response.message || 'שגיאה בהוספת מקושר');
+            }
+        });
+    });
+
+    // Delete contact
+    $(document).on('click', '.delete-contact', function() {
+        if (!confirm('האם אתה בטוח שברצונך למחוק את המקושר הזה?')) return;
+        let row = $(this).closest('tr');
+        let contactId = row.data('id');
+        $.post('/contacts/delete/' + contactId, function(response) {
+            if (response.status === 'success') {
+                row.remove();
+            } else {
+                alert(response.message || 'שגיאה במחיקה');
+            }
+        });
+    });
+
 });
 </script>
 

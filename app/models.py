@@ -332,4 +332,51 @@ class GilInsured(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+class GilInvestigator(db.Model):
+    __tablename__ = 'gil_investigator'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    creation_date = db.Column(db.DateTime, default=datetime.utcnow)  # Record creation timestamp
+
+    first_name = db.Column(db.String(100), nullable=False)
+    last_name = db.Column(db.String(100), nullable=False)
+    emp_id = db.Column(db.String(50), unique=True)  # Internal employee reference
+
+    address = db.Column(db.Text)
+    phone = db.Column(db.String(50))
+    email = db.Column(db.String(150))
+
+    start_work = db.Column(db.Date)
+    active_status = db.Column(db.Enum('Active', 'Inactive', 'Suspended'), default='Active')
+
+    last_payment = db.Column(db.Numeric(12, 2), default=0.00)
+    last_payment_date = db.Column(db.Date)
+
+    payment_frequency = db.Column(db.Enum('Monthly', 'Weekly', 'Per Case'), default='Per Case')
+    total_cases = db.Column(db.Integer, default=0)
+    rating = db.Column(db.Numeric(3, 2))  # Performance rating (0.00 - 5.00)
+
+    notes = db.Column(db.Text)
+
+
+class GilContact(db.Model):
+    __tablename__ = 'gil_contacts'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    insured_id = db.Column(db.Integer, db.ForeignKey('gil_insured.id', ondelete='CASCADE'), nullable=False)
+    creation_date = db.Column(db.DateTime, default=datetime.utcnow)
+
+    full_name = db.Column(db.String(150), nullable=False)
+    relation = db.Column(db.String(100))
+    address = db.Column(db.Text)
+    phone_1 = db.Column(db.String(50))
+    phone_2 = db.Column(db.String(50))
+    social_media_1 = db.Column(db.String(255))
+    social_media_2 = db.Column(db.String(255))
+    notes = db.Column(db.Text)
+
+    # Relationship to gil_insured
+    insured = db.relationship('GilInsured', backref=db.backref('contacts', cascade='all, delete-orphan'))
+
+
 
