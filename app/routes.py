@@ -160,6 +160,19 @@ def execute_sql(sql):
     finally:
         connection.close()
 
+def load_clinics():
+    """Read the clinics list from clinics.json."""
+    with open(current_app.config['CLINICS_FILE'], "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def append_clinic(new_clinic):
+    """Append a clinic to clinics.json if not already there."""
+    clinics = load_clinics()
+    if new_clinic not in clinics:
+        clinics.append(new_clinic)
+        with open(current_app.config['CLINICS_FILE'], "w", encoding="utf-8") as f:
+            json.dump(clinics, f, ensure_ascii=False, indent=2)
+
 @main.route('/send_email', methods=['POST'])
 def handle_send_email():
     try:
@@ -2984,6 +2997,15 @@ def create_insured():
     upload_folder = current_app.config.get('UPLOAD_FOLDER')
     birth_date_str = request.form.get('birth_date')
 
+    clinic = request.form.get('clinic')
+    new_clinic = request.form.get('new_clinic', '').strip()
+
+    # If "Add new" selected, use the new value
+    if clinic == '__new__' and new_clinic:
+        clinic = new_clinic
+        append_clinic(clinic)  # Add to JSON file
+        current_app.config['CLINICS_LIST'] = load_clinics()  # Refresh in memory
+
 
     if request.method == 'POST':
         try:
@@ -3001,7 +3023,7 @@ def create_insured():
                 address=request.form.get('address'),
                 phone=request.form.get('phone'),
                 koopa=request.form.get('koopa'),
-                clinic=request.form.get('clinic'),
+                clinic=clinic,
                 recurring_appointments=request.form.get('recurring_appointments'),
                 insurance=request.form.get('insurance'),
                 notes=request.form.get('notes'),
@@ -3042,6 +3064,14 @@ def edit_insured(id):
     upload_folder = current_app.config.get('UPLOAD_FOLDER')
     birth_date_str = request.form.get('birth_date')
 
+    clinic = request.form.get('clinic')
+    new_clinic = request.form.get('new_clinic', '').strip()
+
+    if clinic == '__new__' and new_clinic:
+        clinic = new_clinic
+        append_clinic(clinic)
+        current_app.config['CLINICS_LIST'] = load_clinics()
+
     if request.method == 'POST':
         try:
             insured.first_name = request.form.get('first_name')
@@ -3057,7 +3087,7 @@ def edit_insured(id):
             insured.address = request.form.get('address')
             insured.phone = request.form.get('phone')
             insured.koopa = request.form.get('koopa')
-            insured.clinic = request.form.get('clinic')
+            insured.clinic = clinic
             insured.recurring_appointments = request.form.get('recurring_appointments')
             insured.insurance = request.form.get('insurance')
             insured.notes = request.form.get('notes')
@@ -3094,6 +3124,15 @@ def edit_insured(id):
 
 
 
+def load_clinics():
+    with open(current_app.config['CLINICS_FILE'], "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def append_clinic(new_clinic):
+    clinics = load_clinics()
+    clinics.append(new_clinic)
+    with open(current_app.config['CLINICS_FILE'], "w", encoding="utf-8") as f:
+        json.dump(clinics, f, ensure_ascii=False, indent=2)
 
 
 ############################################################################

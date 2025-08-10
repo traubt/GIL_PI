@@ -67,10 +67,23 @@
           <label for="koopa" class="form-label">קופה</label>
           <input type="text" id="koopa" name="koopa" value="{{ insured.koopa }}" class="form-control">
         </div>
-        <div class="mb-3">
-          <label for="clinic" class="form-label">מרפאה</label>
-          <input type="text" id="clinic" name="clinic" value="{{ insured.clinic }}" class="form-control">
-        </div>
+
+<div class="mb-3">
+  <label for="clinic" class="form-label">מרפאה</label>
+  <select id="clinic" name="clinic" class="form-select" onchange="toggleNewClinicInput(this)">
+    <option value="">בחר מרפאה</option>
+    {% for clinic_name in config.CLINICS_LIST %}
+      <option value="{{ clinic_name }}" {% if insured and insured.clinic == clinic_name %}selected{% endif %}>{{ clinic_name }}</option>
+    {% endfor %}
+    <option value="__new__">➕ הוסף מרפאה חדשה</option>
+  </select>
+
+  <input type="text" id="new_clinic" name="new_clinic"
+         class="form-control mt-2"
+         placeholder="הכנס שם מרפאה חדשה"
+         style="display:none;">
+</div>
+
 
         <div class="mb-3">
                 <label for="insurance" class="form-label">ביטוח</label>
@@ -82,7 +95,7 @@
                 </select>
         </div>
         <div class="mb-3">
-              <label for="claim_type" class="form-label">סוג תביעה</label>
+              <label for="claim_type" class="form-label">סוג חקירה</label>
               <select id="claim_type" name="claim_type" class="form-select">
                 <option value="סיעוד" {% if insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
                 <option value="אכא" {% if insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
@@ -201,6 +214,11 @@
       keyboard: true
     });
     modal.show();
+  }
+
+  function toggleNewClinicInput(select) {
+      document.getElementById('new_clinic').style.display =
+          (select.value === '__new__') ? 'block' : 'none';
   }
 
 document.addEventListener("DOMContentLoaded", function () {

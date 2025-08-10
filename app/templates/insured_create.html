@@ -62,7 +62,22 @@
         <div class="mb-2"><label>כתובת</label><input type="text" class="form-control" name="address"></div>
         <div class="mb-2"><label>טלפון</label><input type="text" class="form-control" name="phone"></div>
         <div class="mb-2"><label>קופה</label><input type="text" class="form-control" name="koopa"></div>
-        <div class="mb-2"><label>מרפאה</label><input type="text" class="form-control" name="clinic"></div>
+
+<div class="mb-3">
+  <label for="clinic" class="form-label">מרפאה</label>
+  <select id="clinic" name="clinic" class="form-select" onchange="toggleNewClinicInput(this)">
+    <option value="">בחר מרפאה</option>
+    {% for clinic_name in config.CLINICS_LIST %}
+      <option value="{{ clinic_name }}" {% if insured and insured.clinic == clinic_name %}selected{% endif %}>{{ clinic_name }}</option>
+    {% endfor %}
+    <option value="__new__">➕ הוסף מרפאה חדשה</option>
+  </select>
+
+  <input type="text" id="new_clinic" name="new_clinic"
+         class="form-control mt-2"
+         placeholder="הכנס שם מרפאה חדשה"
+         style="display:none;">
+</div>
 
         <div class="mb-2">
           <label for="insurance" class="form-label">ביטוח</label>
@@ -75,9 +90,9 @@
         </div>
 
         <div class="mb-2">
-          <label for="claim_type" class="form-label">סוג תביעה</label>
+          <label for="claim_type" class="form-label">סוג חקירה</label>
           <select id="claim_type" name="claim_type" class="form-select" required>
-            <option value="">בחר סוג תביעה</option>
+            <option value="">בחר סוג חקירה</option>
             <option value="סיעוד" {% if insured and insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
             <option value="אכא" {% if insured and insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
             <option value="פרטי" {% if insured and insured.claim_type == 'פרטי' %}selected{% endif %}>פרטי</option>
@@ -181,6 +196,11 @@ $(document).ready(function () {
     });
     modal.show();
   }
+
+  function toggleNewClinicInput(select) {
+    document.getElementById('new_clinic').style.display =
+        (select.value === '__new__') ? 'block' : 'none';
+}
 
   document.addEventListener("DOMContentLoaded", function () {
   const claimTypeSelect = document.getElementById("claim_type");
