@@ -310,6 +310,7 @@ class GilInsured(db.Model):
     __tablename__ = 'gil_insured'
 
     id = db.Column(db.Integer, primary_key=True)
+    ref_number = db.Column(db.String(45))
     received_date = db.Column(db.Date)
     first_name = db.Column(db.String(100))
     last_name = db.Column(db.String(100))
@@ -331,6 +332,7 @@ class GilInsured(db.Model):
     photo = db.Column(db.String(255))  # store the filename only
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    investigator = db.Column(db.String(200))
 
 class GilInvestigator(db.Model):
     __tablename__ = 'gil_investigator'
@@ -338,8 +340,7 @@ class GilInvestigator(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     creation_date = db.Column(db.DateTime, default=datetime.utcnow)  # Record creation timestamp
 
-    first_name = db.Column(db.String(100), nullable=False)
-    last_name = db.Column(db.String(100), nullable=False)
+    full_name = db.Column(db.String(100), nullable=False)
     emp_id = db.Column(db.String(50), unique=True)  # Internal employee reference
 
     address = db.Column(db.Text)

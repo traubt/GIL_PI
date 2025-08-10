@@ -61,6 +61,8 @@
               <tr>
                 <th></th> <!-- Checkbox column -->
                 <th></th> <!-- Photo column - no search -->
+                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- מספר תיק -->
+                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- חוקר/ים -->
                 <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- תאריך -->
                 <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- שם פרטי -->
                 <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- שם משפחה -->
@@ -78,7 +80,9 @@
               <tr>
                 <th></th> <!-- Checkbox -->
                 <th>תמונה</th>
-                <th>תאריך</th>
+                <th>תאריך קבלה</th>
+                <th>מספר תיק</th>
+                <th>חוקר/ים</th>
                 <th>שם פרטי</th>
                 <th>שם משפחה</th>
                 <th>ת.ז</th>
@@ -108,6 +112,8 @@
                   {% endif %}
                 </td>
                 <td>{{ insured.received_date }}</td>
+                <td>{{ insured.ref_number }}</td>
+                <td>{{ insured.investigator }}</td>
                 <td>{{ insured.first_name }}</td>
                 <td>{{ insured.last_name }}</td>
                 <td>{{ insured.id_number }}</td>
