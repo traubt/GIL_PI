@@ -3033,7 +3033,7 @@ def create_insured():
                 claim_number=request.form.get('claim_number'),
                 investigator=investigator_str,
                 notes=request.form.get('notes'),
-                received_date=request.form.get('received_date')
+                received_date=request.form.get('received_date') or None
             )
 
             # Handle photo upload
@@ -3114,7 +3114,7 @@ def edit_insured(id):
             insured.claim_number = request.form.get('claim_number')
             insured.investigator = investigator_str
             insured.notes = request.form.get('notes')
-            insured.received_date = request.form.get('received_date')
+            insured.received_date = request.form.get('received_date') or None
             insured.status = request.form.get('status')
             insured.recurring_appointments = request.form.get('recurring_appointments')
 

@@ -143,36 +143,39 @@
         scrollX: true,
         paging: false,
         orderCellsTop: true,
-        fixedHeader: true,
+        fixedHeader: {
+            header: true
+        },
         columnDefs: [
-          {
-            orderable: false,
-            className: 'select-checkbox',
-            targets: 0
-          }
+            {
+                orderable: false,
+                className: 'select-checkbox',
+                targets: 0
+            }
         ],
         select: {
-          style: 'multi',
-          selector: 'td:first-child'
+            style: 'multi',
+            selector: 'td:first-child'
         },
-        order: [[1, 'asc']], // sort after checkbox column
+        order: [[1, 'asc']],
         language: {
-          search: "חיפוש בטבלה:",
-          lengthMenu: "הצג _MENU_ רשומות",
-          info: "מציג _START_ עד _END_ מתוך _TOTAL_",
-          paginate: { first: "ראשון", last: "אחרון", next: "הבא", previous: "הקודם" }
+            search: "חיפוש בטבלה:",
+            lengthMenu: "הצג _MENU_ רשומות",
+            info: "מציג _START_ עד _END_ מתוך _TOTAL_",
+            paginate: { first: "ראשון", last: "אחרון", next: "הבא", previous: "הקודם" }
         },
         initComplete: function () {
-          this.api().columns().every(function () {
-            var that = this;
-            $('input', this.header()).on('keyup change', function () {
-              if (that.search() !== this.value) {
-                that.search(this.value).draw();
-              }
+            this.api().columns().every(function () {
+                var that = this;
+                $('input', this.header()).on('keyup change', function () {
+                    if (that.search() !== this.value) {
+                        that.search(this.value).draw();
+                    }
+                });
             });
-          });
         }
-      });
+    });
+
 
       // "Select All" when clicking checkbox in header
       $('#insuredTable thead').on('click', 'th.select-checkbox', function () {

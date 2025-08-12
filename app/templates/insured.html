@@ -22,6 +22,12 @@
       </div>
 
       <div class="mb-3">
+          <label for="received_date" class="form-label">תאריך קבלה</label>
+          <input type="date" class="form-control" id="received_date" name="received_date"
+                 value="{{ insured.received_date.strftime('%Y-%m-%d') if insured and insured.received_date else '' }}">
+      </div>
+
+      <div class="mb-3">
         <label for="first_name" class="form-label">שם פרטי</label>
         <input type="text" id="first_name" name="first_name" value="{{ insured.first_name if insured else '' }}" class="form-control" required>
       </div>
@@ -235,14 +241,20 @@ $(function () {
             processData: false,
             contentType: false,
             success: function (response) {
-                showCustomModal('הצלחה', response.message || 'המבוטח נשמר בהצלחה');
-                if (!{{ 'true' if insured else 'false' }}) {
-                    setTimeout(() => window.location.href = '/insured/' + response.insured_id + '/edit', 1500);
+                let buttons = [
+                    `<a href="{{ url_for('main.admin_insured') }}" class="btn btn-primary">חזרה לרשימה</a>`
+                ];
+                if (response.status === 'success') {
+                    showModal("✅ הצלחה", response.message || 'המבוטח נשמר בהצלחה', buttons);
+                    if (!{{ 'true' if insured else 'false' }}) {
+                        setTimeout(() => window.location.href = '/insured/' + response.insured_id + '/edit', 1500);
+                    }
+                } else {
+                    showModal("⚠️ שגיאה", response.message || 'שמירה נכשלה');
                 }
             },
             error: function (xhr) {
-                let errorMsg = xhr.responseJSON?.message || 'אירעה שגיאה בשמירת המבוטח';
-                showCustomModal('שגיאה', errorMsg);
+                showModal("❌ שגיאת שרת", xhr.responseJSON?.message || 'אירעה שגיאה בלתי צפויה');
             }
         });
     });
@@ -292,10 +304,20 @@ function toggleNewClinicInput(select) {
     document.getElementById('new_clinic').style.display = (select.value === '__new__') ? 'block' : 'none';
 }
 
-function showCustomModal(title, message) {
-    document.getElementById('customModalLabel').innerText = title;
-    document.getElementById('customModalBody').innerText = message;
-    new bootstrap.Modal(document.getElementById('customModal')).show();
+function showModal(title, message, footerButtons = null) {
+    $('#genericModalLabel').text(title);
+    $('#genericModalBody').html(message);
+
+    let footer = $('#genericModalFooter');
+    footer.html('<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>');
+
+    if (footerButtons && Array.isArray(footerButtons)) {
+        footerButtons.forEach(btn => {
+            footer.append(btn);
+        });
+    }
+
+    $('#genericModal').modal('show');
 }
 
 function previewPhoto(event) {
@@ -311,7 +333,6 @@ function previewPhoto(event) {
         reader.readAsDataURL(file);
     }
 }
-
 
 function toggleClaimNumberField() {
     const claimType = document.getElementById("claim_type").value.trim();
@@ -331,7 +352,24 @@ toggleClaimNumberField();
 
 // Run on change
 document.getElementById("claim_type").addEventListener("change", toggleClaimNumberField);
-
 </script>
+
+
+<!-- Generic Modal -->
+<div class="modal fade" id="genericModal" tabindex="-1" aria-labelledby="genericModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="genericModalLabel"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+      </div>
+      <div class="modal-body" id="genericModalBody"></div>
+      <div class="modal-footer" id="genericModalFooter">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 {% endblock %}
