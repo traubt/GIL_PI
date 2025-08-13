@@ -50,16 +50,12 @@
         </div>
 
         <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-          <label for="investigator" class="form-label">חוקר/ים</label>
-          <select id="investigator" name="investigator" class="form-select" multiple>
-            <option disabled>הצב חוקר\ים</option>
-            {% for inv in investigators %}
-              <option value="{{ inv.full_name }}"
-                {% if insured and inv.full_name in (insured.investigator or '').split('*') %}selected{% endif %}>
-                {{ inv.full_name }}
-              </option>
-            {% endfor %}
-          </select>
+          <label for="investigator_display" class="form-label">חוקר/ים</label>
+          <input type="text"
+                 id="investigator_display"
+                 class="form-control"
+                 value="{{ insured.investigator if insured and insured.investigator else '' }}"
+                 readonly>
         </div>
 
         <div class="col-12 col-sm-6 col-md-4 col-lg-2">

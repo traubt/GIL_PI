@@ -89,6 +89,8 @@
                 <td>{{ insured.status }}</td>
                 <td>
                   <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">עדכן</a>
+                  <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"
+                      data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>
                 </td>
               </tr>
               {% endfor %}
@@ -100,69 +102,155 @@
     </section>
   </main>
 
-  <script>
-    $(document).ready(function () {
-      var table = $('#insuredTable').DataTable({
-        dom: 'lrtip',
-        scrollX: true,
-        paging: false,
-        orderCellsTop: true,
-        fixedHeader: {
-            header: true
-        },
-        columnDefs: [
-            {
-                orderable: false,
-                className: 'select-checkbox',
-                targets: 0
-            }
-        ],
-        select: {
-            style: 'multi',
-            selector: 'td:first-child'
-        },
-        order: [[1, 'asc']],
-        language: {
-            search: "חיפוש בטבלה:",
-            lengthMenu: "הצג _MENU_ רשומות",
-            info: "מציג _START_ עד _END_ מתוך _TOTAL_",
-            paginate: { first: "ראשון", last: "אחרון", next: "הבא", previous: "הקודם" }
-        },
-        initComplete: function () {
-            this.api().columns().every(function () {
-                var that = this;
-                $('input', this.header()).on('keyup change', function () {
-                    if (that.search() !== this.value) {
-                        that.search(this.value).draw();
-                    }
-                });
-            });
-        }
-    });
-
-
-      // "Select All" when clicking checkbox in header
-      $('#insuredTable thead').on('click', 'th.select-checkbox', function () {
-        if ($('th.select-checkbox').hasClass('selected')) {
-          table.rows().deselect();
-          $('th.select-checkbox').removeClass('selected');
-        } else {
-          table.rows({ search: 'applied' }).select();
-          $('th.select-checkbox').addClass('selected');
-        }
+<script>
+$(document).ready(function () {
+  // ==== DataTable ====
+  var table = $('#insuredTable').DataTable({
+    dom: 'lrtip',
+    scrollX: true,
+    paging: false,
+    orderCellsTop: true,
+    fixedHeader: { header: true },
+    columnDefs: [
+      { orderable: false, className: 'select-checkbox', targets: 0 }
+    ],
+    select: { style: 'multi', selector: 'td:first-child' },
+    order: [[1, 'asc']],
+    language: {
+      search: "חיפוש בטבלה:",
+      lengthMenu: "הצג _MENU_ רשומות",
+      info: "מציג _START_ עד _END_ מתוך _TOTAL_",
+      paginate: { first: "ראשון", last: "אחרון", next: "הבא", previous: "הקודם" }
+    },
+    initComplete: function () {
+      this.api().columns().every(function () {
+        var that = this;
+        $('input', this.header()).on('keyup change', function () {
+          if (that.search() !== this.value) that.search(this.value).draw();
+        });
       });
+    }
+  });
 
-      // Update "Select All" state
-      table.on('select deselect', function () {
-        if (table.rows({ selected: true }).count() !== table.rows({ search: 'applied' }).count()) {
-          $('th.select-checkbox').removeClass('selected');
-        } else {
-          $('th.select-checkbox').addClass('selected');
-        }
+  // ==== Select-all in header ====
+  $('#insuredTable thead').on('click', 'th.select-checkbox', function () {
+    if ($('th.select-checkbox').hasClass('selected')) {
+      table.rows().deselect();
+      $('th.select-checkbox').removeClass('selected');
+    } else {
+      table.rows({ search: 'applied' }).select();
+      $('th.select-checkbox').addClass('selected');
+    }
+  });
+  table.on('select deselect', function () {
+    if (table.rows({ selected: true }).count() !== table.rows({ search: 'applied' }).count()) {
+      $('th.select-checkbox').removeClass('selected');
+    } else {
+      $('th.select-checkbox').addClass('selected');
+    }
+  });
+
+  // ===== Helpers =====
+  function parseAssigned(str) {
+    return (str || '')
+      .split('*')
+      .map(s => s.trim())
+      .filter(Boolean);
+  }
+
+  // ===== Open "Assign Investigator" modal =====
+  $(document).on('click', '.assign-investigator-btn', function () {
+    const insuredId  = $(this).data('id');
+    const currentStr = ($(this).data('investigator') || '').trim(); // e.g. "A*B*C"
+    const names      = parseAssigned(currentStr);
+
+    if (names.length) {
+      const list = names.join(', ');
+      if (!confirm(`יש כבר חוקר/ים משויך/ים (${list}). האם אתה בטוח שברצונך לשנות?`)) return;
+    }
+
+    // set target id + reset checks
+    $('#assignInsuredId').val(insuredId);
+    const $checks = $('#assignInvestigatorForm input[type=checkbox]').prop('checked', false);
+
+    // pre-check existing
+    if (names.length) {
+      const set = new Set(names);
+      $checks.each(function () {
+        if (set.has(this.value)) this.checked = true;
       });
-    });
-  </script>
+    }
+
+    $('#assignInvestigatorModal').modal('show');
+  });
+
+  // ===== Save assignment =====
+  $('#saveInvestigatorBtn').off('click').on('click', function () {
+    const $btn = $(this);
+    $btn.prop('disabled', true);
+
+    const formData = $('#assignInvestigatorForm').serialize(); // insured_id + investigators=...
+    $.post('/insured/assign_investigator', formData)
+      .done(function (res) {
+        if (res && res.status === 'success') {
+          // Update the row in place (no full reload)
+          const id   = $('#assignInsuredId').val();
+          const text = res.investigator || '';
+          const $btnInRow = $(`.assign-investigator-btn[data-id="${id}"]`);
+          $btnInRow.data('investigator', text);
+
+          // Update the "חוקר/ים" cell text — adjust index if columns change
+          // Current columns: [0]=checkbox, [1]=photo, [2]=date, [3]=ref, [4]=investigators
+          const $row = $btnInRow.closest('tr');
+          $row.find('td').eq(4).text(text);
+
+          $('#assignInvestigatorModal').modal('hide');
+        } else {
+          alert((res && res.message) || 'שגיאה בעדכון חוקר');
+        }
+      })
+      .fail(function (xhr) {
+        alert(xhr.responseJSON?.message || 'שגיאת שרת');
+      })
+      .always(function () {
+        $btn.prop('disabled', false);
+      });
+  });
+});
+</script>
+
 
   <script src="static/assets/js/main.js"></script>
+
+<div class="modal fade" id="assignInvestigatorModal" tabindex="-1" aria-labelledby="assignInvestigatorLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">הצב חוקר/ים</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="assignInvestigatorForm">
+          <input type="hidden" name="insured_id" id="assignInsuredId">
+          <div class="row">
+            {% for inv in investigators %}
+            <div class="col-md-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="investigators" value="{{ inv.full_name }}" id="inv{{ loop.index }}">
+                <label class="form-check-label" for="inv{{ loop.index }}">{{ inv.full_name }}</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+        <button type="button" id="saveInvestigatorBtn" class="btn btn-primary">שמור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 {% endblock %}

@@ -1029,6 +1029,7 @@ def admin_insured():
     user = json.loads(user_data) if user_data else {}
     shop_data = session.get('shop')
     shop = json.loads(shop_data) if shop_data else {}
+    investigators = GilInvestigator.query.order_by(GilInvestigator.full_name.asc()).all()
 
     # role list
     roles = db.session.query(TocRole).all()
@@ -1059,7 +1060,8 @@ def admin_insured():
         user=user,
         shop=shop,
         roles=roles_list,
-        insured_list=insured_list
+        insured_list=insured_list,
+        investigators=investigators
     )
 
 from datetime import datetime, date
@@ -1249,6 +1251,21 @@ def edit_insured(id):
                            investigators=investigators,
                            user=user,
                            roles=roles_list)
+
+# routes.py
+
+
+@main.route('/insured/assign_investigator', methods=['POST'])
+def assign_investigator():
+    insured_id = request.form.get('insured_id', type=int)
+    selected = request.form.getlist('investigators')  # from checkboxes
+
+    insured = GilInsured.query.get_or_404(insured_id)
+    insured.investigator = '*'.join([s for s in selected if s.strip()]) or None
+    db.session.commit()
+    return jsonify({"status": "success", "investigator": insured.investigator or ""})
+
+
 
 
 def load_clinics():
