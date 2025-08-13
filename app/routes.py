@@ -1020,7 +1020,6 @@ SELECT * FROM toc_ls_sales LIMIT 10;
 ############################## GIL CUSTOMIZATION ######################################
 
 
-
 @main.route('/admin_insured')
 def admin_insured():
 
@@ -1035,8 +1034,8 @@ def admin_insured():
     roles = db.session.query(TocRole).all()
     roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
 
-    # base query
-    query = db.session.query(GilInsured)
+    # base query - exclude status "הושלמה"
+    query = db.session.query(GilInsured).filter(GilInsured.status != "הושלמה")
 
     # filters
     insurance = request.args.get('insurance')
@@ -1063,6 +1062,7 @@ def admin_insured():
         insured_list=insured_list,
         investigators=investigators
     )
+
 
 from datetime import datetime, date
 

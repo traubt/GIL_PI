@@ -129,19 +129,6 @@ function disableControlsPerRole(roles,userRole){
 
 };
 
-async function getCountNewOrders() {
-  try {
-    const response = await fetch('/count_new_orders');
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const data = await response.json();
-    console.log("New orders count:", data.count); // Log the count
-    return data.count; // Return the count for further use
-  } catch (error) {
-    console.error("Error fetching count of new orders:", error);
-  }
-}
 
 async function logUserActivity(activityDescription) {
     try {
