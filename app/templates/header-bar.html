@@ -30,7 +30,7 @@
   </div>
 
   <!-- User & Notification Nav -->
-  <nav class="header-nav me-auto">
+  <nav class="header-nav ms-auto">
     <ul class="d-flex align-items-center">
 
       <li class="nav-item d-block d-lg-none">
@@ -62,13 +62,31 @@
         </a>
       </li>
 
+      <!-- Profile -->
       <li class="nav-item dropdown pe-3">
         <a class="nav-link nav-profile d-flex align-items-center pe-0" href="#" data-bs-toggle="dropdown">
-          <img src="{{ url_for('static', filename='assets/img/profile-img.png') }}" alt="Profile" class="rounded-circle">
+          {% if user.photo %}
+            <img src="{{ url_for('static', filename='uploads/user_photos/' ~ user.photo) }}"
+                 alt="Profile" class="rounded-circle"
+                 style="width: 40px; height: 40px; object-fit: cover;">
+          {% else %}
+            <img src="{{ url_for('static', filename='assets/img/profile-img.png') }}"
+                 alt="Default Avatar" class="rounded-circle"
+                 style="width: 40px; height: 40px; object-fit: cover;">
+          {% endif %}
           <span class="d-none d-md-block dropdown-toggle pe-2">{{ user.first_name }} {{ user.last_name }}</span>
         </a>
         <ul class="dropdown-menu dropdown-menu-start dropdown-menu-arrow profile">
-          <li class="dropdown-header">
+          <li class="dropdown-header text-center">
+            {% if user.photo %}
+              <img src="{{ url_for('static', filename='uploads/user_photos/' ~ user.photo) }}"
+                   alt="Profile" class="rounded-circle mb-2"
+                   style="width: 80px; height: 80px; object-fit: cover;">
+            {% else %}
+              <img src="{{ url_for('static', filename='assets/img/profile-img.png') }}"
+                   alt="Default Avatar" class="rounded-circle mb-2"
+                   style="width: 80px; height: 80px; object-fit: cover;">
+            {% endif %}
             <h6>{{ user.first_name }} {{ user.last_name }}</h6>
             <span>עובד גיל חקירות</span>
           </li>
@@ -108,11 +126,13 @@
 </header>
 
 
+
 <!-- End Header -->
 
 <body>
   <script>
     $(document).ready(async function() {
+
        // get notifications
     const user = {{ user | tojson }};
     //console.log(`In header user is:`, user["username"]);
@@ -213,8 +233,17 @@
 
     $('.toggle-sidebar-btn').on('click', function () {
         console.log("📦 toggling sidebar");
-        $('body').toggleClass('toggle-sidebar');
+        $('.sidebar').toggle();
+        $('body').toggleClass('sidebar-hidden');
+
+        // Force DataTables to recalculate column widths after sidebar change
+        setTimeout(function () {
+            $($.fn.dataTable.tables(true)).DataTable().columns.adjust();
+        }, 300);
     });
+
+    // Hide sidebar by default when page loads
+    $('.toggle-sidebar-btn').trigger('click');
 
 
     }); // end ready

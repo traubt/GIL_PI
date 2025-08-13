@@ -1,6 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
 
+  {% include 'header-bar.html' %}
+  {% include 'side-bar.html' %}
 
 <h3 class="mb-4">
   {% if insured %}עדכן תיק חקירה{% else %}צור תיק מבוטח{% endif %}
@@ -11,172 +13,228 @@
       action="{% if insured %}{{ url_for('main.edit_insured', id=insured.id) }}{% else %}{{ url_for('main.create_insured') }}{% endif %}"
       enctype="multipart/form-data">
 
-  <div class="row">
-    <!-- Right column -->
-    <div class="col-md-6">
-      <div class="mb-3">
-        <label for="ref_number" class="form-label">מספר תיק</label>
-        <input type="text" id="ref_number" name="ref_number"
-               value="{{ insured.ref_number if insured else '' }}"
-               class="form-control">
-      </div>
-
-      <div class="mb-3">
-          <label for="received_date" class="form-label">תאריך קבלה</label>
-          <input type="date" class="form-control" id="received_date" name="received_date"
-                 value="{{ insured.received_date.strftime('%Y-%m-%d') if insured and insured.received_date else '' }}">
-      </div>
-
-      <div class="mb-3">
-        <label for="first_name" class="form-label">שם פרטי</label>
-        <input type="text" id="first_name" name="first_name" value="{{ insured.first_name if insured else '' }}" class="form-control" required>
-      </div>
-      <div class="mb-3">
-        <label for="last_name" class="form-label">שם משפחה</label>
-        <input type="text" id="last_name" name="last_name" value="{{ insured.last_name if insured else '' }}" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label for="id_number" class="form-label">תעודת זהות</label>
-        <input type="text" id="id_number" name="id_number" value="{{ insured.id_number if insured else '' }}" class="form-control">
-      </div>
-      <div class="mb-2">
-        <label for="birth_date" class="form-label">תאריך לידה</label>
-        <input type="date" id="birth_date" name="birth_date" class="form-control"
-               value="{{ insured.birth_date.strftime('%Y-%m-%d') if insured and insured.birth_date else '' }}">
-      </div>
-      <div class="mb-3">
-        <label for="father_name" class="form-label">שם אב</label>
-        <input type="text" id="father_name" name="father_name" value="{{ insured.father_name if insured else '' }}" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label for="city" class="form-label">עיר</label>
-        <input type="text" id="city" name="city" value="{{ insured.city if insured else '' }}" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label for="address" class="form-label">כתובת</label>
-        <input type="text" id="address" name="address" value="{{ insured.address if insured else '' }}" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label for="phone" class="form-label">טלפון</label>
-        <input type="text" id="phone" name="phone" value="{{ insured.phone if insured else '' }}" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label for="koopa" class="form-label">קופה</label>
-        <input type="text" id="koopa" name="koopa" value="{{ insured.koopa if insured else '' }}" class="form-control">
-      </div>
-      <div class="mb-3">
-        <label for="clinic" class="form-label">מרפאה</label>
-        <select id="clinic" name="clinic" class="form-select" onchange="toggleNewClinicInput(this)">
-          <option value="">בחר מרפאה</option>
-          {% for clinic_name in config.CLINICS_LIST %}
-            <option value="{{ clinic_name }}" {% if insured and insured.clinic == clinic_name %}selected{% endif %}>{{ clinic_name }}</option>
-          {% endfor %}
-          <option value="__new__">➕ הוסף מרפאה חדשה</option>
-        </select>
-        <input type="text" id="new_clinic" name="new_clinic" class="form-control mt-2" placeholder="הכנס שם מרפאה חדשה" style="display:none;">
-      </div>
-      <div class="mb-3">
-        <label for="insurance" class="form-label">ביטוח</label>
-        <select id="insurance" name="insurance" class="form-select" required>
-          <option value="הפניקס" {% if insured and insured.insurance == 'הפניקס' %}selected{% endif %}>הפניקס</option>
-          <option value="מנורה" {% if insured and insured.insurance == 'מנורה' %}selected{% endif %}>מנורה</option>
-          <option value="שלמה" {% if insured and insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>
-          <option value="איילון" {% if insured and insured.insurance == 'איילון' %}selected{% endif %}>איילון</option>
-        </select>
-      </div>
-      <div class="mb-3">
-        <label for="claim_type" class="form-label">סוג חקירה</label>
-        <select id="claim_type" name="claim_type" class="form-select">
-          <option value="סיעוד" {% if insured and insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
-          <option value="אכא" {% if insured and insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
-          <option value="פרטי" {% if insured and insured.claim_type == 'פרטי' %}selected{% endif %}>פרטי</option>
-          <option value="מסחרי" {% if insured and insured.claim_type == 'מסחרי' %}selected{% endif %}>מסחרי</option>
-        </select>
-      </div>
-
-      <div class="mb-3" id="claimNumberContainer" style="display:none;">
-        <label for="claim_number" class="form-label">מספר תביעה</label>
-        <input type="text" id="claim_number" name="claim_number" value="{{ insured.claim_number if insured else '' }}" class="form-control">
-      </div>
-
-      <div class="mb-3">
-        <label for="investigator" class="form-label">חוקר/ים</label>
-        <select id="investigator" name="investigator" class="form-select" multiple>
-          <option disabled>הצב חוקר\ים</option>
-          {% for inv in investigators %}
-            <option value="{{ inv.full_name }}"
-              {% if insured and inv.full_name in (insured.investigator or '').split('*') %}selected{% endif %}>
-              {{ inv.full_name }}
-            </option>
-          {% endfor %}
-        </select>
-      </div>
-
-
-
-
-    </div>
-
-
-
-    <!-- Left column -->
-    <div class="col-md-6">
-      {% if insured %}
-      <div class="card mt-4">
-        <div class="card-header">
-          רשימת מקושרים
-          <button type="button" class="btn btn-sm btn-primary float-end" id="addContactBtn">הוסף מקושר</button>
-        </div>
-        <div class="card-body">
-          <table class="table table-sm table-bordered" id="contactsTable">
-            <thead>
-              <tr>
-                <th>שם מלא</th>
-                <th>קשר</th>
-                <th>טלפון 1</th>
-                <th>טלפון 2</th>
-                <th>מדיה חברתית 1</th>
-                <th>מדיה חברתית 2</th>
-                <th>הערות</th>
-                <th>פעולות</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for c in insured.contacts %}
-              <tr data-id="{{ c.id }}">
-                <td>{{ c.full_name }}</td>
-                <td>{{ c.relation }}</td>
-                <td>{{ c.phone_1 }}</td>
-                <td>{{ c.phone_2 }}</td>
-                <td>{{ c.social_media_1 }}</td>
-                <td>{{ c.social_media_2 }}</td>
-                <td>{{ c.notes }}</td>
-                <td><button type="button" class="btn btn-danger btn-sm delete-contact">מחק</button></td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-      </div>
+  <!-- ===== PHOTO (top) ===== -->
+  <div class="card insured-section-card mb-4">
+    <div class="card-header text-center">תמונה</div>
+    <div class="card-body text-center">
+      {% if insured and insured.photo %}
+        <img src="/static/uploads/insured_photos/{{ insured.photo }}" id="photoPreview"
+             class="img-thumbnail insured-photo mb-2" alt="תמונה">
+      {% else %}
+        <img src="/static/img/default_avatar.png" id="photoPreview"
+             class="img-thumbnail insured-photo mb-2" alt="תמונה">
       {% endif %}
-
-      <div class="mb-3">
-        <label for="photo" class="form-label">תמונה</label><br>
-          {% if insured and insured.photo %}
-            <img src="/static/uploads/insured_photos/{{ insured.photo }}" id="photoPreview" class="img-thumbnail mb-2" style="width: 100px;">
-          {% else %}
-            <img src="/static/img/default_avatar.png" id="photoPreview" class="img-thumbnail mb-2" style="width: 100px;">
-          {% endif %}
-        <input type="file" id="photo" name="photo" class="form-control" onchange="previewPhoto(event)">
+      <div class="row justify-content-center">
+        <div class="col-12 col-sm-6 col-md-4">
+          <input type="file" id="photo" name="photo" class="form-control" onchange="previewPhoto(event)">
+        </div>
       </div>
     </div>
   </div>
 
-  <button type="submit" class="btn btn-primary">שמור</button>
-  <a href="{{ url_for('main.admin_insured') }}" class="btn btn-secondary">חזור</a>
+  <!-- ===== CASE DETAILS ===== -->
+  <div class="card insured-section-card">
+    <div class="card-header">פרטי תיק</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+          <label for="ref_number" class="form-label">מספר תיק</label>
+          <input type="text" id="ref_number" name="ref_number"
+                 value="{{ insured.ref_number if insured else '' }}" class="form-control">
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+          <label for="received_date" class="form-label">תאריך קבלה</label>
+          <input type="date" class="form-control" id="received_date" name="received_date"
+                 value="{{ insured.received_date.strftime('%Y-%m-%d') if insured and insured.received_date else '' }}">
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+          <label for="investigator" class="form-label">חוקר/ים</label>
+          <select id="investigator" name="investigator" class="form-select" multiple>
+            <option disabled>הצב חוקר\ים</option>
+            {% for inv in investigators %}
+              <option value="{{ inv.full_name }}"
+                {% if insured and inv.full_name in (insured.investigator or '').split('*') %}selected{% endif %}>
+                {{ inv.full_name }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+          <label for="claim_type" class="form-label">סוג חקירה</label>
+          <select id="claim_type" name="claim_type" class="form-select">
+            <option value="סיעוד" {% if insured and insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
+            <option value="אכא" {% if insured and insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
+            <option value="פרטי" {% if insured and insured.claim_type == 'פרטי' %}selected{% endif %}>פרטי</option>
+            <option value="מסחרי" {% if insured and insured.claim_type == 'מסחרי' %}selected{% endif %}>מסחרי</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3" id="claimNumberContainer" style="display:none;">
+          <label for="claim_number" class="form-label">מספר תביעה</label>
+          <input type="text" id="claim_number" name="claim_number"
+                 value="{{ insured.claim_number if insured else '' }}" class="form-control">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== PERSONAL DETAILS ===== -->
+  <div class="card insured-section-card">
+  <div class="card-header">פרטים אישיים</div>
+  <div class="card-body">
+    <div class="row g-3">
+      <div class="col-md-2">
+        <label for="first_name" class="form-label">שם פרטי</label>
+        <input type="text" id="first_name" name="first_name" value="{{ insured.first_name }}" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label for="last_name" class="form-label">שם משפחה</label>
+        <input type="text" id="last_name" name="last_name" value="{{ insured.last_name }}" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label for="id_number" class="form-label">תעודת זהות</label>
+        <input type="text" id="id_number" name="id_number" value="{{ insured.id_number }}" class="form-control">
+      </div>
+      <div class="col-md-2">
+        <label for="father_name" class="form-label">שם אב</label>
+        <input type="text" id="father_name" name="father_name" value="{{ insured.father_name }}" class="form-control">
+      </div>
+      <!-- NEW GENDER FIELD -->
+      <div class="col-md-2">
+        <label for="gender" class="form-label">מין</label>
+        <select id="gender" name="gender" class="form-select">
+          <option value="">בחר</option>
+          <option value="זכר" {% if insured.gender == 'זכר' %}selected{% endif %}>זכר</option>
+          <option value="נקבה" {% if insured.gender == 'נקבה' %}selected{% endif %}>נקבה</option>
+        </select>
+      </div>
+      <div class="col-md-2">
+        <label for="birth_date" class="form-label">תאריך לידה</label>
+        <input type="date" id="birth_date" name="birth_date"
+               value="{{ insured.birth_date.strftime('%Y-%m-%d') if insured.birth_date else '' }}"
+               class="form-control">
+      </div>
+    </div>
+  </div>
+</div>
+
+
+  <!-- ===== CONTACT DETAILS ===== -->
+  <div class="card insured-section-card">
+    <div class="card-header">פרטי התקשרות</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+          <label for="city" class="form-label">עיר</label>
+          <input type="text" id="city" name="city" value="{{ insured.city if insured else '' }}" class="form-control">
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-8 col-lg-4">
+          <label for="address" class="form-label">כתובת</label>
+          <input type="text" id="address" name="address" value="{{ insured.address if insured else '' }}" class="form-control">
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+          <label for="phone" class="form-label">טלפון</label>
+          <input type="text" id="phone" name="phone" value="{{ insured.phone if insured else '' }}" class="form-control">
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+          <label for="koopa" class="form-label">קופה</label>
+          <input type="text" id="koopa" name="koopa" value="{{ insured.koopa if insured else '' }}" class="form-control">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== INSURANCE / CLINIC ===== -->
+  <div class="card insured-section-card">
+    <div class="card-header">ביטוח ומרפאה</div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+          <label for="insurance" class="form-label">ביטוח</label>
+          <select id="insurance" name="insurance" class="form-select" required>
+            <option value="הפניקס" {% if insured and insured.insurance == 'הפניקס' %}selected{% endif %}>הפניקס</option>
+            <option value="מנורה" {% if insured and insured.insurance == 'מנורה' %}selected{% endif %}>מנורה</option>
+            <option value="שלמה" {% if insured and insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>
+            <option value="איילון" {% if insured and insured.insurance == 'איילון' %}selected{% endif %}>איילון</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+          <label for="clinic" class="form-label">מרפאה</label>
+          <select id="clinic" name="clinic" class="form-select" onchange="toggleNewClinicInput(this)">
+            <option value="">בחר מרפאה</option>
+            {% for clinic_name in config.CLINICS_LIST %}
+              <option value="{{ clinic_name }}" {% if insured and insured.clinic == clinic_name %}selected{% endif %}>
+                {{ clinic_name }}
+              </option>
+            {% endfor %}
+            <option value="__new__">➕ הוסף מרפאה חדשה</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+          <label for="new_clinic" class="form-label">מרפאה חדשה</label>
+          <input type="text" id="new_clinic" name="new_clinic"
+                 class="form-control" placeholder="הכנס שם מרפאה חדשה" style="display:none;">
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== CONTACTS LIST (unchanged data/ids) ===== -->
+  {% if insured %}
+  <div class="card insured-section-card">
+    <div class="card-header">
+      רשימת מקושרים
+      <button type="button" class="btn btn-sm btn-primary float-end" id="addContactBtn">הוסף מקושר</button>
+    </div>
+    <div class="card-body">
+      <table class="table table-sm table-bordered" id="contactsTable">
+        <thead>
+          <tr>
+            <th>שם מלא</th>
+            <th>קשר</th>
+            <th>טלפון 1</th>
+            <th>טלפון 2</th>
+            <th>מדיה חברתית 1</th>
+            <th>מדיה חברתית 2</th>
+            <th>הערות</th>
+            <th>פעולות</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in insured.contacts %}
+          <tr data-id="{{ c.id }}">
+            <td>{{ c.full_name }}</td>
+            <td>{{ c.relation }}</td>
+            <td>{{ c.phone_1 }}</td>
+            <td>{{ c.phone_2 }}</td>
+            <td>{{ c.social_media_1 }}</td>
+            <td>{{ c.social_media_2 }}</td>
+            <td>{{ c.notes }}</td>
+            <td><button type="button" class="btn btn-danger btn-sm delete-contact">מחק</button></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===== ACTIONS ===== -->
+  <div class="mt-3">
+    <button type="submit" class="btn btn-primary">שמור</button>
+    <a href="{{ url_for('main.admin_insured') }}" class="btn btn-secondary">חזור</a>
+  </div>
 </form>
 
-<!-- Add Contact Modal -->
+<!-- ===== Add Contact Modal (unchanged) ===== -->
 {% if insured %}
 <div class="modal fade" id="addContactModal" tabindex="-1">
   <div class="modal-dialog">
@@ -227,6 +285,7 @@
 </div>
 {% endif %}
 
+<!-- ===== Scripts (unchanged functionality) ===== -->
 <script>
 $(function () {
     // Handle save insured
@@ -326,9 +385,7 @@ function previewPhoto(event) {
         const reader = new FileReader();
         reader.onload = function (e) {
             const preview = document.getElementById('photoPreview');
-            if (preview) {
-                preview.src = e.target.result;
-            }
+            if (preview) preview.src = e.target.result;
         };
         reader.readAsDataURL(file);
     }
@@ -343,19 +400,14 @@ function toggleClaimNumberField() {
         claimNumberContainer.style.display = "block";
     } else {
         claimNumberContainer.style.display = "none";
-        claimNumberInput.value = ""; // Clear the value when hidden
+        if (claimNumberInput) claimNumberInput.value = "";
     }
 }
-
-// Run on load
 toggleClaimNumberField();
-
-// Run on change
 document.getElementById("claim_type").addEventListener("change", toggleClaimNumberField);
 </script>
 
-
-<!-- Generic Modal -->
+<!-- Generic Modal (unchanged) -->
 <div class="modal fade" id="genericModal" tabindex="-1" aria-labelledby="genericModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -370,6 +422,5 @@ document.getElementById("claim_type").addEventListener("change", toggleClaimNumb
     </div>
   </div>
 </div>
-
 
 {% endblock %}
