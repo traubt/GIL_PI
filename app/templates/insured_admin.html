@@ -37,6 +37,7 @@
                 <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- מספר תביעה -->
                 <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- מגדר -->
                 <th><input type="text" placeholder="🔍" style="width:100%"></th>
+                <th><input type="text" placeholder="🔍" style="width:100%"></th>
                 <th></th> <!-- פעולות - no search -->
               </tr>
 
@@ -56,6 +57,7 @@
                 <th>מספר תביעה</th>
                 <th>מגדר</th>
                 <th>סטטוס</th>
+                <th>נוהל פרקינסון</th>
                 <th>פעולות</th>
               </tr>
             </thead>
@@ -87,10 +89,17 @@
                 <td>{{ insured.claim_number }}</td>
                 <td>{{ insured.gender }}</td>
                 <td>{{ insured.status }}</td>
+
+                <td class="text-center">
+                  {{ 1 if insured.parkinson_ind else 0 }}
+                </td>
+
                 <td>
                   <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">עדכן</a>
                   <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"
                       data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>
+                  <button type="button" class="btn btn-sm btn-secondary change-status-btn"
+                        data-id="{{ insured.id }}" data-status="{{ insured.status|default('פתוחה') }}">שנה סטטוס</button>
                 </td>
               </tr>
               {% endfor %}
@@ -216,6 +225,55 @@ $(document).ready(function () {
         $btn.prop('disabled', false);
       });
   });
+
+  // ===== Change Status: open modal =====
+  $(document).on('click', '.change-status-btn', function () {
+    const id = $(this).data('id');
+    const current = ($(this).data('status') || 'פתוחה').trim();
+    $('#statusInsuredId').val(id);
+    $('#statusSelect').val(current);
+    $('#changeStatusModal').modal('show');
+  });
+
+  // ===== Change Status: save =====
+  $('#saveStatusBtn').off('click').on('click', function () {
+    const $btn = $(this);
+    $btn.prop('disabled', true);
+
+    const insuredId = $('#statusInsuredId').val();
+    const newStatus = $('#statusSelect').val();
+
+    $.post(`/insured/${insuredId}/status`, { status: newStatus })
+      .done(function (res) {
+        if (res && res.status === 'success') {
+          // update Actions button data-status and the Status cell in the row
+          const $rowBtn = $(`.change-status-btn[data-id="${insuredId}"]`);
+          $rowBtn.data('status', newStatus);
+
+          // status column index is 13 with current table structure
+          const $row = $rowBtn.closest('tr');
+          $row.find('td').eq(13).text(newStatus);
+
+          // If user set הושלמה, remove row (admin list excludes completed)
+          if (newStatus === 'הושלמה') {
+            // if DataTables initialized, remove via API; else hide row
+            const tbl = $('#insuredTable').DataTable();
+            tbl.row($row).remove().draw(false);
+          }
+
+          $('#changeStatusModal').modal('hide');
+        } else {
+          alert((res && res.message) || 'שגיאה בעדכון סטטוס');
+        }
+      })
+      .fail(function (xhr) {
+        alert(xhr.responseJSON?.message || 'שגיאת שרת');
+      })
+      .always(function () { $btn.prop('disabled', false); });
+  });
+
+
+
 });
 </script>
 
@@ -252,5 +310,28 @@ $(document).ready(function () {
   </div>
 </div>
 
+<div class="modal fade" id="changeStatusModal" tabindex="-1" aria-labelledby="changeStatusLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">שנה סטטוס</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="statusInsuredId">
+        <label for="statusSelect" class="form-label">בחר סטטוס</label>
+        <select id="statusSelect" class="form-select">
+          <option value="פתוחה">פתוחה</option>
+          <option value="בעבודה">בעבודה</option>
+          <option value="הושלמה">הושלמה</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+        <button type="button" id="saveStatusBtn" class="btn btn-primary">שמור</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 {% endblock %}

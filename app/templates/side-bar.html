@@ -77,12 +77,4 @@
     var roles = {{ roles | tojson }};
     var user_role = "{{user.role}}";
     disableControlsPerRole(roles,user_role);
-
-      // get replenish order counter
-    getCountNewOrders().then(count => {
-      if (count !== undefined) {
-        // Do something with the count
-        $("#receive_stock_counter").text(count);
-      }
-    });
 </script>

@@ -333,6 +333,8 @@ class GilInsured(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     investigator = db.Column(db.String(200))
+    parkinson_ind = db.Column( db.SmallInteger,   nullable=False,  server_default="0" )
+
 
 class GilInvestigator(db.Model):
     __tablename__ = 'gil_investigator'

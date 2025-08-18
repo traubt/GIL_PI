@@ -32,50 +32,68 @@
     </div>
   </div>
 
-  <!-- ===== CASE DETAILS ===== -->
-  <div class="card insured-section-card">
-    <div class="card-header">פרטי תיק</div>
-    <div class="card-body">
-      <div class="row g-3">
-        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-          <label for="ref_number" class="form-label">מספר תיק</label>
-          <input type="text" id="ref_number" name="ref_number"
-                 value="{{ insured.ref_number if insured else '' }}" class="form-control">
-        </div>
+<!-- ===== CASE DETAILS ===== -->
+<div class="card insured-section-card">
+  <div class="card-header">פרטי תיק</div>
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
 
-        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-          <label for="received_date" class="form-label">תאריך קבלה</label>
-          <input type="date" class="form-control" id="received_date" name="received_date"
-                 value="{{ insured.received_date.strftime('%Y-%m-%d') if insured and insured.received_date else '' }}">
-        </div>
+      <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+        <label for="ref_number" class="form-label">מספר תיק</label>
+        <input type="text" id="ref_number" name="ref_number"
+               value="{{ insured.ref_number if insured else '' }}" class="form-control">
+      </div>
 
-        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-          <label for="investigator_display" class="form-label">חוקר/ים</label>
-          <input type="text"
-                 id="investigator_display"
-                 class="form-control"
-                 value="{{ insured.investigator if insured and insured.investigator else '' }}"
-                 readonly>
-        </div>
+      <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+        <label for="status" class="form-label">סטטוס</label>
+        <input type="text" id="status" name="status"
+               value="{{ insured.status if insured else 'פתוחה' }}" class="form-control" readonly>
+      </div>
 
-        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-          <label for="claim_type" class="form-label">סוג חקירה</label>
-          <select id="claim_type" name="claim_type" class="form-select">
-            <option value="סיעוד" {% if insured and insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
-            <option value="אכא" {% if insured and insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
-            <option value="פרטי" {% if insured and insured.claim_type == 'פרטי' %}selected{% endif %}>פרטי</option>
-            <option value="מסחרי" {% if insured and insured.claim_type == 'מסחרי' %}selected{% endif %}>מסחרי</option>
-          </select>
-        </div>
+      <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+        <label for="received_date" class="form-label">תאריך קבלה</label>
+        <input type="date" class="form-control" id="received_date" name="received_date"
+               value="{{ insured.received_date.strftime('%Y-%m-%d') if insured and insured.received_date else '' }}">
+      </div>
 
-        <div class="col-12 col-sm-6 col-md-4 col-lg-3" id="claimNumberContainer" style="display:none;">
-          <label for="claim_number" class="form-label">מספר תביעה</label>
-          <input type="text" id="claim_number" name="claim_number"
-                 value="{{ insured.claim_number if insured else '' }}" class="form-control">
+      <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+        <label for="investigator_display" class="form-label">חוקר/ים</label>
+        <input type="text"
+               id="investigator_display"
+               class="form-control"
+               value="{{ insured.investigator if insured and insured.investigator else '' }}"
+               readonly>
+      </div>
+
+      <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+        <label for="claim_type" class="form-label">סוג חקירה</label>
+        <select id="claim_type" name="claim_type" class="form-select">
+          <option value="סיעוד" {% if insured and insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
+          <option value="אכא" {% if insured and insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
+          <option value="פרטי" {% if insured and insured.claim_type == 'פרטי' %}selected{% endif %}>פרטי</option>
+          <option value="מסחרי" {% if insured and insured.claim_type == 'מסחרי' %}selected{% endif %}>מסחרי</option>
+        </select>
+      </div>
+
+      <div class="col-12 col-sm-6 col-md-4 col-lg-2" id="claimNumberContainer" style="display:none;">
+        <label for="claim_number" class="form-label">מספר תביעה</label>
+        <input type="text" id="claim_number" name="claim_number"
+               value="{{ insured.claim_number if insured else '' }}" class="form-control">
+      </div>
+
+      <!-- Checkbox as inline field -->
+      <div class="col-12 col-sm-6 col-md-4 col-lg-2 d-flex align-items-center">
+        <div class="form-check mb-0">
+          <input type="checkbox" class="form-check-input" id="parkinson_ind" name="parkinson_ind"
+                 {% if insured and insured.parkinson_ind %}checked{% endif %}>
+          <label class="form-check-label ms-1" for="parkinson_ind">נוהל פרקינסון</label>
         </div>
       </div>
+
     </div>
   </div>
+</div>
+
 
   <!-- ===== PERSONAL DETAILS ===== -->
   <div class="card insured-section-card">
@@ -120,7 +138,7 @@
 
   <!-- ===== CONTACT DETAILS ===== -->
   <div class="card insured-section-card">
-    <div class="card-header">פרטי התקשרות</div>
+    <div class="card-header">כתובת</div>
     <div class="card-body">
       <div class="row g-3">
         <div class="col-12 col-sm-6 col-md-4 col-lg-2">
@@ -138,10 +156,6 @@
           <input type="text" id="phone" name="phone" value="{{ insured.phone if insured else '' }}" class="form-control">
         </div>
 
-        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-          <label for="koopa" class="form-label">קופה</label>
-          <input type="text" id="koopa" name="koopa" value="{{ insured.koopa if insured else '' }}" class="form-control">
-        </div>
       </div>
     </div>
   </div>
@@ -178,6 +192,11 @@
           <label for="new_clinic" class="form-label">מרפאה חדשה</label>
           <input type="text" id="new_clinic" name="new_clinic"
                  class="form-control" placeholder="הכנס שם מרפאה חדשה" style="display:none;">
+        </div>
+
+        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
+          <label for="koopa" class="form-label">קופה</label>
+          <input type="text" id="koopa" name="koopa" value="{{ insured.koopa if insured else '' }}" class="form-control">
         </div>
       </div>
     </div>
@@ -401,6 +420,22 @@ function toggleClaimNumberField() {
 }
 toggleClaimNumberField();
 document.getElementById("claim_type").addEventListener("change", toggleClaimNumberField);
+
+$('#parkinson_ind').on('change', function () {
+  const checked = $(this).is(':checked') ? 1 : 0;
+  const insuredId = {{ insured.id if insured else 'null' }};
+  if (!insuredId) return; // only update if editing
+
+  $.post(`/insured/${insuredId}/parkinson`, { value: checked })
+    .done(res => {
+      if (res.status !== 'success') {
+        alert('שגיאה בעדכון נוהל פרקינסון');
+      }
+    })
+    .fail(() => alert('שגיאת שרת בעדכון נוהל פרקינסון'));
+});
+
+
 </script>
 
 <!-- Generic Modal (unchanged) -->

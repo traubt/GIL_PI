@@ -681,200 +681,6 @@ def log_user_activity():
 
 #####################################  Reports Section
 
-@main.route('/timesheet_history')
-def timesheet_history():
-    user_data = session.get('user')
-    user = json.loads(user_data)
-    shop_data = session.get('shop')
-    shop = json.loads(shop_data)
-    shops = TOC_SHOPS.query.filter(TOC_SHOPS.store != '001').all()
-    list_of_shops = [shop.blName for shop in shops]
-    roles = TocRole.query.all()
-    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
-    return render_template('timesheet_history_report.html', user=user, shop=shop, shops=list_of_shops, roles=roles_list)
-
-@main.route('/sales_report')
-def sales_report():
-    user_data = session.get('user')
-    user = json.loads(user_data)
-    shop_data = session.get('shop')
-    shop = json.loads(shop_data)
-    shops = TOC_SHOPS.query.filter(TOC_SHOPS.store != '001').all()
-    list_of_shops = [shop.blName for shop in shops]
-    roles = TocRole.query.all()
-    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
-    return render_template('sales_report_by_shop.html', user=user, shop=shop, shops=list_of_shops, roles=roles_list)
-
-@main.route('/variance_report')
-def variance_report():
-    user_data = session.get('user')
-    user = json.loads(user_data)
-    shop_data = session.get('shop')
-    shop = json.loads(shop_data)
-    shops = TOC_SHOPS.query.filter(TOC_SHOPS.store != '001').all()
-    list_of_shops = [shop.blName for shop in shops]
-    roles = TocRole.query.all()
-    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
-    return render_template('variance_report.html', user=user, shop=shop, shops=list_of_shops, roles=roles_list)
-
-
-from flask import request, jsonify
-
-@main.route('/get_business_report')
-def get_business_report():
-    try:
-        # Retrieve parameters from the request
-        report_type = request.args.get('reportType')  # Selected report type
-        group_by = request.args.get('groupBy')        # Grouping option
-        from_date = request.args.get('fromDate')      # Start date
-        to_date = request.args.get('toDate')          # End date
-
-        # Log the received parameters (for debugging purposes)
-        print(f"Received Parameters:")
-        print(f"Report Type: {report_type}")
-        print(f"Group By: {group_by}")
-        print(f"From Date: {from_date}")
-        print(f"To Date: {to_date}")
-
-        # Fetch the data from the function
-        if report_type == "Detailed Shop Stock Report":
-            data = get_stock_value()
-        elif report_type == "Consolidated Shop Stock Report":
-            data = get_stock_value_per_shop()
-        elif report_type == "Transactions Report":
-            data = get_transactions(from_date, to_date)
-        elif report_type == "Online Transactions Report":
-            data = get_online_transactions(from_date, to_date)
-        elif report_type == "Product Category Per Staff":
-            data = get_product_category_per_staff(from_date, to_date)
-        elif report_type == "Casuals Timesheet History Report":
-            data = get_timesheet_history(from_date, to_date)
-        else:
-            data = get_sales_report(report_type, from_date, to_date, group_by)
-
-        # Check if no data is returned
-        if not data:
-            return jsonify({"message": "Error fetching report"}), 500
-
-        # Extract column titles dynamically
-        columns = [{"title": key} for key in data[0].keys()] if data else []
-
-        # Return the formatted data along with column titles as JSON
-        return jsonify({"columns": columns, "data": data})
-
-    except Exception as e:
-        # Handle any errors
-        print(f"Error: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-@main.route('/get_variance_report')
-def get_variance_report():
-    try:
-        # Retrieve parameters from the request
-        report_type = request.args.get('reportType')  # Selected report type
-        group_by = request.args.get('groupBy')        # Grouping option
-        from_date = request.args.get('fromDate')      # Start date
-        to_date = request.args.get('toDate')          # End date
-
-        # Log the received parameters (for debugging purposes)
-        print(f"Received Parameters:")
-        print(f"Report Type: {report_type}")
-        print(f"Group By: {group_by}")
-        print(f"From Date: {from_date}")
-        print(f"To Date: {to_date}")
-
-        # Fetch the data from the function
-        # Fetch the data from the function
-        if report_type == "Detailed Shop Stock Report":
-            data = get_stock_value()
-        elif report_type == "Back Order Report":
-            data = get_back_order()
-        elif report_type == "Consolidated Shop Stock Report":
-            data = get_stock_value_per_shop()
-        elif report_type == "Detailed Damaged Returns":
-            data = get_detailed_damaged_return(from_date, to_date)
-        elif report_type == "Consolidated Damaged Returns":
-            data = get_consolidated_damaged_return(from_date, to_date)
-        elif report_type == "Consolidated Variance Report":
-            conn = get_db_connection()
-
-            # Run SQL query (return raw date)
-            query = """
-          
-            SELECT 
-    shop_name, 
-    DATE_FORMAT(stock_qty_date, '%%Y-%%m-%%d') AS raw_date,  -- Fetch actual date in yyyy-mm-dd format
-    ROUND(SUM(a.variance * b.cost_price)) AS total_variance
-FROM toc_stock_variance a
-JOIN toc_product b ON a.sku = b.item_sku
-WHERE stock_qty_date > %s
-AND replenish_id LIKE '%%C'
-GROUP BY shop_name, raw_date;
-            
-            """
-
-            # Read query into DataFrame, parse raw_date as a datetime column
-            df = pd.read_sql(query, conn, params=[from_date], parse_dates=["raw_date"])
-
-            # Close DB connection
-            conn.close()
-
-            # Pivot DataFrame using raw_date for sorting
-            pivot_table = df.pivot(index='shop_name', columns='raw_date', values='total_variance').fillna(0)
-
-            # Sort columns chronologically
-            pivot_table = pivot_table.reindex(sorted(pivot_table.columns), axis=1)
-
-            # Rename columns to 'DD-MMM' format after sorting
-            pivot_table.rename(columns={col: col.strftime("%d-%b") for col in pivot_table.columns}, inplace=True)
-
-            # Convert to list of dictionaries
-            result_as_dicts = pivot_table.reset_index().to_dict(orient="records")
-
-            # Extract column titles dynamically
-            columns = [{"title": col} for col in pivot_table.reset_index().columns]
-
-            # Return as JSON
-            return jsonify({"columns": columns, "data": result_as_dicts})
-
-
-        else:
-            data = get_db_variance_report(report_type,from_date,to_date,group_by)
-
-        # Check if no data is returned
-        if not data:
-            return jsonify({"message": "Error fetching sales report"}), 500
-
-        # Extract column titles dynamically
-        columns = [{"title": key} for key in data[0].keys()] if data else []
-
-        # Return the formatted data along with column titles as JSON
-        return jsonify({"columns": columns, "data": data})
-
-    except Exception as e:
-        # Handle any errors
-        print(f"Error: {str(e)}")
-        return jsonify({"status": "error", "message": str(e)}), 500
-
-
-
-@main.route('/count_new_orders')
-def count_new_orders():
-    shop_data = session.get('shop')
-    shop = json.loads(shop_data)
-
-    # Use or_ to combine conditions for order_status
-    count = TOCReplenishCtrl.query.filter(
-        or_(
-            TOCReplenishCtrl.order_status == 'New',
-            TOCReplenishCtrl.order_status == 'Submitted'
-        ),
-        TOCReplenishCtrl.shop_id == shop["customer"]
-    ).count()
-
-    return jsonify({"count": count})
-
-
 
 @main.route('/get_user_activity', methods=['GET'])
 def get_user_activity():
@@ -1120,7 +926,8 @@ def create_insured():
                 claim_number=request.form.get('claim_number'),
                 investigator=investigator_str,
                 notes=request.form.get('notes'),
-                received_date=request.form.get('received_date') or None
+                received_date=request.form.get('received_date') or None,
+                parkinson_ind = 1 if request.form.get('parkinson_ind') == 'on' else 0
             )
 
             # Handle photo upload
@@ -1214,6 +1021,7 @@ def edit_insured(id):
             insured.received_date = request.form.get('received_date') or None
             insured.status = request.form.get('status')
             insured.recurring_appointments = request.form.get('recurring_appointments')
+            insured.parkinson_ind = 1 if request.form.get('parkinson_ind') == 'on' else 0
 
             # Handle photo upload
             photo = request.files.get('photo')
@@ -1313,6 +1121,39 @@ def delete_contact(contact_id):
     db.session.delete(contact)
     db.session.commit()
     return jsonify({'status': 'success'})
+
+@main.route('/insured/<int:insured_id>/status', methods=['POST'])
+def update_insured_status(insured_id):
+    try:
+        new_status = (request.form.get('status') or '').strip()
+        allowed = {'פתוחה', 'בעבודה', 'הושלמה'}
+        if new_status not in allowed:
+            return jsonify({'status': 'error', 'message': 'סטטוס לא חוקי'}), 400
+
+        insured = GilInsured.query.get_or_404(insured_id)
+        insured.status = new_status
+        db.session.commit()
+
+        return jsonify({'status': 'success', 'new_status': new_status})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'Error updating status for insured {insured_id}: {e}')
+        return jsonify({'status': 'error', 'message': 'שגיאה בעדכון סטטוס'}), 500
+
+
+# === AJAX endpoint to toggle only parkinson_ind ===
+@main.route('/insured/<int:insured_id>/parkinson', methods=['POST'])
+def update_parkinson(insured_id):
+    try:
+        insured = GilInsured.query.get_or_404(insured_id)
+        value = request.form.get('value', '0')
+        insured.parkinson_ind = 1 if value in ('1', 'true', 'on') else 0
+        db.session.commit()
+        return jsonify({"status": "success", "parkinson_ind": insured.parkinson_ind})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating parkinson_ind for insured {insured_id}: {e}")
+        return jsonify({"status": "error", "message": "שגיאה בעדכון נוהל פרקינסון"}), 500
 
 ############################################################################
 
