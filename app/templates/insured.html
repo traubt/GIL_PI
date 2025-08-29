@@ -65,6 +65,16 @@
                readonly>
       </div>
 
+      <div class="col-12 col-sm-6 col-md-4 col-lg-3">
+        <label for="insurance" class="form-label">ביטוח</label>
+        <select id="insurance" name="insurance" class="form-select" required>
+          <option value="הפניקס" {% if insured and insured.insurance == 'הפניקס' %}selected{% endif %}>הפניקס</option>
+          <option value="מנורה" {% if insured and insured.insurance == 'מנורה' %}selected{% endif %}>מנורה</option>
+          <option value="שלמה" {% if insured and insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>
+          <option value="איילון" {% if insured and insured.insurance == 'איילון' %}selected{% endif %}>איילון</option>
+        </select>
+      </div>
+
       <div class="col-12 col-sm-6 col-md-4 col-lg-2">
         <label for="claim_type" class="form-label">סוג חקירה</label>
         <select id="claim_type" name="claim_type" class="form-select">
@@ -151,10 +161,10 @@
           <input type="text" id="address" name="address" value="{{ insured.address if insured else '' }}" class="form-control">
         </div>
 
-        <div class="col-12 col-sm-6 col-md-4 col-lg-2">
-          <label for="phone" class="form-label">טלפון</label>
-          <input type="text" id="phone" name="phone" value="{{ insured.phone if insured else '' }}" class="form-control">
-        </div>
+<!--        <div class="col-12 col-sm-6 col-md-4 col-lg-2">-->
+<!--          <label for="phone" class="form-label">טלפון</label>-->
+<!--          <input type="text" id="phone" name="phone" value="{{ insured.phone if insured else '' }}" class="form-control">-->
+<!--        </div>-->
 
       </div>
     </div>
@@ -162,22 +172,22 @@
 
   <!-- ===== INSURANCE / CLINIC ===== -->
   <div class="card insured-section-card">
-    <div class="card-header">ביטוח ומרפאה</div>
+    <div class="card-header">מרפאה</div>
     <div class="card-body">
       <div class="row g-3">
-        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-          <label for="insurance" class="form-label">ביטוח</label>
-          <select id="insurance" name="insurance" class="form-select" required>
-            <option value="הפניקס" {% if insured and insured.insurance == 'הפניקס' %}selected{% endif %}>הפניקס</option>
-            <option value="מנורה" {% if insured and insured.insurance == 'מנורה' %}selected{% endif %}>מנורה</option>
-            <option value="שלמה" {% if insured and insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>
-            <option value="איילון" {% if insured and insured.insurance == 'איילון' %}selected{% endif %}>איילון</option>
-          </select>
-        </div>
+<!--        <div class="col-12 col-sm-6 col-md-4 col-lg-3">-->
+<!--          <label for="insurance" class="form-label">ביטוח</label>-->
+<!--          <select id="insurance" name="insurance" class="form-select" required>-->
+<!--            <option value="הפניקס" {% if insured and insured.insurance == 'הפניקס' %}selected{% endif %}>הפניקס</option>-->
+<!--            <option value="מנורה" {% if insured and insured.insurance == 'מנורה' %}selected{% endif %}>מנורה</option>-->
+<!--            <option value="שלמה" {% if insured and insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>-->
+<!--            <option value="איילון" {% if insured and insured.insurance == 'איילון' %}selected{% endif %}>איילון</option>-->
+<!--          </select>-->
+<!--        </div>-->
 
         <div class="col-12 col-sm-6 col-md-4 col-lg-3">
           <label for="clinic" class="form-label">מרפאה</label>
-          <select id="clinic" name="clinic" class="form-select" onchange="toggleNewClinicInput(this)">
+          <select id="clinic" name="clinic" class="form-select">
             <option value="">בחר מרפאה</option>
             {% for clinic_name in config.CLINICS_LIST %}
               <option value="{{ clinic_name }}" {% if insured and insured.clinic == clinic_name %}selected{% endif %}>
@@ -188,22 +198,25 @@
           </select>
         </div>
 
-        <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-          <label for="new_clinic" class="form-label">מרפאה חדשה</label>
-          <input type="text" id="new_clinic" name="new_clinic"
-                 class="form-control" placeholder="הכנס שם מרפאה חדשה" style="display:none;">
-        </div>
-
+        <!-- Koopa (HMO) -->
         <div class="col-12 col-sm-6 col-md-4 col-lg-2">
           <label for="koopa" class="form-label">קופה</label>
-          <input type="text" id="koopa" name="koopa" value="{{ insured.koopa if insured else '' }}" class="form-control">
+          <select id="koopa" name="koopa" class="form-select">
+            <option value="">בחר קופה</option>
+            {% for k in config.KOOPA_LIST %}
+              <option value="{{ k }}" {% if insured and insured.koopa == k %}selected{% endif %}>{{ k }}</option>
+            {% endfor %}
+            <option value="__new__">➕ הוסף קופה חדשה</option>
+          </select>
         </div>
+
       </div>
     </div>
   </div>
 
+
   <!-- ===== CONTACTS LIST (unchanged data/ids) ===== -->
-  {% if insured %}
+
   <div class="card insured-section-card">
     <div class="card-header">
       רשימת מקושרים
@@ -223,24 +236,24 @@
             <th>פעולות</th>
           </tr>
         </thead>
-        <tbody>
-          {% for c in insured.contacts %}
-          <tr data-id="{{ c.id }}">
-            <td>{{ c.full_name }}</td>
-            <td>{{ c.relation }}</td>
-            <td>{{ c.phone_1 }}</td>
-            <td>{{ c.phone_2 }}</td>
-            <td>{{ c.social_media_1 }}</td>
-            <td>{{ c.social_media_2 }}</td>
-            <td>{{ c.notes }}</td>
-            <td><button type="button" class="btn btn-danger btn-sm delete-contact">מחק</button></td>
-          </tr>
-          {% endfor %}
-        </tbody>
+          <tbody>
+            {% for c in (insured.contacts if insured else []) %}
+            <tr data-id="{{ c.id }}">
+              <td>{{ c.full_name }}</td>
+              <td>{{ c.relation }}</td>
+              <td>{{ c.phone_1 }}</td>
+              <td>{{ c.phone_2 }}</td>
+              <td>{{ c.social_media_1 }}</td>
+              <td>{{ c.social_media_2 }}</td>
+              <td>{{ c.notes }}</td>
+              <td><button type="button" class="btn btn-danger btn-sm delete-contact">מחק</button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
       </table>
     </div>
   </div>
-  {% endif %}
+
 
   <!-- ===== ACTIONS ===== -->
   <div class="mt-3">
@@ -250,7 +263,7 @@
 </form>
 
 <!-- ===== Add Contact Modal (unchanged) ===== -->
-{% if insured %}
+
 <div class="modal fade" id="addContactModal" tabindex="-1">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -260,7 +273,7 @@
           <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
         </div>
         <div class="modal-body">
-          <input type="hidden" name="insured_id" value="{{ insured.id }}">
+          <input type="hidden" name="insured_id" value="{{ insured.id if insured else '' }}">
           <div class="mb-3">
             <label class="form-label">שם מלא</label>
             <input type="text" name="full_name" class="form-control" required>
@@ -298,145 +311,348 @@
     </div>
   </div>
 </div>
-{% endif %}
+
+<!-- Add Clinic Modal -->
+<div class="modal fade" id="addClinicModal" tabindex="-1" aria-labelledby="addClinicLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="addClinicForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="addClinicLabel">הוסף מרפאה חדשה</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="newClinicName" class="form-label">שם מרפאה</label>
+            <input type="text" id="newClinicName" name="name" class="form-control" placeholder="הכנס שם מרפאה" required>
+            <div class="form-text">השם יתווסף לרשימה וייבחר אוטומטית.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" id="saveClinicBtn" class="btn btn-primary">שמור</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Add Koopa Modal -->
+<div class="modal fade" id="addKoopaModal" tabindex="-1" aria-labelledby="addKoopaLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <form id="addKoopaForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="addKoopaLabel">הוסף קופה חדשה</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-3">
+            <label for="newKoopaName" class="form-label">שם קופה</label>
+            <input type="text" id="newKoopaName" name="name" class="form-control" placeholder="הכנס שם קופה" required>
+            <div class="form-text">השם יתווסף לרשימה וייבחר אוטומטית.</div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="submit" id="saveKoopaBtn" class="btn btn-primary">שמור</button>
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 
 <!-- ===== Scripts (unchanged functionality) ===== -->
 <script>
+let insuredId = {{ insured.id if insured else 'null' }};
+let isCreate = {{ 'false' if insured else 'true' }};
+
 $(function () {
-    // Handle save insured
-    $('#insuredForm').on('submit', function (e) {
-        e.preventDefault();
-        var formData = new FormData(this);
+  // ===== Save insured (main form) =====
+  $('#insuredForm').on('submit', function (e) {
+    e.preventDefault();
+    const formData = new FormData(this);
 
-        $.ajax({
-            url: $(this).attr('action'),
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function (response) {
-                let buttons = [
-                    `<a href="{{ url_for('main.admin_insured') }}" class="btn btn-primary">חזרה לרשימה</a>`
-                ];
-                if (response.status === 'success') {
-                    showModal("✅ הצלחה", response.message || 'המבוטח נשמר בהצלחה', buttons);
-                    if (!{{ 'true' if insured else 'false' }}) {
-                        setTimeout(() => window.location.href = '/insured/' + response.insured_id + '/edit', 1500);
-                    }
-                } else {
-                    showModal("⚠️ שגיאה", response.message || 'שמירה נכשלה');
-                }
-            },
-            error: function (xhr) {
-                showModal("❌ שגיאת שרת", xhr.responseJSON?.message || 'אירעה שגיאה בלתי צפויה');
-            }
-        });
+    $.ajax({
+      url: $(this).attr('action'),
+      type: 'POST',
+      data: formData,
+      processData: false,
+      contentType: false
+    }).done(function (response) {
+      const buttons = [
+        `<a href="{{ url_for('main.admin_insured') }}" class="btn btn-primary">חזרה לרשימה</a>`
+      ];
+      if (response.status === 'success') {
+        showModal("✅ הצלחה", response.message || 'המבוטח נשמר בהצלחה', buttons);
+
+        // If we were in create mode, flip the page into edit mode
+        if (isCreate) {
+          insuredId = response.insured_id;
+          isCreate = false;
+          $('#insuredForm').attr('action', `/insured/${insuredId}/edit`);
+          $('#addContactForm [name="insured_id"]').val(insuredId);
+          $('h3.mb-4').text('עדכן תיק חקירה');
+        }
+      } else {
+        showModal("⚠️ שגיאה", response.message || 'שמירה נכשלה');
+      }
+    }).fail(function (xhr) {
+      showModal("❌ שגיאת שרת", xhr.responseJSON?.message || 'אירעה שגיאה בלתי צפויה');
     });
+  });
 
-    {% if insured %}
-    // Add contact
-    $('#addContactBtn').click(() => $('#addContactModal').modal('show'));
+  // ===== Open add-contact modal (same for create/edit) =====
+  $('#addContactBtn').on('click', function () {
+    $('#addContactModal').modal('show');
+  });
 
-    $('#addContactForm').submit(function (e) {
-        e.preventDefault();
-        $.post('/contacts/add', $(this).serialize(), function (response) {
-            if (response.status === 'success') {
-                let c = response.contact;
-                $('#contactsTable tbody').append(`
-                    <tr data-id="${c.id}">
-                        <td>${c.full_name}</td>
-                        <td>${c.relation}</td>
-                        <td>${c.phone_1 || ''}</td>
-                        <td>${c.phone_2 || ''}</td>
-                        <td>${c.social_media_1 || ''}</td>
-                        <td>${c.social_media_2 || ''}</td>
-                        <td>${c.notes || ''}</td>
-                        <td><button type="button" class="btn btn-danger btn-sm delete-contact">מחק</button></td>
-                    </tr>
-                `);
-                $('#addContactModal').modal('hide');
-                $('#addContactForm')[0].reset();
-            } else {
-                alert(response.message || 'שגיאה בהוספת מקושר');
-            }
+  // ===== Add contact (ensure insured exists first) =====
+  $('#addContactForm').on('submit', async function (e) {
+    e.preventDefault();
+
+    try {
+      // 1) If we're still in create mode, save the insured first
+      if (!insuredId) {
+        const fd = new FormData(document.getElementById('insuredForm'));
+        const createUrl = $('#insuredForm').attr('action'); // /insured/create
+        const createRes = await $.ajax({
+          url: createUrl,
+          type: 'POST',
+          data: fd,
+          processData: false,
+          contentType: false
         });
-    });
 
-    // Delete contact
-    $(document).on('click', '.delete-contact', function () {
-        if (!confirm('האם אתה בטוח שברצונך למחוק את המקושר הזה?')) return;
-        let row = $(this).closest('tr');
-        $.post('/contacts/delete/' + row.data('id'), function (response) {
-            if (response.status === 'success') row.remove();
-            else alert(response.message || 'שגיאה במחיקה');
-        });
+        if (!(createRes && createRes.status === 'success' && createRes.insured_id)) {
+          throw new Error(createRes?.message || 'שמירת התיק נכשלה');
+        }
+
+        // Switch page into "edit" mode
+        insuredId = createRes.insured_id;
+        isCreate = false;
+        $('#insuredForm').attr('action', `/insured/${insuredId}/edit`);
+        $('#addContactForm [name="insured_id"]').val(insuredId);
+        $('h3.mb-4').text('עדכן תיק חקירה');
+      }
+
+      // 2) Now insured exists => add the contact
+      // make sure insured_id is sent even if hidden input was empty at render time
+      const payload = $(this).serializeArray();
+      const hasId = payload.some(p => p.name === 'insured_id');
+      if (!hasId) payload.push({ name: 'insured_id', value: insuredId });
+
+      const addRes = await $.post('/contacts/add', $.param(payload));
+      if (addRes && addRes.status === 'success') {
+        const c = addRes.contact;
+        $('#contactsTable tbody').append(`
+          <tr data-id="${c.id}">
+            <td>${c.full_name || ''}</td>
+            <td>${c.relation || ''}</td>
+            <td>${c.phone_1 || ''}</td>
+            <td>${c.phone_2 || ''}</td>
+            <td>${c.social_media_1 || ''}</td>
+            <td>${c.social_media_2 || ''}</td>
+            <td>${c.notes || ''}</td>
+            <td><button type="button" class="btn btn-danger btn-sm delete-contact">מחק</button></td>
+          </tr>
+        `);
+        $('#addContactModal').modal('hide');
+        this.reset();
+      } else {
+        throw new Error(addRes?.message || 'שגיאה בהוספת מקושר');
+      }
+    } catch (err) {
+      showModal("❌ שגיאה", err?.responseJSON?.message || err?.message || 'אירעה שגיאה');
+    }
+  });
+
+  // ===== Delete contact (edit mode only; but harmless if none exist) =====
+  $(document).on('click', '.delete-contact', function () {
+    if (!confirm('האם אתה בטוח שברצונך למחוק את המקושר הזה?')) return;
+    const row = $(this).closest('tr');
+    $.post('/contacts/delete/' + row.data('id'), function (response) {
+      if (response.status === 'success') row.remove();
+      else alert(response.message || 'שגיאה במחיקה');
     });
-    {% endif %}
+  });
+
+  // ===== Other existing helpers =====
+  toggleClaimNumberField();
+  document.getElementById("claim_type").addEventListener("change", toggleClaimNumberField);
+
+  $('#parkinson_ind').on('change', function () {
+    const checked = $(this).is(':checked') ? 1 : 0;
+    if (!insuredId) return; // only after insured exists
+    $.post(`/insured/${insuredId}/parkinson`, { value: checked })
+      .done(res => { if (res.status !== 'success') alert('שגיאה בעדכון נוהל פרקינסון'); })
+      .fail(() => alert('שגיאת שרת בעדכון נוהל פרקינסון'));
+  });
 });
 
-function toggleNewClinicInput(select) {
-    document.getElementById('new_clinic').style.display = (select.value === '__new__') ? 'block' : 'none';
-}
+
 
 function showModal(title, message, footerButtons = null) {
-    $('#genericModalLabel').text(title);
-    $('#genericModalBody').html(message);
-
-    let footer = $('#genericModalFooter');
-    footer.html('<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>');
-
-    if (footerButtons && Array.isArray(footerButtons)) {
-        footerButtons.forEach(btn => {
-            footer.append(btn);
-        });
-    }
-
-    $('#genericModal').modal('show');
+  $('#genericModalLabel').text(title);
+  $('#genericModalBody').html(message);
+  let footer = $('#genericModalFooter');
+  footer.html('<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>');
+  if (footerButtons && Array.isArray(footerButtons)) {
+    footerButtons.forEach(btn => footer.append(btn));
+  }
+  $('#genericModal').modal('show');
 }
 
 function previewPhoto(event) {
-    const file = event.target.files[0];
-    if (file) {
-        const reader = new FileReader();
-        reader.onload = function (e) {
-            const preview = document.getElementById('photoPreview');
-            if (preview) preview.src = e.target.result;
-        };
-        reader.readAsDataURL(file);
-    }
+  const file = event.target.files[0];
+  if (file) {
+    const reader = new FileReader();
+    reader.onload = e => $('#photoPreview').attr('src', e.target.result);
+    reader.readAsDataURL(file);
+  }
 }
 
 function toggleClaimNumberField() {
-    const claimType = document.getElementById("claim_type").value.trim();
-    const claimNumberContainer = document.getElementById("claimNumberContainer");
-    const claimNumberInput = document.getElementById("claim_number");
-
-    if (claimType === "סיעוד" || claimType === "אכא") {
-        claimNumberContainer.style.display = "block";
-    } else {
-        claimNumberContainer.style.display = "none";
-        if (claimNumberInput) claimNumberInput.value = "";
-    }
+  const claimType = document.getElementById("claim_type").value.trim();
+  const cont = document.getElementById("claimNumberContainer");
+  const input = document.getElementById("claim_number");
+  if (claimType === "סיעוד" || claimType === "אכא") { cont.style.display = "block"; }
+  else { cont.style.display = "none"; if (input) input.value = ""; }
 }
-toggleClaimNumberField();
-document.getElementById("claim_type").addEventListener("change", toggleClaimNumberField);
 
-$('#parkinson_ind').on('change', function () {
-  const checked = $(this).is(':checked') ? 1 : 0;
-  const insuredId = {{ insured.id if insured else 'null' }};
-  if (!insuredId) return; // only update if editing
 
-  $.post(`/insured/${insuredId}/parkinson`, { value: checked })
-    .done(res => {
-      if (res.status !== 'success') {
-        alert('שגיאה בעדכון נוהל פרקינסון');
+  // --- Clinic add via modal (works in both create & edit) ---
+  let lastClinicVal = $('#clinic').val() || '';
+
+  $('#clinic').on('focus', function () {
+    lastClinicVal = this.value || '';
+  });
+
+  $('#clinic').on('change', function () {
+    if (this.value === '__new__') {
+      $('#newClinicName').val('');
+      $('#addClinicModal').modal('show');
+      // When modal closes without saving, revert to previous selection
+      $('#addClinicModal').off('hidden.bs.modal').on('hidden.bs.modal', function () {
+        if ($('#clinic').val() === '__new__') {
+          $('#clinic').val(lastClinicVal); // revert
+        }
+      });
+    } else {
+      lastClinicVal = this.value || '';
+    }
+  });
+
+  $('#addClinicForm').on('submit', function (e) {
+    e.preventDefault();
+    const $btn = $('#saveClinicBtn');
+    const name = ($('#newClinicName').val() || '').trim();
+    if (!name) {
+      $('#newClinicName').focus();
+      return;
+    }
+
+    $btn.prop('disabled', true);
+
+    // If clinic already exists in the list, just select it (no server call)
+    const exists = $('#clinic option').filter(function () { return $(this).val() === name; }).length > 0;
+    const selectAndClose = () => {
+      if (!exists) {
+        // Add new option to the select
+        $('#clinic').append(`<option value="${name}">${name}</option>`);
       }
-    })
-    .fail(() => alert('שגיאת שרת בעדכון נוהל פרקינסון'));
-});
+      $('#clinic').val(name).trigger('change');
+      $('#addClinicModal').modal('hide');
+      $btn.prop('disabled', false);
+    };
 
+    if (exists) {
+      selectAndClose();
+      return;
+    }
+
+    // Create on server (updates clinics.json); expects: {status:'success', name:'...'}
+    $.post('/clinics/add', { name })
+      .done(function (res) {
+        if (res && res.status === 'success') {
+          selectAndClose();
+        } else {
+          showModal('⚠️ שגיאה', (res && res.message) || 'לא ניתן להוסיף מרפאה חדשה');
+          $btn.prop('disabled', false);
+        }
+      })
+      .fail(function (xhr) {
+        showModal('❌ שגיאת שרת', xhr.responseJSON?.message || 'פעולת הוספת מרפאה נכשלה');
+        $btn.prop('disabled', false);
+      });
+  });
+
+  // --- Koopa add via modal (mirrors clinic flow) ---
+  let lastKoopaVal = $('#koopa').val() || '';
+
+  $('#koopa').on('focus', function () {
+    lastKoopaVal = this.value || '';
+  });
+
+  $('#koopa').on('change', function () {
+    if (this.value === '__new__') {
+      $('#newKoopaName').val('');
+      $('#addKoopaModal').modal('show');
+
+      // If modal closed without saving, revert selection
+      $('#addKoopaModal').off('hidden.bs.modal').on('hidden.bs.modal', function () {
+        if ($('#koopa').val() === '__new__') {
+          $('#koopa').val(lastKoopaVal);
+        }
+      });
+    } else {
+      lastKoopaVal = this.value || '';
+    }
+  });
+
+  $('#addKoopaForm').on('submit', function (e) {
+    e.preventDefault();
+    const $btn = $('#saveKoopaBtn');
+    const name = ($('#newKoopaName').val() || '').trim();
+    if (!name) { $('#newKoopaName').focus(); return; }
+
+    $btn.prop('disabled', true);
+
+    // If already exists, just select it
+    const exists = $('#koopa option').filter(function () { return $(this).val() === name; }).length > 0;
+    const selectAndClose = () => {
+      if (!exists) {
+        $('#koopa').append(`<option value="${name}">${name}</option>`);
+      }
+      $('#koopa').val(name).trigger('change');
+      $('#addKoopaModal').modal('hide');
+      $btn.prop('disabled', false);
+    };
+
+    if (exists) {
+      selectAndClose();
+      return;
+    }
+
+    // Create on server; expects JSON: {status:'success', name:'...', created:true|false}
+    $.post('/koopa/add', { name })
+      .done(function (res) {
+        if (res && res.status === 'success') {
+          selectAndClose();
+        } else {
+          showModal('⚠️ שגיאה', (res && res.message) || 'לא ניתן להוסיף קופה חדשה');
+          $btn.prop('disabled', false);
+        }
+      })
+      .fail(function (xhr) {
+        showModal('❌ שגיאת שרת', xhr.responseJSON?.message || 'פעולת הוספת קופה נכשלה');
+        $btn.prop('disabled', false);
+      });
+  });
 
 </script>
+
 
 <!-- Generic Modal (unchanged) -->
 <div class="modal fade" id="genericModal" tabindex="-1" aria-labelledby="genericModalLabel" aria-hidden="true">

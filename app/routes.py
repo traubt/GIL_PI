@@ -1077,43 +1077,158 @@ def assign_investigator():
 
 
 def load_clinics():
-    with open(current_app.config['CLINICS_FILE'], "r", encoding="utf-8") as f:
-        return json.load(f)
+    """Read clinics list from clinics.json, return [] if file is empty/missing."""
+    path = current_app.config['CLINICS_FILE']
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump([], f, ensure_ascii=False, indent=2)
+        return []
+    with open(path, "r", encoding="utf-8") as f:
+        try:
+            data = json.load(f)
+            return data if isinstance(data, list) else []
+        except json.JSONDecodeError:
+            return []
 
-def append_clinic(new_clinic):
+def append_clinic(name: str) -> bool:
+    """Append clinic if not exists. Returns True if appended, False if already present."""
+    name = (name or "").strip()
+    if not name:
+        return False
     clinics = load_clinics()
-    clinics.append(new_clinic)
+    if name in clinics:
+        return False
+    clinics.append(name)
     with open(current_app.config['CLINICS_FILE'], "w", encoding="utf-8") as f:
         json.dump(clinics, f, ensure_ascii=False, indent=2)
+    # refresh in-memory copy used by Jinja
+    current_app.config['CLINICS_LIST'] = clinics
+    return True
+
+# ---- Koopa (HMO) helpers ----
+def _ensure_koopa_file_path():
+    """Ensure KOOPA_FILE path exists in config; default next to CLINICS_FILE or /data/koopa.json."""
+    path = current_app.config.get('KOOPA_FILE')
+    if not path:
+        clinics_path = current_app.config.get('CLINICS_FILE')
+        if clinics_path:
+            base_dir = os.path.dirname(clinics_path)
+        else:
+            base_dir = os.path.join(current_app.root_path, 'data')
+        os.makedirs(base_dir, exist_ok=True)
+        path = os.path.join(base_dir, 'koopa.json')
+        current_app.config['KOOPA_FILE'] = path
+    return path
+
+def load_koopa():
+    """Read koopa list from koopa.json; return [] if missing/empty."""
+    path = _ensure_koopa_file_path()
+    if not os.path.exists(path):
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump([], f, ensure_ascii=False, indent=2)
+        current_app.config['KOOPA_LIST'] = []
+        return []
+
+    with open(path, "r", encoding="utf-8") as f:
+        try:
+            data = json.load(f)
+            data = data if isinstance(data, list) else []
+        except json.JSONDecodeError:
+            data = []
+    current_app.config['KOOPA_LIST'] = data
+    return data
+
+def append_koopa(name: str) -> bool:
+    """Append a koopa if not present. Returns True if appended (file updated), False if already existed/invalid."""
+    name = (name or '').strip()
+    if not name:
+        return False
+    koopa_list = load_koopa()
+    if name in koopa_list:
+        return False
+    koopa_list.append(name)
+    with open(_ensure_koopa_file_path(), "w", encoding="utf-8") as f:
+        json.dump(koopa_list, f, ensure_ascii=False, indent=2)
+    current_app.config['KOOPA_LIST'] = koopa_list
+    return True
+
+
+
+@main.route('/clinics/add', methods=['POST'])
+def clinics_add():
+    try:
+        name = (request.form.get('name') or '').strip()
+        if not name or name == '__new__':
+            return jsonify({'status': 'error', 'message': 'שם מרפאה לא חוקי'}), 400
+
+        # Add if not present (idempotent)
+        created = append_clinic(name)
+
+        return jsonify({
+            'status': 'success',
+            'name': name,
+            'created': bool(created)   # true if we actually wrote to file, false if already existed
+        })
+    except Exception as e:
+        current_app.logger.error(f"/clinics/add error: {e}")
+        return jsonify({'status': 'error', 'message': 'פעולת הוספת מרפאה נכשלה'}), 500
+
+@main.route('/koopa/add', methods=['POST'])
+def koopa_add():
+    try:
+        name = (request.form.get('name') or '').strip()
+        if not name or name == '__new__':
+            return jsonify({'status': 'error', 'message': 'שם קופה לא חוקי'}), 400
+
+        created = append_koopa(name)  # now defined
+
+        return jsonify({'status': 'success', 'name': name, 'created': bool(created)})
+    except Exception as e:
+        current_app.logger.error(f"/koopa/add error: {e}")
+        return jsonify({'status': 'error', 'message': 'פעולת הוספת קופה נכשלה'}), 500
+
+
+
 
 @main.route('/contacts/add', methods=['POST'])
 def add_contact():
-    data = request.form
-    contact = GilContact(
-        insured_id=data.get('insured_id'),
-        full_name=data.get('full_name'),
-        relation=data.get('relation'),
-        phone_1=data.get('phone_1'),
-        phone_2=data.get('phone_2'),
-        social_media_1=data.get('social_media_1'),
-        social_media_2=data.get('social_media_2'),
-        notes=data.get('notes')
-    )
-    db.session.add(contact)
-    db.session.commit()
+    try:
+        insured_id = request.form.get('insured_id', type=int)
+        if not insured_id:
+            return jsonify({'status': 'error', 'message': 'insured_id נדרש'}), 400
 
-    return jsonify({
-        'status': 'success',
-        'contact': {
-            'id': contact.id,
-            'full_name': contact.full_name,
-            'relation': contact.relation,
-            'phone_1': contact.phone_1,
-            'phone_2': contact.phone_2,
-            'social_media_1': contact.social_media_1,
-            'social_media_2': contact.social_media_2
-        }
-    })
+        contact = GilContact(
+            insured_id=insured_id,
+            full_name=request.form.get('full_name', ''),
+            relation=request.form.get('relation'),
+            address=request.form.get('address'),
+            phone_1=request.form.get('phone_1'),
+            phone_2=request.form.get('phone_2'),
+            social_media_1=request.form.get('social_media_1'),
+            social_media_2=request.form.get('social_media_2'),
+            notes=request.form.get('notes')
+        )
+        db.session.add(contact)
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'contact': {
+                'id': contact.id,
+                'full_name': contact.full_name,
+                'relation': contact.relation,
+                'phone_1': contact.phone_1,
+                'phone_2': contact.phone_2,
+                'social_media_1': contact.social_media_1,
+                'social_media_2': contact.social_media_2,
+                'notes': contact.notes
+            }
+        })
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"add_contact error: {e}")
+        return jsonify({'status': 'error', 'message': 'שגיאה בהוספת מקושר'}), 500
+
 
 @main.route('/contacts/delete/<int:contact_id>', methods=['POST'])
 def delete_contact(contact_id):
