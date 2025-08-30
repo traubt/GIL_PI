@@ -4,7 +4,6 @@ import json
 import os
 from sqlalchemy.exc import SQLAlchemyError
 from .models import *
-from . import db
 from .db_queries import *
 from datetime import datetime, timezone, timedelta, date
 from flask import Flask, request, jsonify
@@ -162,6 +161,7 @@ def append_clinic(new_clinic):
         clinics.append(new_clinic)
         with open(current_app.config['CLINICS_FILE'], "w", encoding="utf-8") as f:
             json.dump(clinics, f, ensure_ascii=False, indent=2)
+
 
 @main.route('/send_email', methods=['POST'])
 def handle_send_email():
@@ -885,6 +885,10 @@ from app.models import GilInsured
 
 @main.route('/insured/create', methods=['GET', 'POST'])
 def create_insured():
+    # Fetch clinics and koopa from the database
+    clinics = GilClinics.query.all()
+    koopa = GilKoopa.query.all()
+
     user_data = session.get('user')
     user = json.loads(user_data)
     roles = TocRole.query.all()
@@ -895,18 +899,31 @@ def create_insured():
     upload_folder = current_app.config.get('UPLOAD_FOLDER')
     birth_date_str = request.form.get('birth_date')
 
-    # Handle clinic new entry
-    clinic = request.form.get('clinic')
-    new_clinic = request.form.get('new_clinic', '').strip()
-    if clinic == '__new__' and new_clinic:
-        clinic = new_clinic
-        append_clinic(clinic)  # Add to JSON file
-        current_app.config['CLINICS_LIST'] = load_clinics()  # Refresh in memory
-
     if request.method == 'POST':
         try:
             investigator_list = request.form.getlist('investigator')
             investigator_str = '*'.join(investigator_list) if investigator_list else None
+
+            # Handle clinic/koopa new entry
+            clinic = request.form.get('clinic')
+            if clinic == '__new__':
+                clinic_name = request.form.get('new_clinic', '').strip()
+                if clinic_name:
+                    # Save to database
+                    new_clinic = GilClinics(clinic_name=clinic_name)
+                    db.session.add(new_clinic)
+                    db.session.commit()
+                    clinic = clinic_name  # Set the new clinic as the selected one
+
+            koopa = request.form.get('koopa')
+            if koopa == '__new__':
+                koopa_name = request.form.get('new_koopa', '').strip()
+                if koopa_name:
+                    # Save to database
+                    new_koopa = GilKoopa(koopa_name=koopa_name)
+                    db.session.add(new_koopa)
+                    db.session.commit()
+                    koopa = koopa_name  # Set the new koopa as the selected one
 
             insured = GilInsured(
                 ref_number=request.form.get('ref_number'),
@@ -919,7 +936,7 @@ def create_insured():
                 address=request.form.get('address'),
                 gender=request.form.get('gender'),
                 phone=request.form.get('phone'),
-                koopa=request.form.get('koopa'),
+                koopa=koopa,
                 clinic=clinic,
                 insurance=request.form.get('insurance'),
                 claim_type=request.form.get('claim_type'),
@@ -927,7 +944,7 @@ def create_insured():
                 investigator=investigator_str,
                 notes=request.form.get('notes'),
                 received_date=request.form.get('received_date') or None,
-                parkinson_ind = 1 if request.form.get('parkinson_ind') == 'on' else 0
+                parkinson_ind=1 if request.form.get('parkinson_ind') == 'on' else 0
             )
 
             # Handle photo upload
@@ -964,15 +981,22 @@ def create_insured():
             }), 500
 
     return render_template('insured.html',
-                           insured=None ,
+                           insured=None,
                            investigators=investigators,
                            user=user,
-                           roles=roles_list)
-
+                           roles=roles_list,
+                           clinics=clinics,
+                           koopa=koopa)
 
 
 @main.route('/insured/<int:id>/edit', methods=['GET', 'POST'])
 def edit_insured(id):
+    # Fetch clinics and koopa from the database
+    clinics = GilClinics.query.all()
+    koopa = GilKoopa.query.all()
+
+    insured = GilInsured.query.get_or_404(id)
+
     user_data = session.get('user')
     user = json.loads(user_data)
     roles = TocRole.query.all()
@@ -980,27 +1004,36 @@ def edit_insured(id):
 
     investigators = GilInvestigator.query.order_by(GilInvestigator.full_name).all()
 
-    insured = GilInsured.query.get_or_404(id)
-    investigators = GilInvestigator.query.order_by(GilInvestigator.full_name).all()
     upload_folder = current_app.config.get('UPLOAD_FOLDER')
     birth_date_str = request.form.get('birth_date')
-
-    # Handle clinic new entry
-    clinic = request.form.get('clinic')
-    new_clinic = request.form.get('new_clinic', '').strip()
-    if clinic == '__new__' and new_clinic:
-        clinic = new_clinic
-        append_clinic(clinic)
-        current_app.config['CLINICS_LIST'] = load_clinics()
 
     if request.method == 'POST':
         try:
             investigator_list = request.form.getlist('investigator')
             investigator_str = '*'.join(investigator_list) if investigator_list else None
 
-            old_id = insured.id_number
-            old_claim = insured.claim_number
+            # Handle clinic/koopa new entry
+            clinic = request.form.get('clinic')
+            if clinic == '__new__':
+                clinic_name = request.form.get('new_clinic', '').strip()
+                if clinic_name:
+                    # Save to database
+                    new_clinic = GilClinics(clinic_name=clinic_name)
+                    db.session.add(new_clinic)
+                    db.session.commit()
+                    clinic = clinic_name  # Set the new clinic as the selected one
 
+            koopa = request.form.get('koopa')
+            if koopa == '__new__':
+                koopa_name = request.form.get('new_koopa', '').strip()
+                if koopa_name:
+                    # Save to database
+                    new_koopa = GilKoopa(koopa_name=koopa_name)
+                    db.session.add(new_koopa)
+                    db.session.commit()
+                    koopa = koopa_name  # Set the new koopa as the selected one
+
+            # Update insured details
             insured.ref_number = request.form.get('ref_number')
             insured.first_name = request.form.get('first_name')
             insured.last_name = request.form.get('last_name')
@@ -1011,7 +1044,7 @@ def edit_insured(id):
             insured.address = request.form.get('address')
             insured.gender = request.form.get('gender')
             insured.phone = request.form.get('phone')
-            insured.koopa = request.form.get('koopa')
+            insured.koopa = koopa
             insured.clinic = clinic
             insured.insurance = request.form.get('insurance')
             insured.claim_type = request.form.get('claim_type')
@@ -1038,7 +1071,7 @@ def edit_insured(id):
             db.session.commit()
 
             # Sync Dropbox if ID or claim number changed, or photo updated
-            id_or_claim_changed = insured.id_number != old_id or insured.claim_number != old_claim
+            id_or_claim_changed = insured.id_number != insured.id_number or insured.claim_number != insured.claim_number
             if id_or_claim_changed or photo:
                 photo_path = os.path.join(upload_folder, insured.photo) if insured.photo else None
                 sync_insured_to_dropbox(insured, photo_path=photo_path)
@@ -1055,23 +1088,51 @@ def edit_insured(id):
             return jsonify({'status': 'error', 'message': 'שגיאה בעדכון פרטי המבוטח'}), 500
 
     return render_template('insured.html',
-                           insured=insured ,
+                           insured=insured,
                            investigators=investigators,
                            user=user,
-                           roles=roles_list)
+                           roles=roles_list,
+                           clinics=clinics,
+                           koopa=koopa)
+
 
 # routes.py
 
 
+# @main.route('/insured/assign_investigator', methods=['POST'])
+# def assign_investigator():
+#     insured_id = request.form.get('insured_id', type=int)
+#     selected = request.form.getlist('investigators')  # from checkboxes
+#
+#     insured = GilInsured.query.get_or_404(insured_id)
+#     insured.investigator = '*'.join([s for s in selected if s.strip()]) or None
+#     db.session.commit()
+#     return jsonify({"status": "success", "investigator": insured.investigator or ""})
+
+# routes.py
+
 @main.route('/insured/assign_investigator', methods=['POST'])
 def assign_investigator():
-    insured_id = request.form.get('insured_id', type=int)
-    selected = request.form.getlist('investigators')  # from checkboxes
+    try:
+        insured_id = request.form.get('insured_id', type=int)
+        if not insured_id:
+            return jsonify({'status': 'error', 'message': 'insured_id חסר'}), 400
 
-    insured = GilInsured.query.get_or_404(insured_id)
-    insured.investigator = '*'.join([s for s in selected if s.strip()]) or None
-    db.session.commit()
-    return jsonify({"status": "success", "investigator": insured.investigator or ""})
+        # Accept either "investigators" or "investigators[]" from jQuery
+        selected = request.form.getlist('investigators') or request.form.getlist('investigators[]')
+        selected = [s.strip() for s in selected if s and s.strip()]
+        inv_str = '*'.join(selected) if selected else None
+
+        insured = GilInsured.query.get_or_404(insured_id)
+        insured.investigator = inv_str
+        db.session.commit()
+
+        return jsonify({'status': 'success', 'investigator': inv_str or ''})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'assign_investigator error: {e}')
+        return jsonify({'status': 'error', 'message': 'שגיאה בעדכון חוקר'}), 500
+
 
 
 
@@ -1158,36 +1219,44 @@ def append_koopa(name: str) -> bool:
 def clinics_add():
     try:
         name = (request.form.get('name') or '').strip()
-        if not name or name == '__new__':
+        if not name:
             return jsonify({'status': 'error', 'message': 'שם מרפאה לא חוקי'}), 400
 
-        # Add if not present (idempotent)
-        created = append_clinic(name)
+        # Check if clinic already exists in the DB
+        if GilClinics.query.filter_by(clinic_name=name).first():
+            return jsonify({'status': 'error', 'message': 'המרפאה כבר קיימת'}), 400
 
-        return jsonify({
-            'status': 'success',
-            'name': name,
-            'created': bool(created)   # true if we actually wrote to file, false if already existed
-        })
+        # Create a new clinic
+        new_clinic = GilClinics(clinic_name=name)
+        db.session.add(new_clinic)
+        db.session.commit()
+
+        return jsonify({'status': 'success', 'name': name})
     except Exception as e:
-        current_app.logger.error(f"/clinics/add error: {e}")
-        return jsonify({'status': 'error', 'message': 'פעולת הוספת מרפאה נכשלה'}), 500
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': f'Error adding clinic: {str(e)}'}), 500
+
 
 @main.route('/koopa/add', methods=['POST'])
 def koopa_add():
     try:
         name = (request.form.get('name') or '').strip()
-        if not name or name == '__new__':
+        if not name:
             return jsonify({'status': 'error', 'message': 'שם קופה לא חוקי'}), 400
 
-        created = append_koopa(name)  # now defined
+        # Check if koopa already exists in the DB
+        if GilKoopa.query.filter_by(koopa_name=name).first():
+            return jsonify({'status': 'error', 'message': 'הקופה כבר קיימת'}), 400
 
-        return jsonify({'status': 'success', 'name': name, 'created': bool(created)})
+        # Create a new koopa
+        new_koopa = GilKoopa(koopa_name=name)
+        db.session.add(new_koopa)
+        db.session.commit()
+
+        return jsonify({'status': 'success', 'name': name})
     except Exception as e:
-        current_app.logger.error(f"/koopa/add error: {e}")
-        return jsonify({'status': 'error', 'message': 'פעולת הוספת קופה נכשלה'}), 500
-
-
+        db.session.rollback()
+        return jsonify({'status': 'error', 'message': f'Error adding koopa: {str(e)}'}), 500
 
 
 @main.route('/contacts/add', methods=['POST'])
@@ -1269,6 +1338,43 @@ def update_parkinson(insured_id):
         db.session.rollback()
         current_app.logger.error(f"Error updating parkinson_ind for insured {insured_id}: {e}")
         return jsonify({"status": "error", "message": "שגיאה בעדכון נוהל פרקינסון"}), 500
+
+@main.route('/insured/export_rows', methods=['POST'])
+def insured_export_rows():
+    data = request.get_json(silent=True) or {}
+    ids = data.get('ids', [])
+    columns = data.get('columns')  # optional: list of column names; if None, use a default set
+
+    if not ids:
+        return jsonify({'status': 'error', 'message': 'לא נבחרו רשומות'}), 400
+
+    # Choose columns (you can change this list later or accept it from the client)
+    default_cols = [
+        'id', 'received_date', 'ref_number', 'investigator', 'first_name', 'last_name',
+        'id_number', 'koopa', 'insurance', 'claim_type', 'claim_number', 'gender', 'status'
+    ]
+    cols = columns or default_cols
+
+    # Hebrew labels (fallback to the key if missing)
+    HEB_LABELS = {
+        'id': 'מזהה', 'received_date': 'תאריך קבלה', 'ref_number': 'מספר תיק',
+        'investigator': 'חוקר/ים', 'first_name': 'שם פרטי', 'last_name': 'שם משפחה',
+        'id_number': 'ת.ז', 'koopa': 'קופה', 'insurance': 'ביטוח', 'claim_type': 'סוג חקירה',
+        'claim_number': 'מספר תביעה', 'gender': 'מגדר', 'status': 'סטטוס',
+    }
+
+    q = GilInsured.query.filter(GilInsured.id.in_(ids))
+    rows = []
+    for ins in q:
+        rec = {}
+        for c in cols:
+            rec[c] = getattr(ins, c, '')
+        rows.append(rec)
+
+    headers = [{'key': c, 'label': HEB_LABELS.get(c, c)} for c in cols]
+    return jsonify({'status': 'success', 'headers': headers, 'rows': rows})
+
+
 
 ############################################################################
 

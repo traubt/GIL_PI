@@ -172,39 +172,30 @@
 
   <!-- ===== INSURANCE / CLINIC ===== -->
   <div class="card insured-section-card">
-    <div class="card-header">מרפאה</div>
+    <div class="card-header">ביטוח ומרפאה</div>
     <div class="card-body">
       <div class="row g-3">
-<!--        <div class="col-12 col-sm-6 col-md-4 col-lg-3">-->
-<!--          <label for="insurance" class="form-label">ביטוח</label>-->
-<!--          <select id="insurance" name="insurance" class="form-select" required>-->
-<!--            <option value="הפניקס" {% if insured and insured.insurance == 'הפניקס' %}selected{% endif %}>הפניקס</option>-->
-<!--            <option value="מנורה" {% if insured and insured.insurance == 'מנורה' %}selected{% endif %}>מנורה</option>-->
-<!--            <option value="שלמה" {% if insured and insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>-->
-<!--            <option value="איילון" {% if insured and insured.insurance == 'איילון' %}selected{% endif %}>איילון</option>-->
-<!--          </select>-->
-<!--        </div>-->
-
         <div class="col-12 col-sm-6 col-md-4 col-lg-3">
           <label for="clinic" class="form-label">מרפאה</label>
           <select id="clinic" name="clinic" class="form-select">
             <option value="">בחר מרפאה</option>
-            {% for clinic_name in config.CLINICS_LIST %}
-              <option value="{{ clinic_name }}" {% if insured and insured.clinic == clinic_name %}selected{% endif %}>
-                {{ clinic_name }}
+            {% for clinic in clinics %}
+              <option value="{{ clinic.clinic_name }}" {% if insured and insured.clinic == clinic.clinic_name %}selected{% endif %}>
+                {{ clinic.clinic_name }}
               </option>
             {% endfor %}
             <option value="__new__">➕ הוסף מרפאה חדשה</option>
           </select>
         </div>
 
-        <!-- Koopa (HMO) -->
         <div class="col-12 col-sm-6 col-md-4 col-lg-2">
           <label for="koopa" class="form-label">קופה</label>
           <select id="koopa" name="koopa" class="form-select">
             <option value="">בחר קופה</option>
-            {% for k in config.KOOPA_LIST %}
-              <option value="{{ k }}" {% if insured and insured.koopa == k %}selected{% endif %}>{{ k }}</option>
+            {% for koopa in koopa %}
+              <option value="{{ koopa.koopa_name }}" {% if insured and insured.koopa == koopa.koopa_name %}selected{% endif %}>
+                {{ koopa.koopa_name }}
+              </option>
             {% endfor %}
             <option value="__new__">➕ הוסף קופה חדשה</option>
           </select>
@@ -213,6 +204,7 @@
       </div>
     </div>
   </div>
+
 
 
   <!-- ===== CONTACTS LIST (unchanged data/ids) ===== -->

@@ -382,4 +382,36 @@ class GilContact(db.Model):
     insured = db.relationship('GilInsured', backref=db.backref('contacts', cascade='all, delete-orphan'))
 
 
+class GilKoopa(db.Model):
+    __tablename__ = 'gil_koopa'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    creation_date = db.Column(db.DateTime, default=datetime.utcnow)
+    koopa_name = db.Column(db.String(45), nullable=True)
+
+    def __init__(self, koopa_name=None):
+        self.koopa_name = koopa_name
+
+    def __repr__(self):
+        return f'<GilKoopa {self.koopa_name}>'
+
+
+class GilClinics(db.Model):
+    __tablename__ = 'gil_clinics'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    creation_date = db.Column(db.DateTime, default=datetime.utcnow)
+    clinic_name = db.Column(db.String(45), nullable=True)
+
+    def __init__(self, clinic_name=None):
+        self.clinic_name = clinic_name
+
+    def __repr__(self):
+        return f'<GilClinics {self.clinic_name}>'
+
+
+
+
+
+
 

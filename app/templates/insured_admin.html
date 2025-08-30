@@ -1,119 +1,201 @@
-
 {% extends "base.html" %}
-
 {% block content %}
-    {% include 'header-bar.html' %}
-    {% include 'side-bar.html' %}
+  {% include 'header-bar.html' %}
+  {% include 'side-bar.html' %}
 
-  <main id="main" class="main">
-    <div class="pagetitle">
-      <h1>ניהול מבוטחים</h1>
-    </div>
+<main id="main" class="main">
+  <div class="pagetitle">
+    <h1>ניהול מבוטחים</h1>
+  </div>
 
-    <section class="section">
-      <div class="card">
-        <div class="card-body">
+  <section class="section">
+    <div class="card">
+      <div class="card-body">
 
-          <div class="mb-3 d-flex justify-content-start">
-              <a href="{{ url_for('main.create_insured') }}" class="btn btn-primary">צור תיק חקירה</a>
-          </div>
+        <!-- Top actions -->
+        <div class="mb-3 d-flex justify-content-start gap-2">
+          <a href="{{ url_for('main.create_insured') }}" class="btn btn-primary">צור תיק חקירה</a>
+          <button id="bulkAssignBtn" class="btn btn-outline-primary" type="button" disabled>הצב חוקר</button>
+          <button id="btnExportSelected" class="btn btn-success ms-2" disabled>צור אקסל</button>
+        </div>
 
+        <table id="insuredTable" class="table table-bordered display nowrap" style="width:100%">
+          <thead>
+            <!-- search row -->
+            <tr>
+              <th></th>
+              <th></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th></th>
+            </tr>
 
-          <table id="insuredTable" class="table table-bordered display nowrap" style="width:100%">
-            <thead>
-              <!-- SEARCH ROW -->
-              <tr>
-                <th></th> <!-- Checkbox column -->
-                <th></th> <!-- Photo column - no search -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- מספר תיק -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- חוקר/ים -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- תאריך -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- שם פרטי -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- שם משפחה -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- ת.ז -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- קופה -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- ביטוח -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- סוג חקירה -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- מספר תביעה -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th> <!-- מגדר -->
-                <th><input type="text" placeholder="🔍" style="width:100%"></th>
-                <th><input type="text" placeholder="🔍" style="width:100%"></th>
-                <th></th> <!-- פעולות - no search -->
-              </tr>
+            <!-- headers -->
+            <tr>
+              <th></th>
+              <th>תמונה</th>
+              <th>תאריך קבלה</th>
+              <th>מספר תיק</th>
+              <th>חוקר/ים</th>
+              <th>שם פרטי</th>
+              <th>שם משפחה</th>
+              <th>ת.ז</th>
+              <th>קופה</th>
+              <th>ביטוח</th>
+              <th>סוג חקירה</th>
+              <th>מספר תביעה</th>
+              <th>מגדר</th>
+              <th>סטטוס</th>
+              <th>נוהל פרקינסון</th>
+              <th>פעולות</th>
+            </tr>
+          </thead>
 
-              <!-- HEADER TITLES -->
-              <tr>
-                <th></th> <!-- Checkbox -->
-                <th>תמונה</th>
-                <th>תאריך קבלה</th>
-                <th>מספר תיק</th>
-                <th>חוקר/ים</th>
-                <th>שם פרטי</th>
-                <th>שם משפחה</th>
-                <th>ת.ז</th>
-                <th>קופה</th>
-                <th>ביטוח</th>
-                <th>סוג חקירה</th>
-                <th>מספר תביעה</th>
-                <th>מגדר</th>
-                <th>סטטוס</th>
-                <th>נוהל פרקינסון</th>
-                <th>פעולות</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {% for insured in insured_list %}
-              <tr>
-                <td></td> <!-- Required for DataTables checkbox -->
-                <td>
-                  {% if insured.photo %}
-                    <img src="{{ url_for('static', filename='uploads/insured_photos/' ~ insured.photo) }}"
-                         alt="Photo" class="img-thumbnail" style="width: 50px; height: 50px;">
-                  {% else %}
-                    <div class="d-flex align-items-center justify-content-center bg-light border rounded-circle"
-                         style="width: 50px; height: 50px;">
-                      <i class="bi bi-person-fill" style="font-size: 1.5rem; color: #666;"></i>
-                    </div>
-                  {% endif %}
-                </td>
-                <td>{{ insured.received_date }}</td>
-                <td>{{ insured.ref_number }}</td>
-                <td>{{ insured.investigator }}</td>
-                <td>{{ insured.first_name }}</td>
-                <td>{{ insured.last_name }}</td>
-                <td>{{ insured.id_number }}</td>
-                <td>{{ insured.koopa }}</td>
-                <td>{{ insured.insurance }}</td>
-                <td>{{ insured.claim_type }}</td>
-                <td>{{ insured.claim_number }}</td>
-                <td>{{ insured.gender }}</td>
-                <td>{{ insured.status }}</td>
-
-                <td class="text-center">
-                  {{ 1 if insured.parkinson_ind else 0 }}
-                </td>
-
-                <td>
-                  <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">עדכן</a>
-                  <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"
-                      data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>
-                  <button type="button" class="btn btn-sm btn-secondary change-status-btn"
+          <tbody>
+            {% for insured in insured_list %}
+            <!-- add the row id so we can bulk-update the DOM -->
+            <tr data-id="{{ insured.id }}">
+              <td></td>
+              <td>
+                {% if insured.photo %}
+                  <img src="{{ url_for('static', filename='uploads/insured_photos/' ~ insured.photo) }}" alt="Photo" class="img-thumbnail" style="width: 50px; height: 50px;">
+                {% else %}
+                  <div class="d-flex align-items-center justify-content-center bg-light border rounded-circle" style="width: 50px; height: 50px;">
+                    <i class="bi bi-person-fill" style="font-size: 1.5rem; color: #666;"></i>
+                  </div>
+                {% endif %}
+              </td>
+              <td>{{ insured.received_date }}</td>
+              <td>{{ insured.ref_number }}</td>
+              <td class="investigator-cell">{{ insured.investigator }}</td>
+              <td>{{ insured.first_name }}</td>
+              <td>{{ insured.last_name }}</td>
+              <td>{{ insured.id_number }}</td>
+              <td>{{ insured.koopa }}</td>
+              <td>{{ insured.insurance }}</td>
+              <td>{{ insured.claim_type }}</td>
+              <td>{{ insured.claim_number }}</td>
+              <td>{{ insured.gender }}</td>
+              <td>{{ insured.status }}</td>
+              <td class="text-center">{{ 1 if insured.parkinson_ind else 0 }}</td>
+              <td>
+                <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">עדכן</a>
+<!--                <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"-->
+<!--                        data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>-->
+                <button type="button" class="btn btn-sm btn-secondary change-status-btn"
                         data-id="{{ insured.id }}" data-status="{{ insured.status|default('פתוחה') }}">שנה סטטוס</button>
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
 
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- Assign Investigator modal -->
+<div class="modal fade" id="assignInvestigatorModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">הצב חוקר/ים</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <form id="assignInvestigatorForm">
+          <input type="hidden" name="insured_id" id="assignInsuredId">
+          <!-- bulk flag; managed by JS -->
+          <input type="hidden" id="bulkMode" value="0">
+          <div class="row">
+            {% for inv in investigators %}
+            <div class="col-md-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="investigators" value="{{ inv.full_name }}" id="inv{{ loop.index }}">
+                <label class="form-check-label" for="inv{{ loop.index }}">{{ inv.full_name }}</label>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+        <button type="button" id="saveInvestigatorBtn" class="btn btn-primary">שמור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Change Status modal (unchanged) -->
+<div class="modal fade" id="changeStatusModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">שנה סטטוס</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="statusInsuredId">
+        <label for="statusSelect" class="form-label">בחר סטטוס</label>
+        <select id="statusSelect" class="form-select">
+          <option value="פתוחה">פתוחה</option>
+          <option value="בעבודה">בעבודה</option>
+          <option value="הושלמה">הושלמה</option>
+        </select>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+        <button type="button" id="saveStatusBtn" class="btn btn-primary">שמור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Excel preview & download -->
+<div class="modal fade" id="exportModal" tabindex="-1" aria-hidden="true" dir="rtl">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">תצוגה מקדימה לייצוא</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+      </div>
+
+      <div class="modal-body">
+        <div class="alert alert-secondary py-2 mb-3">
+          הטבלה למטה נבנתה מהשורות שסומנו. לחיצה על "הורד" תייצא לאקסל.
+        </div>
+        <div class="table-responsive">
+          <table id="exportPreview" class="table table-sm table-bordered align-middle" dir="rtl">
+            <!-- headers & rows inserted dynamically -->
+          </table>
         </div>
       </div>
-    </section>
-  </main>
+
+      <div class="modal-footer">
+        <button type="button" id="downloadExcelBtn" class="btn btn-primary">הורד</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 <script>
-$(document).ready(function () {
-  // ==== DataTable ====
+$(function () {
+  // ==== DataTable init ====
   var table = $('#insuredTable').DataTable({
     dom: 'lrtip',
     scrollX: true,
@@ -141,51 +223,33 @@ $(document).ready(function () {
     }
   });
 
-  // ==== Select-all in header ====
-  $('#insuredTable thead').on('click', 'th.select-checkbox', function () {
-    if ($('th.select-checkbox').hasClass('selected')) {
-      table.rows().deselect();
-      $('th.select-checkbox').removeClass('selected');
-    } else {
-      table.rows({ search: 'applied' }).select();
-      $('th.select-checkbox').addClass('selected');
-    }
-  });
-  table.on('select deselect', function () {
-    if (table.rows({ selected: true }).count() !== table.rows({ search: 'applied' }).count()) {
-      $('th.select-checkbox').removeClass('selected');
-    } else {
-      $('th.select-checkbox').addClass('selected');
-    }
-  });
-
-  // ===== Helpers =====
-  function parseAssigned(str) {
-    return (str || '')
-      .split('*')
-      .map(s => s.trim())
-      .filter(Boolean);
+  // keep the top bulk button state in sync with selection
+  function updateBulkButton() {
+    var selectedCount = table.rows({ selected: true }).count();
+    $('#bulkAssignBtn, #btnExportSelected').prop('disabled', selectedCount === 0);
   }
 
-  // ===== Open "Assign Investigator" modal =====
+  table.on('select deselect draw', updateBulkButton);
+  updateBulkButton();
+
+  // ===== Helper: split A*B*C =====
+  function parseAssigned(str) {
+    return (str || '').split('*').map(s => s.trim()).filter(Boolean);
+  }
+
+  // ===== Per-row "Assign" =====
   $(document).on('click', '.assign-investigator-btn', function () {
-    const insuredId  = $(this).data('id');
-    const currentStr = ($(this).data('investigator') || '').trim(); // e.g. "A*B*C"
-    const names      = parseAssigned(currentStr);
+    $('#bulkMode').val('0');           // single mode
+    const id = $(this).data('id');
+    const current = ($(this).data('investigator') || '').trim();
+    const names = parseAssigned(current);
 
-    if (names.length) {
-      const list = names.join(', ');
-      if (!confirm(`יש כבר חוקר/ים משויך/ים (${list}). האם אתה בטוח שברצונך לשנות?`)) return;
-    }
-
-    // set target id + reset checks
-    $('#assignInsuredId').val(insuredId);
-    const $checks = $('#assignInvestigatorForm input[type=checkbox]').prop('checked', false);
-
-    // pre-check existing
+    // pre-check any existing selection
+    $('#assignInsuredId').val(id);
+    $('#assignInvestigatorForm input[type=checkbox]').prop('checked', false);
     if (names.length) {
       const set = new Set(names);
-      $checks.each(function () {
+      $('#assignInvestigatorForm input[type=checkbox]').each(function () {
         if (set.has(this.value)) this.checked = true;
       });
     }
@@ -193,40 +257,84 @@ $(document).ready(function () {
     $('#assignInvestigatorModal').modal('show');
   });
 
-  // ===== Save assignment =====
-  $('#saveInvestigatorBtn').off('click').on('click', function () {
-    const $btn = $(this);
-    $btn.prop('disabled', true);
+  // ===== Top "Bulk Assign" =====
+  $('#bulkAssignBtn').on('click', function () {
+    const nodes = table.rows({ selected: true }).nodes().toArray();
+    if (!nodes.length) return;
 
-    const formData = $('#assignInvestigatorForm').serialize(); // insured_id + investigators=...
-    $.post('/insured/assign_investigator', formData)
-      .done(function (res) {
-        if (res && res.status === 'success') {
-          // Update the row in place (no full reload)
-          const id   = $('#assignInsuredId').val();
-          const text = res.investigator || '';
-          const $btnInRow = $(`.assign-investigator-btn[data-id="${id}"]`);
-          $btnInRow.data('investigator', text);
+    $('#bulkMode').val('1');       // bulk mode
+    $('#assignInsuredId').val(''); // no single id
+    $('#assignInvestigatorForm input[type=checkbox]').prop('checked', false);
 
-          // Update the "חוקר/ים" cell text — adjust index if columns change
-          // Current columns: [0]=checkbox, [1]=photo, [2]=date, [3]=ref, [4]=investigators
-          const $row = $btnInRow.closest('tr');
-          $row.find('td').eq(4).text(text);
-
-          $('#assignInvestigatorModal').modal('hide');
-        } else {
-          alert((res && res.message) || 'שגיאה בעדכון חוקר');
-        }
-      })
-      .fail(function (xhr) {
-        alert(xhr.responseJSON?.message || 'שגיאת שרת');
-      })
-      .always(function () {
-        $btn.prop('disabled', false);
-      });
+    $('#assignInvestigatorModal').modal('show');
   });
 
-  // ===== Change Status: open modal =====
+  // ===== Save (single OR bulk) =====
+  $('#saveInvestigatorBtn').on('click', function () {
+    const $btn = $(this).prop('disabled', true);
+
+    const selectedInvestigators = $('#assignInvestigatorForm input[name="investigators"]:checked')
+      .map(function () { return this.value; }).get();
+
+    if (!selectedInvestigators.length) {
+      alert('יש לבחור חוקר/ים');
+      $btn.prop('disabled', false);
+      return;
+    }
+
+    const isBulk = $('#bulkMode').val() === '1';
+
+    if (!isBulk) {
+      // single
+      const id = $('#assignInsuredId').val();
+      $.post('/insured/assign_investigator', { insured_id: id, investigators: selectedInvestigators })
+        .done(function (res) {
+          if (res && res.status === 'success') {
+            const text = res.investigator || selectedInvestigators.join('*');
+            const $row = $('#insuredTable tbody tr[data-id="' + id + '"]');
+            $row.find('.investigator-cell').text(text);
+            $row.find('.assign-investigator-btn').data('investigator', text);
+            $('#assignInvestigatorModal').modal('hide');
+          } else {
+            alert((res && res.message) || 'שגיאה בעדכון חוקר');
+          }
+        })
+        .fail(function (xhr) { alert(xhr.responseJSON?.message || 'שגיאת שרת'); })
+        .always(function () { $btn.prop('disabled', false); });
+      return;
+    }
+
+    // bulk
+    const ids = table.rows({ selected: true }).nodes().toArray()
+      .map(function (n) {
+        const $tr = $(n);
+        return $tr.data('id') || $tr.find('.assign-investigator-btn').data('id');
+      })
+      .filter(Boolean);
+
+    if (!ids.length) { $btn.prop('disabled', false); return; }
+
+    // fire all updates in parallel using the existing endpoint
+    const reqs = ids.map(function (id) {
+      return $.post('/insured/assign_investigator', { insured_id: id, investigators: selectedInvestigators });
+    });
+
+    Promise.allSettled(reqs).then(function () {
+      const text = selectedInvestigators.join('*');
+      ids.forEach(function (id) {
+        const $row = $('#insuredTable tbody tr[data-id="' + id + '"]');
+        $row.find('.investigator-cell').text(text);
+        $row.find('.assign-investigator-btn').data('investigator', text);
+      });
+      $('#assignInvestigatorModal').modal('hide');
+    }).catch(function () {
+      alert('אירעה שגיאה בעדכון חוקר/ים לחלק מהרשומות.');
+    }).finally(function () {
+      $btn.prop('disabled', false);
+    });
+  });
+
+  // ===== Change Status handlers (unchanged) =====
   $(document).on('click', '.change-status-btn', function () {
     const id = $(this).data('id');
     const current = ($(this).data('status') || 'פתוחה').trim();
@@ -235,103 +343,122 @@ $(document).ready(function () {
     $('#changeStatusModal').modal('show');
   });
 
-  // ===== Change Status: save =====
-  $('#saveStatusBtn').off('click').on('click', function () {
-    const $btn = $(this);
-    $btn.prop('disabled', true);
-
-    const insuredId = $('#statusInsuredId').val();
+  $('#saveStatusBtn').on('click', function () {
+    const $btn = $(this).prop('disabled', true);
+    const id = $('#statusInsuredId').val();
     const newStatus = $('#statusSelect').val();
 
-    $.post(`/insured/${insuredId}/status`, { status: newStatus })
+    $.post(`/insured/${id}/status`, { status: newStatus })
       .done(function (res) {
         if (res && res.status === 'success') {
-          // update Actions button data-status and the Status cell in the row
-          const $rowBtn = $(`.change-status-btn[data-id="${insuredId}"]`);
-          $rowBtn.data('status', newStatus);
-
-          // status column index is 13 with current table structure
-          const $row = $rowBtn.closest('tr');
-          $row.find('td').eq(13).text(newStatus);
-
-          // If user set הושלמה, remove row (admin list excludes completed)
+          const $row = $('#insuredTable tbody tr[data-id="' + id + '"]');
+          $row.find('td').eq(13).text(newStatus); // status column
+          $row.find('.change-status-btn').data('status', newStatus);
           if (newStatus === 'הושלמה') {
-            // if DataTables initialized, remove via API; else hide row
-            const tbl = $('#insuredTable').DataTable();
-            tbl.row($row).remove().draw(false);
+            table.row($row).remove().draw(false);
           }
-
           $('#changeStatusModal').modal('hide');
         } else {
           alert((res && res.message) || 'שגיאה בעדכון סטטוס');
         }
       })
-      .fail(function (xhr) {
-        alert(xhr.responseJSON?.message || 'שגיאת שרת');
-      })
+      .fail(function (xhr) { alert(xhr.responseJSON?.message || 'שגיאת שרת'); })
       .always(function () { $btn.prop('disabled', false); });
   });
+});
+</script>
 
+<script>
+$(function () {
+  // --- Build preview table from server payload ---
+  function buildPreviewFromPayload(payload) {
+    const $t = $('#exportPreview').empty();
+    const headers = payload.headers || [];
+    const rows = payload.rows || [];
 
+    const thead = '<thead><tr>' + headers.map(h => `<th>${h.label}</th>`).join('') + '</tr></thead>';
+    const tbody = '<tbody>' + rows.map(r =>
+      '<tr>' + headers.map(h => `<td>${(r[h.key] ?? '')}</td>`).join('') + '</tr>'
+    ).join('') + '</tbody>';
 
+    $t.append(thead + tbody);
+  }
+
+  // --- Download the preview table as Excel (.xls) ---
+  function downloadPreviewAsExcel() {
+    const tableHtml = document.getElementById('exportPreview').outerHTML;
+    const html = `
+      <html xmlns:o="urn:schemas-microsoft-com:office:office"
+            xmlns:x="urn:schemas-microsoft-com:office:excel"
+            xmlns="http://www.w3.org/TR/REC-html40">
+        <head>
+          <meta charset="utf-8">
+          <meta http-equiv="content-type" content="application/vnd.ms-excel; charset=UTF-8">
+          <style>
+            table { border-collapse: collapse; direction: rtl; }
+            td, th { border: 1px solid #ccc; padding: 4px; mso-number-format:"\\@"; }
+          </style>
+        </head>
+        <body dir="rtl">
+          ${tableHtml}
+        </body>
+      </html>
+    `.trim();
+
+    const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:\-T]/g, '').slice(0, 12);
+    a.href = url;
+    a.download = `מבוטחים_נבחרים_${stamp}.xls`;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    a.remove();
+  }
+
+  // --- Click: build preview via /insured/export_rows and show modal ---
+  $('#btnExportSelected').on('click', function () {
+    const table = $('#insuredTable').DataTable(); // get existing instance
+    const ids = table.rows({ selected: true }).nodes().toArray()
+      .map(n => {
+        const $tr = $(n);
+        // prefer data-id on <tr>, fallback to data from the row action button
+        return $tr.data('id') || $tr.find('.assign-investigator-btn').data('id');
+      })
+      .filter(Boolean);
+
+    if (!ids.length) return;
+
+    $.ajax({
+      url: '/insured/export_rows',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({ ids: ids })
+      // Optionally: choose columns explicitly
+      // data: JSON.stringify({ ids: ids, columns: ['id','first_name','last_name'] })
+    })
+    .done(function (res) {
+      if (res.status !== 'success') {
+        alert(res.message || 'שגיאה בשליפה');
+        return;
+      }
+      buildPreviewFromPayload(res);
+      new bootstrap.Modal(document.getElementById('exportModal')).show();
+    })
+    .fail(function () {
+      alert('שגיאת שרת בשליפה');
+    });
+  });
+
+  // --- Click: download Excel from preview ---
+  $('#downloadExcelBtn').on('click', function () {
+    downloadPreviewAsExcel();
+  });
 });
 </script>
 
 
-  <script src="static/assets/js/main.js"></script>
 
-<div class="modal fade" id="assignInvestigatorModal" tabindex="-1" aria-labelledby="assignInvestigatorLabel" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">הצב חוקר/ים</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <form id="assignInvestigatorForm">
-          <input type="hidden" name="insured_id" id="assignInsuredId">
-          <div class="row">
-            {% for inv in investigators %}
-            <div class="col-md-4">
-              <div class="form-check">
-                <input class="form-check-input" type="checkbox" name="investigators" value="{{ inv.full_name }}" id="inv{{ loop.index }}">
-                <label class="form-check-label" for="inv{{ loop.index }}">{{ inv.full_name }}</label>
-              </div>
-            </div>
-            {% endfor %}
-          </div>
-        </form>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
-        <button type="button" id="saveInvestigatorBtn" class="btn btn-primary">שמור</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="modal fade" id="changeStatusModal" tabindex="-1" aria-labelledby="changeStatusLabel" aria-hidden="true">
-  <div class="modal-dialog">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">שנה סטטוס</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="statusInsuredId">
-        <label for="statusSelect" class="form-label">בחר סטטוס</label>
-        <select id="statusSelect" class="form-select">
-          <option value="פתוחה">פתוחה</option>
-          <option value="בעבודה">בעבודה</option>
-          <option value="הושלמה">הושלמה</option>
-        </select>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
-        <button type="button" id="saveStatusBtn" class="btn btn-primary">שמור</button>
-      </div>
-    </div>
-  </div>
-</div>
-
+<script src="static/assets/js/main.js"></script>
 {% endblock %}
