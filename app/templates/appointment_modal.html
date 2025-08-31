@@ -1,0 +1,118 @@
+<!-- Appointment Modal -->
+<div class="modal fade" id="appointmentsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="appointmentsModalTitle">תור עבור: ...</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+        </div>
+
+      <div class="modal-body">
+
+        <!-- Appointments Table -->
+        <table id="appointmentsTable" class="table table-striped" style="width:100%">
+          <thead>
+            <tr>
+              <th>תאריך</th>
+              <th>שעה</th>
+              <th>חוקר/ים</th>
+              <th>מקום</th>
+              <th>רופא</th>
+              <th>קופה</th>
+              <th>כתובת</th>
+              <th>יוזם</th>
+              <th>הערות</th>
+              <th>פעולות</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <hr>
+
+        <!-- Create Appointment Form -->
+        <form id="appointmentForm">
+          <input type="hidden" id="case_id" name="case_id">
+
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <label for="appointment_date" class="form-label">תאריך</label>
+              <input type="date" id="appointment_date" name="appointment_date" class="form-control" required>
+            </div>
+            <div class="col-md-2">
+              <label for="time_from" class="form-label">משעה</label>
+              <input type="time" id="time_from" name="time_from" class="form-control" required>
+            </div>
+            <div class="col-md-2">
+              <label for="time_to" class="form-label">עד שעה</label>
+              <input type="time" id="time_to" name="time_to" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label for="address" class="form-label">כתובת</label>
+              <input type="text" id="address" name="address" class="form-control">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <label for="place" class="form-label">מקום</label>
+              <input type="text" id="place" name="place" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label for="doctor" class="form-label">רופא</label>
+              <input type="text" id="doctor" name="doctor" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label for="koopa" class="form-label">קופה</label>
+              <select id="koopa" name="koopa" class="form-select">
+                <option value="">בחר קופה...</option>
+                {% for k in koopa_list %}
+                  <option value="{{ k.koopa_name }}">{{ k.koopa_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+          </div>
+
+
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <label for="investigator_id_1" class="form-label">חוקר 1</label>
+              <select id="investigator_id_1" name="investigator_id_1" class="form-select">
+                <option value="">בחר...</option>
+                {% for inv in investigators %}
+                  <option value="{{ inv.id }}">{{ inv.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="investigator_id_2" class="form-label">חוקר 2</label>
+              <select id="investigator_id_2" name="investigator_id_2" class="form-select">
+                <option value="">בחר...</option>
+                {% for inv in investigators %}
+                  <option value="{{ inv.id }}">{{ inv.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="investigator_id_3" class="form-label">חוקר 3</label>
+              <select id="investigator_id_3" name="investigator_id_3" class="form-select">
+                <option value="">בחר...</option>
+                {% for inv in investigators %}
+                  <option value="{{ inv.id }}">{{ inv.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="notes" class="form-label">הערות</label>
+            <textarea id="notes" name="notes" class="form-control"></textarea>
+          </div>
+
+          <button type="submit" class="btn btn-success">שמור תור</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>

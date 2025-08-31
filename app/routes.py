@@ -1466,6 +1466,57 @@ def has_future_appointment(case_id):
     ).scalar()
     return jsonify({"has_future": bool(exists)})
 
+@main.route('/appointments/all', methods=['GET'])
+def get_all_appointments():
+    appts = GilAppointment.query.all()
+    results = []
+    for a in appts:
+        insured = GilInsured.query.get(a.case_id)
+
+        inv1 = GilInvestigator.query.get(a.investigator_id_1) if a.investigator_id_1 else None
+        inv2 = GilInvestigator.query.get(a.investigator_id_2) if a.investigator_id_2 else None
+        inv3 = GilInvestigator.query.get(a.investigator_id_3) if a.investigator_id_3 else None
+
+        title = f"{insured.first_name} {insured.last_name}" if insured else f"Case {a.case_id}"
+
+        results.append({
+            "id": a.id,
+            "title": title,
+            "start": f"{a.appointment_date}T{a.time_from}",
+            "end": f"{a.appointment_date}T{a.time_to}",
+            "notes": a.notes,
+            "place": a.place,
+            "doctor": a.doctor,
+            "koopa": a.koopa,
+            "insurance": insured.insurance if insured else "",
+            "claim_type": insured.claim_type if insured else "",
+            "investigator_1_name": inv1.full_name if inv1 else "",
+            "investigator_2_name": inv2.full_name if inv2 else "",
+            "investigator_3_name": inv3.full_name if inv3 else "",
+        })
+    return jsonify(results)
+
+
+
+@main.route('/appointments/calendar')
+def appointments_calendar():
+    # load user
+    user_data = session.get('user')
+    user = json.loads(user_data) if user_data else {}
+
+    # load roles
+    roles = db.session.query(TocRole).all()
+    roles_list = [{'role': r.role, 'exclusions': r.exclusions} for r in roles]
+
+    return render_template("calendar.html", user=user, roles=roles_list)
+
+
+
+@main.route('/appointments/<int:id>/json', methods=['GET'])
+def get_appointment_json(id):
+    appt = GilAppointment.query.get_or_404(id)
+    return jsonify(appt.to_dict())
+
 
 ############################################################################
 

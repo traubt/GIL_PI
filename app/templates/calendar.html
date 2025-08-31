@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block content %}
+  {% include 'header-bar.html' %}
+  {% include 'side-bar.html' %}
+
+<main id="main" class="main">
+
+  <div class="pagetitle">
+    <h1>לוח תורים</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="#">ראשי</a></li>
+        <li class="breadcrumb-item active">לוח תורים</li>
+      </ol>
+    </nav>
+  </div><!-- End Page Title -->
+
+  <section class="section dashboard">
+    <div class="row">
+      <div class="col-lg-12">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">ניהול תורים</h5>
+            <div id="calendar"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main><!-- End #main -->
+
+<!-- FullCalendar CSS/JS -->
+<link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+
+<style>
+  #calendar {
+    max-width: 100%;
+    margin: 0 auto;
+    padding: 10px;
+  }
+  .fc {
+    direction: rtl;   /* enforce RTL layout */
+  }
+</style>
+
+{% include 'appointment_modal.html' %}
+
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  var calendarEl = document.getElementById('calendar');
+  var calendar = new FullCalendar.Calendar(calendarEl, {
+    initialView: 'dayGridMonth',
+    locale: 'he',
+    direction: 'rtl',
+    headerToolbar: {
+      left: 'prev,next today',
+      center: 'title',
+      right: 'dayGridMonth,timeGridWeek,timeGridDay'
+    },
+    events: '/appointments/all',
+    selectable: true,
+    editable: true,
+
+    // 🔹 כאן מוסיפים עיבוד מותאם של האירוע
+    eventContent: function(arg) {
+      let event = arg.event.extendedProps;
+      let title = arg.event.title;
+
+      let details = [];
+      if (event.insurance) details.push("ביטוח: " + event.insurance);
+      if (event.place) details.push("מקום: " + event.place);
+      if (event.investigator_1_name) details.push("חוקר: " + event.investigator_1_name);
+
+      return {
+        html: `
+          <div style="font-weight:bold;">${title}</div>
+          <div style="font-size:smaller;">${details.join("<br>")}</div>
+        `
+      };
+    },
+
+    // יצירת תור חדש
+    select: function(info) {
+      const notes = prompt('פרטי התור:');
+      if (notes) {
+        const payload = {
+          case_id: 1, // TODO: לשייך למבוטח ספציפי
+          appointment_date: info.startStr.split("T")[0],
+          time_from: "09:00",
+          time_to: "10:00",
+          notes: notes
+        };
+        fetch('/appointments/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(r => r.json()).then(res => {
+          if (res.status === 'success') {
+            calendar.refetchEvents();
+          } else {
+            alert("שגיאה בשמירת התור");
+          }
+        });
+      }
+      calendar.unselect();
+    },
+
+    // עדכון ע"י גרירה
+    eventDrop: function(info) {
+      const id = info.event.id;
+      fetch(`/appointments/${id}/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appointment_date: info.event.startStr.split("T")[0],
+          time_from: info.event.startStr.substring(11,16),
+          time_to: info.event.endStr ? info.event.endStr.substring(11,16) : "23:59",
+          notes: info.event.extendedProps.notes
+        })
+      }).then(r => r.json()).then(res => {
+        if (res.status !== 'success') {
+          alert('שגיאה בעדכון');
+          info.revert();
+        }
+      });
+    },
+
+    eventClick: function(info) {
+      // load appointment into modal
+      const apptId = info.event.id;
+
+      // clear previous form
+      $('#appointmentForm')[0].reset();
+
+      // load appointment details
+      $.getJSON(`/appointments/${apptId}/json`, function(data) {
+        $('#appointment_id').val(data.id);
+        $('#case_id').val(data.case_id);
+        $('#appointment_date').val(data.appointment_date);
+        $('#time_from').val(data.time_from);
+        $('#time_to').val(data.time_to);
+        $('#address').val(data.address);
+        $('#place').val(data.place);
+        $('#doctor').val(data.doctor);
+        $('#koopa').val(data.koopa);
+        $('#investigator_id_1').val(data.investigator_id_1);
+        $('#investigator_id_2').val(data.investigator_id_2);
+        $('#investigator_id_3').val(data.investigator_id_3);
+        $('#notes').val(data.notes);
+      });
+
+      // show modal
+      $('#appointmentsModal').modal('show');
+    }
+
+  });
+  calendar.render();
+});
+</script>
+
+{% endblock %}
