@@ -43,7 +43,7 @@
 
             <!-- headers -->
             <tr>
-              <th></th>
+              <th><input type="checkbox" id="selectAll" title="בחר הכל"></th>
               <th>תמונה</th>
               <th>תאריך קבלה</th>
               <th>מספר תיק</th>
@@ -93,6 +93,7 @@
                 <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">עדכן</a>
 <!--                <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"-->
 <!--                        data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>-->
+                <button class="btn btn-sm btn-info open-appointments" data-case-id="{{ insured.id }}"> 📅 קבע תור</button>
                 <button type="button" class="btn btn-sm btn-secondary change-status-btn"
                         data-id="{{ insured.id }}" data-status="{{ insured.status|default('פתוחה') }}">שנה סטטוס</button>
               </td>
@@ -192,6 +193,96 @@
   </div>
 </div>
 
+<!-- Appointment Modal -->
+<div class="modal fade" id="appointmentsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">ניהול תורים</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+      </div>
+      <div class="modal-body">
+
+        <!-- Appointments Table -->
+        <table id="appointmentsTable" class="table table-striped" style="width:100%">
+          <thead>
+            <tr>
+              <th>תאריך</th>
+              <th>שעה</th>
+              <th>חוקר/ים</th>
+              <th>כתובת</th>
+              <th>הערות</th>
+              <th>פעולות</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <hr>
+
+        <!-- Create Appointment Form -->
+        <form id="appointmentForm">
+          <input type="hidden" id="case_id" name="case_id">
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <label for="appointment_date" class="form-label">תאריך</label>
+              <input type="date" id="appointment_date" name="appointment_date" class="form-control" required>
+            </div>
+            <div class="col-md-2">
+              <label for="time_from" class="form-label">משעה</label>
+              <input type="time" id="time_from" name="time_from" class="form-control" required>
+            </div>
+            <div class="col-md-2">
+              <label for="time_to" class="form-label">עד שעה</label>
+              <input type="time" id="time_to" name="time_to" class="form-control" required>
+            </div>
+            <div class="col-md-4">
+              <label for="address" class="form-label">כתובת</label>
+              <input type="text" id="address" name="address" class="form-control">
+            </div>
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <label for="investigator_id_1" class="form-label">חוקר 1</label>
+              <select id="investigator_id_1" name="investigator_id_1" class="form-select">
+                <option value="">בחר...</option>
+                {% for inv in investigators %}
+                  <option value="{{ inv.id }}">{{ inv.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="investigator_id_2" class="form-label">חוקר 2</label>
+              <select id="investigator_id_2" name="investigator_id_2" class="form-select">
+                <option value="">בחר...</option>
+                {% for inv in investigators %}
+                  <option value="{{ inv.id }}">{{ inv.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label for="investigator_id_3" class="form-label">חוקר 3</label>
+              <select id="investigator_id_3" name="investigator_id_3" class="form-select">
+                <option value="">בחר...</option>
+                {% for inv in investigators %}
+                  <option value="{{ inv.id }}">{{ inv.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="notes" class="form-label">הערות</label>
+            <textarea id="notes" name="notes" class="form-control"></textarea>
+          </div>
+
+          <button type="submit" class="btn btn-success">שמור תור</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 $(function () {
@@ -214,23 +305,43 @@ $(function () {
       paginate: { first: "ראשון", last: "אחרון", next: "הבא", previous: "הקודם" }
     },
     initComplete: function () {
+      // only bind filtering to TEXT inputs, not the header checkbox
       this.api().columns().every(function () {
         var that = this;
-        $('input', this.header()).on('keyup change', function () {
+        $('input[type="text"]', this.header()).on('keyup change', function () {
           if (that.search() !== this.value) that.search(this.value).draw();
         });
       });
     }
   });
 
-  // keep the top bulk button state in sync with selection
+  // --- keep top buttons in sync with selection
   function updateBulkButton() {
     var selectedCount = table.rows({ selected: true }).count();
     $('#bulkAssignBtn, #btnExportSelected').prop('disabled', selectedCount === 0);
   }
 
-  table.on('select deselect draw', updateBulkButton);
-  updateBulkButton();
+  // --- keep "select all" checkbox in sync with the table
+  function syncSelectAllCheckbox() {
+    var total = table.rows({ search: 'applied' }).count();   // visible rows
+    var selected = table.rows({ selected: true, search: 'applied' }).count();
+    $('#selectAll').prop('checked', total > 0 && selected === total);
+  }
+
+  table.on('select deselect draw', function () {
+    updateBulkButton();
+    syncSelectAllCheckbox();
+  });
+  updateBulkButton(); syncSelectAllCheckbox();
+
+  // --- header "select all" checkbox
+  $('#selectAll').on('change', function () {
+    if (this.checked) {
+      table.rows({ search: 'applied' }).select();
+    } else {
+      table.rows().deselect();
+    }
+  });
 
   // ===== Helper: split A*B*C =====
   function parseAssigned(str) {
@@ -238,13 +349,21 @@ $(function () {
   }
 
   // ===== Per-row "Assign" =====
+  $(document).on('click', '.change-status-btn', function () {
+    const id = $(this).data('id');
+    const current = ($(this).data('status') || 'פתוחה').trim();
+    $('#statusInsuredId').val(id);
+    $('#statusSelect').val(current);
+    $('#changeStatusModal').modal('show');
+  });
+
+  // (kept for completeness if you still use per-row assign elsewhere)
   $(document).on('click', '.assign-investigator-btn', function () {
     $('#bulkMode').val('0');           // single mode
     const id = $(this).data('id');
     const current = ($(this).data('investigator') || '').trim();
     const names = parseAssigned(current);
 
-    // pre-check any existing selection
     $('#assignInsuredId').val(id);
     $('#assignInvestigatorForm input[type=checkbox]').prop('checked', false);
     if (names.length) {
@@ -259,13 +378,10 @@ $(function () {
 
   // ===== Top "Bulk Assign" =====
   $('#bulkAssignBtn').on('click', function () {
-    const nodes = table.rows({ selected: true }).nodes().toArray();
-    if (!nodes.length) return;
-
+    if (!table.rows({ selected: true }).any()) return;
     $('#bulkMode').val('1');       // bulk mode
     $('#assignInsuredId').val(''); // no single id
     $('#assignInvestigatorForm input[type=checkbox]').prop('checked', false);
-
     $('#assignInvestigatorModal').modal('show');
   });
 
@@ -314,7 +430,6 @@ $(function () {
 
     if (!ids.length) { $btn.prop('disabled', false); return; }
 
-    // fire all updates in parallel using the existing endpoint
     const reqs = ids.map(function (id) {
       return $.post('/insured/assign_investigator', { insured_id: id, investigators: selectedInvestigators });
     });
@@ -327,6 +442,11 @@ $(function () {
         $row.find('.assign-investigator-btn').data('investigator', text);
       });
       $('#assignInvestigatorModal').modal('hide');
+
+      // >>> UNSELECT everything after bulk action
+      table.rows().deselect();
+      $('#selectAll').prop('checked', false);
+      updateBulkButton();
     }).catch(function () {
       alert('אירעה שגיאה בעדכון חוקר/ים לחלק מהרשומות.');
     }).finally(function () {
@@ -334,15 +454,7 @@ $(function () {
     });
   });
 
-  // ===== Change Status handlers (unchanged) =====
-  $(document).on('click', '.change-status-btn', function () {
-    const id = $(this).data('id');
-    const current = ($(this).data('status') || 'פתוחה').trim();
-    $('#statusInsuredId').val(id);
-    $('#statusSelect').val(current);
-    $('#changeStatusModal').modal('show');
-  });
-
+  // ===== Change Status (unchanged) =====
   $('#saveStatusBtn').on('click', function () {
     const $btn = $(this).prop('disabled', true);
     const id = $('#statusInsuredId').val();
@@ -367,6 +479,7 @@ $(function () {
   });
 });
 </script>
+
 
 <script>
 $(function () {
@@ -418,16 +531,12 @@ $(function () {
   }
 
   // --- Click: build preview via /insured/export_rows and show modal ---
-  $('#btnExportSelected').on('click', function () {
-    const table = $('#insuredTable').DataTable(); // get existing instance
-    const ids = table.rows({ selected: true }).nodes().toArray()
-      .map(n => {
-        const $tr = $(n);
-        // prefer data-id on <tr>, fallback to data from the row action button
-        return $tr.data('id') || $tr.find('.assign-investigator-btn').data('id');
-      })
-      .filter(Boolean);
 
+  $('#btnExportSelected').on('click', function () {
+    const table = $('#insuredTable').DataTable();
+    const ids = table.rows({ selected: true }).nodes().toArray()
+      .map(n => $(n).data('id') || $(n).find('.assign-investigator-btn').data('id'))
+      .filter(Boolean);
     if (!ids.length) return;
 
     $.ajax({
@@ -435,29 +544,113 @@ $(function () {
       method: 'POST',
       contentType: 'application/json',
       data: JSON.stringify({ ids: ids })
-      // Optionally: choose columns explicitly
-      // data: JSON.stringify({ ids: ids, columns: ['id','first_name','last_name'] })
     })
     .done(function (res) {
-      if (res.status !== 'success') {
-        alert(res.message || 'שגיאה בשליפה');
-        return;
-      }
+      if (res.status !== 'success') { alert(res.message || 'שגיאה בשליפה'); return; }
       buildPreviewFromPayload(res);
       new bootstrap.Modal(document.getElementById('exportModal')).show();
     })
-    .fail(function () {
-      alert('שגיאת שרת בשליפה');
-    });
+    .fail(function () { alert('שגיאת שרת בשליפה'); });
   });
 
-  // --- Click: download Excel from preview ---
   $('#downloadExcelBtn').on('click', function () {
     downloadPreviewAsExcel();
+
+    // >>> UNSELECT everything after export
+    const table = $('#insuredTable').DataTable();
+    table.rows().deselect();
+    $('#selectAll').prop('checked', false);
+
+    // close modal & disable buttons
+    $('#exportModal').modal('hide');
+    $('#bulkAssignBtn, #btnExportSelected').prop('disabled', true);
   });
 });
 </script>
 
+<script>
+$(function () {
+  let caseId = null;
+  let appointmentsTable = $('#appointmentsTable').DataTable({
+    columns: [
+      { data: 'appointment_date' },
+      { data: 'time_range' },
+      { data: 'investigators' },
+      { data: 'address' },
+      { data: 'notes' },
+      { data: 'actions' }
+    ],
+    language: {
+      search: "חיפוש:",
+      lengthMenu: "הצג _MENU_ רשומות",
+      info: "מציג _START_ עד _END_ מתוך _TOTAL_ רשומות",
+      paginate: { next: "הבא", previous: "הקודם" }
+    }
+  });
+
+  // Open modal + load appointments
+  $(document).on('click', '.open-appointments', function () {
+    caseId = $(this).data('case-id');
+    $('#case_id').val(caseId);
+    loadAppointments(caseId);
+    $('#appointmentsModal').modal('show');
+  });
+
+  function loadAppointments(caseId) {
+    $.getJSON(`/appointments/${caseId}`, function (data) {
+      appointmentsTable.clear().rows.add(
+        data.map(a => ({
+          appointment_date: a.appointment_date,
+          time_range: `${a.time_from} - ${a.time_to}`,
+          investigators: [a.investigator_1_name, a.investigator_2_name, a.investigator_3_name].filter(Boolean).join(", "),
+          address: a.address || '',
+          notes: a.notes || '',
+          actions: `<button class="btn btn-sm btn-danger delete-appointment" data-id="${a.id}">מחק</button>`
+        }))
+      ).draw();
+    });
+  }
+
+  // Save appointment
+  $('#appointmentForm').on('submit', function (e) {
+    e.preventDefault();
+    $.ajax({
+      url: '/appointments/create',
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify($(this).serializeArray().reduce((obj, item) => {
+        obj[item.name] = item.value;
+        return obj;
+      }, {})),
+      success: function (res) {
+        if (res.status === 'success') {
+          loadAppointments(caseId);
+          $('#appointmentForm')[0].reset();
+        } else {
+          alert("❌ שגיאה בשמירת התור");
+        }
+      }
+    });
+  });
+
+  // Delete appointment
+  $(document).on('click', '.delete-appointment', function () {
+    const id = $(this).data('id');
+    if (confirm("האם למחוק את התור?")) {
+      $.ajax({
+        url: `/appointments/${id}/delete`,
+        type: 'POST',
+        success: function (res) {
+          if (res.status === 'success') {
+            loadAppointments(caseId);
+          }
+        }
+      });
+    }
+  });
+
+});
+</script>
 
 
 <script src="static/assets/js/main.js"></script>

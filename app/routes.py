@@ -1375,6 +1375,30 @@ def insured_export_rows():
     return jsonify({'status': 'success', 'headers': headers, 'rows': rows})
 
 
+@main.route('/appointments/<int:case_id>', methods=['GET'])
+def get_appointments(case_id):
+    appointments = GilAppointment.query.filter_by(case_id=case_id).all()
+    return jsonify([a.to_dict() for a in appointments])
+
+@main.route('/appointments/create', methods=['POST'])
+def create_appointment():
+    data = request.json
+    appt = GilAppointment(
+        case_id=data['case_id'],
+        creator_id=session['user_id'],
+        initiator_id=data.get('initiator_id'),
+        appointment_date=data['appointment_date'],
+        time_from=data['time_from'],
+        time_to=data['time_to'],
+        investigator_id_1=data.get('investigator_id_1'),
+        investigator_id_2=data.get('investigator_id_2'),
+        investigator_id_3=data.get('investigator_id_3'),
+        address=data.get('address'),
+        notes=data.get('notes')
+    )
+    db.session.add(appt)
+    db.session.commit()
+    return jsonify({"status": "success", "id": appt.id})
 
 ############################################################################
 

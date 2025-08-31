@@ -397,6 +397,38 @@ $(function () {
 
   // ===== Open add-contact modal (same for create/edit) =====
   $('#addContactBtn').on('click', function () {
+    const insuredId = {{ insured.id if insured else 'null' }};
+
+    // 0) must be in edit mode (insured already saved)
+    if (!insuredId) {
+      alert('נא למלא ולשמור פרטי מבוטח לפני הוספת מקושרים.');
+      return;
+    }
+
+    // 1) first & last name required
+    const firstName = ($('#first_name').val() || '').trim();
+    const lastName  = ($('#last_name').val()  || '').trim();
+    if (!firstName || !lastName) {
+      alert('אנא מלא/י שם פרטי ושם משפחה לפני הוספת מקושר');
+      return;
+    }
+
+    // 2) ID number required
+    const idNumber = ($('#id_number').val() || '').trim();
+    if (!idNumber) {
+      alert('אנא הזן/י תעודת זהות לפני הוספת מקושר');
+      return;
+    }
+
+    // 3) claim number required if type is אכא or סיעוד
+    const claimType   = ($('#claim_type').val()   || '').trim();
+    const claimNumber = ($('#claim_number').val() || '').trim();
+    if ((claimType === 'אכא' || claimType === 'סיעוד') && !claimNumber) {
+      alert('עבור סוג חקירה אכא/סיעוד יש להזין מספר תביעה לפני הוספת מקושר');
+      return;
+    }
+
+    // All good -> open the modal
     $('#addContactModal').modal('show');
   });
 

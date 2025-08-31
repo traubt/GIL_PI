@@ -410,6 +410,33 @@ class GilClinics(db.Model):
         return f'<GilClinics {self.clinic_name}>'
 
 
+class GilAppointment(db.Model):
+    __tablename__ = 'gil_appointments'
+
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('gil_insured.id'), nullable=False)
+
+    date_created = db.Column(db.DateTime, default=datetime.utcnow)
+    date_modified = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    creator_id = db.Column(db.Integer, db.ForeignKey('toc_users.id'))
+    initiator_id = db.Column(db.Integer, db.ForeignKey('toc_users.id'))
+
+    appointment_date = db.Column(db.Date, nullable=False)
+    time_from = db.Column(db.Time, nullable=False)
+    time_to = db.Column(db.Time, nullable=False)
+
+    investigator_id_1 = db.Column(db.Integer, db.ForeignKey('gil_investigator.id'))
+    investigator_id_2 = db.Column(db.Integer, db.ForeignKey('gil_investigator.id'))
+    investigator_id_3 = db.Column(db.Integer, db.ForeignKey('gil_investigator.id'))
+
+    address = db.Column(db.String(255))
+    actual_duration = db.Column(db.Numeric(5,2))
+    notes = db.Column(db.Text)
+
+    case = db.relationship("GilInsured", backref="appointments")
+
+
 
 
 
