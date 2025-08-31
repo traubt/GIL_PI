@@ -93,7 +93,7 @@
                 <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">עדכן</a>
 <!--                <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"-->
 <!--                        data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>-->
-                <button class="btn btn-sm btn-info open-appointments" data-case-id="{{ insured.id }}"> 📅 קבע תור</button>
+                <button class="btn btn-sm btn-info open-appointments" data-case-id="{{ insured.id }}"> 📅תורים</button>
                 <button type="button" class="btn btn-sm btn-secondary change-status-btn"
                         data-id="{{ insured.id }}" data-status="{{ insured.status|default('פתוחה') }}">שנה סטטוס</button>
               </td>
@@ -197,10 +197,11 @@
 <div class="modal fade" id="appointmentsModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl">
     <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">ניהול תורים</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
-      </div>
+        <div class="modal-header">
+          <h5 class="modal-title" id="appointmentsModalTitle">תור עבור: ...</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+        </div>
+
       <div class="modal-body">
 
         <!-- Appointments Table -->
@@ -210,7 +211,11 @@
               <th>תאריך</th>
               <th>שעה</th>
               <th>חוקר/ים</th>
+              <th>מקום</th>
+              <th>רופא</th>
+              <th>קופה</th>
               <th>כתובת</th>
+              <th>יוזם</th>
               <th>הערות</th>
               <th>פעולות</th>
             </tr>
@@ -223,6 +228,7 @@
         <!-- Create Appointment Form -->
         <form id="appointmentForm">
           <input type="hidden" id="case_id" name="case_id">
+
           <div class="row mb-3">
             <div class="col-md-4">
               <label for="appointment_date" class="form-label">תאריך</label>
@@ -241,6 +247,40 @@
               <input type="text" id="address" name="address" class="form-control">
             </div>
           </div>
+
+          <div class="row mb-3">
+            <div class="col-md-4">
+              <label for="place" class="form-label">מקום</label>
+              <input type="text" id="place" name="place" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label for="doctor" class="form-label">רופא</label>
+              <input type="text" id="doctor" name="doctor" class="form-control">
+            </div>
+            <div class="col-md-4">
+              <label for="koopa" class="form-label">קופה</label>
+              <select id="koopa" name="koopa" class="form-select">
+                <option value="">בחר קופה...</option>
+                {% for k in koopa_list %}
+                  <option value="{{ k.koopa_name }}">{{ k.koopa_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+          </div>
+
+
+<!--          <div class="row mb-3">-->
+<!--            <div class="col-md-6">-->
+<!--              <label for="initiator_id" class="form-label">יוזם</label>-->
+<!--              <select id="initiator_id" name="initiator_id" class="form-select">-->
+<!--                <option value="">בחר...</option>-->
+<!--                {% for user in users %}-->
+<!--                  <option value="{{ user.id }}">{{ user.full_name }}</option>-->
+<!--                {% endfor %}-->
+<!--              </select>-->
+<!--            </div>-->
+<!--          </div>-->
 
           <div class="row mb-3">
             <div class="col-md-4">
@@ -283,6 +323,7 @@
     </div>
   </div>
 </div>
+
 
 <script>
 $(function () {
@@ -576,7 +617,11 @@ $(function () {
       { data: 'appointment_date' },
       { data: 'time_range' },
       { data: 'investigators' },
+      { data: 'place' },
+      { data: 'doctor' },
+      { data: 'koopa' },
       { data: 'address' },
+      { data: 'initiator_name' },
       { data: 'notes' },
       { data: 'actions' }
     ],
@@ -592,9 +637,52 @@ $(function () {
   $(document).on('click', '.open-appointments', function () {
     caseId = $(this).data('case-id');
     $('#case_id').val(caseId);
+
+    // build the title from row info
+    const $row = $('#insuredTable tbody tr[data-id="' + caseId + '"]');
+    const name = $row.find('td').eq(5).text() + " " + $row.find('td').eq(6).text();
+    const insurance = $row.find('td').eq(9).text();
+    const claimType = $row.find('td').eq(10).text();
+    const refNum = $row.find('td').eq(3).text();
+    const koopa = $row.find('td').eq(8).text();   // column index 8 is קופה
+
+    $('#appointmentsModalTitle').text(`תור עבור: ${name} ${refNum} (${insurance}, ${claimType})`);
+
+    // set default koopa value
+    $('#koopa').val(koopa);
+
     loadAppointments(caseId);
     $('#appointmentsModal').modal('show');
   });
+
+function buildCalendarUrl(a) {
+  // Build start/end datetime (assume stored as local, convert to UTC if needed)
+  const start = `${a.appointment_date.replace(/-/g, '')}T${a.time_from.replace(':','')}00Z`;
+  const end   = `${a.appointment_date.replace(/-/g, '')}T${a.time_to.replace(':','')}00Z`;
+
+  // Title
+  const title = encodeURIComponent(`תור עבור: ${a.insured_name || ''} (${a.case_id})`);
+
+  // Details
+  const investigators = [a.investigator_1_name, a.investigator_2_name, a.investigator_3_name]
+    .filter(Boolean).join(", ");
+  const details = encodeURIComponent(
+    `ביטוח: ${a.insurance || ''}\n` +
+    `סוג תביעה: ${a.claim_type || ''}\n` +
+    `יוזם: ${a.initiator_name || ''}\n` +
+    `חוקרים: ${investigators}\n` +
+    `הערות: ${a.notes || ''}`
+  );
+
+  // Location
+  const location = encodeURIComponent(`${a.place || ''} ${a.address || ''}`);
+
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
+}
+
+
+
+
 
   function loadAppointments(caseId) {
     $.getJSON(`/appointments/${caseId}`, function (data) {
@@ -603,9 +691,15 @@ $(function () {
           appointment_date: a.appointment_date,
           time_range: `${a.time_from} - ${a.time_to}`,
           investigators: [a.investigator_1_name, a.investigator_2_name, a.investigator_3_name].filter(Boolean).join(", "),
+          place: a.place || '',
+          doctor: a.doctor || '',
+          koopa: a.koopa || '',
           address: a.address || '',
+          initiator_name: a.initiator_name || '',
           notes: a.notes || '',
-          actions: `<button class="btn btn-sm btn-danger delete-appointment" data-id="${a.id}">מחק</button>`
+          actions: `  <button class="btn btn-sm btn-primary edit-appointment" data-id="${a.id}">עדכן</button>
+                      <button class="btn btn-sm btn-danger delete-appointment" data-id="${a.id}">מחק</button>
+                      <a href="${buildCalendarUrl(a)}" target="_blank" class="btn btn-sm btn-success">Google</a>`
         }))
       ).draw();
     });
@@ -614,24 +708,56 @@ $(function () {
   // Save appointment
   $('#appointmentForm').on('submit', function (e) {
     e.preventDefault();
+    const apptId = $(this).data('edit-id'); // check if editing
+
+    const payload = $(this).serializeArray().reduce((obj, item) => {
+      obj[item.name] = item.value;
+      return obj;
+    }, {});
+    payload.case_id = caseId;
+
+    const url = apptId ? `/appointments/${apptId}/update` : '/appointments/create';
+
     $.ajax({
-      url: '/appointments/create',
+      url: url,
       type: 'POST',
       contentType: 'application/json',
-      data: JSON.stringify($(this).serializeArray().reduce((obj, item) => {
-        obj[item.name] = item.value;
-        return obj;
-      }, {})),
+      data: JSON.stringify(payload),
       success: function (res) {
         if (res.status === 'success') {
+          alert(apptId ? "✅ Appointment updated" : "✅ Appointment created");
           loadAppointments(caseId);
           $('#appointmentForm')[0].reset();
+          $('#appointmentForm').removeData('edit-id');
         } else {
           alert("❌ שגיאה בשמירת התור");
         }
       }
     });
   });
+
+
+  // Edit appointment
+    $(document).on('click', '.edit-appointment', function () {
+      const apptId = $(this).data('id');
+      $.getJSON(`/appointments/${apptId}/get`, function (a) {
+        $('#appointment_date').val(a.appointment_date);
+        $('#time_from').val(a.time_from);
+        $('#time_to').val(a.time_to);
+        $('#address').val(a.address);
+        $('#place').val(a.place);
+        $('#doctor').val(a.doctor);
+        $('#koopa').val(a.koopa);
+        $('#investigator_id_1').val(a.investigator_id_1);
+        $('#investigator_id_2').val(a.investigator_id_2);
+        $('#investigator_id_3').val(a.investigator_id_3);
+        $('#notes').val(a.notes);
+
+        // store editing id
+        $('#appointmentForm').data('edit-id', apptId);
+      });
+    });
+
 
   // Delete appointment
   $(document).on('click', '.delete-appointment', function () {
@@ -650,7 +776,26 @@ $(function () {
   });
 
 });
+
+
+$(document).ready(function () {
+  // Loop through all "קבע תור" buttons and check future appointments
+  $('.open-appointments').each(function () {
+    const btn = $(this);
+    const caseId = btn.data('case-id');
+
+    $.getJSON(`/appointments/${caseId}/has_future`, function (res) {
+      if (res.has_future) {
+        btn.removeClass('btn-info btn-danger').addClass('btn-success'); // light green
+      } else {
+        btn.removeClass('btn-info btn-success').addClass('btn-danger'); // light red
+      }
+    });
+  });
+});
+
 </script>
+
 
 
 <script src="static/assets/js/main.js"></script>

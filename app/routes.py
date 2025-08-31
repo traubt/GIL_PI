@@ -835,6 +835,7 @@ def admin_insured():
     shop_data = session.get('shop')
     shop = json.loads(shop_data) if shop_data else {}
     investigators = GilInvestigator.query.order_by(GilInvestigator.full_name.asc()).all()
+    koopa_list = GilKoopa.query.order_by(GilKoopa.koopa_name.asc()).all()
 
     # role list
     roles = db.session.query(TocRole).all()
@@ -866,7 +867,8 @@ def admin_insured():
         shop=shop,
         roles=roles_list,
         insured_list=insured_list,
-        investigators=investigators
+        investigators=investigators,
+        koopa_list=koopa_list
     )
 
 
@@ -1378,27 +1380,92 @@ def insured_export_rows():
 @main.route('/appointments/<int:case_id>', methods=['GET'])
 def get_appointments(case_id):
     appointments = GilAppointment.query.filter_by(case_id=case_id).all()
-    return jsonify([a.to_dict() for a in appointments])
+    insured = GilInsured.query.get(case_id)
+
+    results = []
+    for a in appointments:
+        d = a.to_dict()
+        d["insured_name"] = f"{insured.first_name} {insured.last_name}" if insured else ""
+        d["insurance"] = insured.insurance if insured else ""
+        d["claim_type"] = insured.claim_type if insured else ""
+        results.append(d)
+
+    return jsonify(results)
+
 
 @main.route('/appointments/create', methods=['POST'])
 def create_appointment():
-    data = request.json
-    appt = GilAppointment(
-        case_id=data['case_id'],
-        creator_id=session['user_id'],
-        initiator_id=data.get('initiator_id'),
-        appointment_date=data['appointment_date'],
-        time_from=data['time_from'],
-        time_to=data['time_to'],
-        investigator_id_1=data.get('investigator_id_1'),
-        investigator_id_2=data.get('investigator_id_2'),
-        investigator_id_3=data.get('investigator_id_3'),
-        address=data.get('address'),
-        notes=data.get('notes')
-    )
-    db.session.add(appt)
-    db.session.commit()
-    return jsonify({"status": "success", "id": appt.id})
+    data = request.get_json()
+    try:
+        current_app.logger.info(f"Incoming appointment data: {data}")
+
+        user_data = json.loads(session.get('user')) if session.get('user') else {}
+        user_id = user_data.get('id')
+
+        appt = GilAppointment(
+            case_id=data['case_id'],
+            creator_id=user_id,
+            initiator_id=user_id,   # logged-in user
+            appointment_date=datetime.strptime(data['appointment_date'], "%Y-%m-%d").date(),
+            time_from=datetime.strptime(data['time_from'], "%H:%M").time(),
+            time_to=datetime.strptime(data['time_to'], "%H:%M").time(),
+            investigator_id_1=data.get('investigator_id_1') or None,
+            investigator_id_2=data.get('investigator_id_2') or None,
+            investigator_id_3=data.get('investigator_id_3') or None,
+            address=data.get('address'),
+            notes=data.get('notes'),
+            place=data.get('place'),
+            doctor=data.get('doctor'),
+            koopa=data.get('koopa')
+        )
+        db.session.add(appt)
+        db.session.commit()
+        return jsonify({"status": "success", "id": appt.id})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"create_appointment error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+
+@main.route('/appointments/<int:id>/get', methods=['GET'])
+def get_appointment(id):
+    appt = GilAppointment.query.get_or_404(id)
+    return jsonify(appt.to_dict())
+
+@main.route('/appointments/<int:id>/update', methods=['POST'])
+def update_appointment(id):
+    data = request.get_json()
+    appt = GilAppointment.query.get_or_404(id)
+    try:
+        appt.appointment_date = datetime.strptime(data['appointment_date'], "%Y-%m-%d").date()
+        appt.time_from = datetime.strptime(data['time_from'], "%H:%M").time()
+        appt.time_to = datetime.strptime(data['time_to'], "%H:%M").time()
+        appt.address = data.get('address')
+        appt.place = data.get('place')
+        appt.doctor = data.get('doctor')
+        appt.koopa = data.get('koopa')
+        appt.investigator_id_1 = data.get('investigator_id_1') or None
+        appt.investigator_id_2 = data.get('investigator_id_2') or None
+        appt.investigator_id_3 = data.get('investigator_id_3') or None
+        appt.notes = data.get('notes')
+
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 400
+
+@main.route('/appointments/<int:case_id>/has_future', methods=['GET'])
+def has_future_appointment(case_id):
+    today = datetime.utcnow().date()
+    exists = db.session.query(
+        GilAppointment.query.filter(
+            GilAppointment.case_id == case_id,
+            GilAppointment.appointment_date >= today
+        ).exists()
+    ).scalar()
+    return jsonify({"has_future": bool(exists)})
+
 
 ############################################################################
 

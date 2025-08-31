@@ -410,12 +410,13 @@ class GilClinics(db.Model):
         return f'<GilClinics {self.clinic_name}>'
 
 
+from datetime import datetime
+
 class GilAppointment(db.Model):
     __tablename__ = 'gil_appointments'
 
     id = db.Column(db.Integer, primary_key=True)
     case_id = db.Column(db.Integer, db.ForeignKey('gil_insured.id'), nullable=False)
-
     date_created = db.Column(db.DateTime, default=datetime.utcnow)
     date_modified = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -434,7 +435,47 @@ class GilAppointment(db.Model):
     actual_duration = db.Column(db.Numeric(5,2))
     notes = db.Column(db.Text)
 
+    place = db.Column(db.String(100))
+    doctor = db.Column(db.String(100))
+    koopa = db.Column(db.String(100))
+
     case = db.relationship("GilInsured", backref="appointments")
+
+    # <-- HERE: add the helper method inside the class
+    def to_dict(self):
+        def inv_name(inv_id):
+            if not inv_id:
+                return None
+            inv = GilInvestigator.query.get(inv_id)
+            return inv.full_name if inv else None
+
+        def user_name(user_id):
+            if not user_id:
+                return None
+            user = User.query.get(user_id)   # ✅ FIXED (was TocUser)
+            if user:
+                return f"{user.first_name or ''} {user.last_name or ''}".strip()
+            return None
+
+        return {
+            "id": self.id,
+            "case_id": self.case_id,
+            "appointment_date": self.appointment_date.strftime("%Y-%m-%d"),
+            "time_from": self.time_from.strftime("%H:%M"),
+            "time_to": self.time_to.strftime("%H:%M"),
+            "investigator_1_name": inv_name(self.investigator_id_1),
+            "investigator_2_name": inv_name(self.investigator_id_2),
+            "investigator_3_name": inv_name(self.investigator_id_3),
+            "address": self.address,
+            "notes": self.notes,
+            "place": self.place,
+            "doctor": self.doctor,
+            "koopa": self.koopa,
+            "initiator_name": user_name(self.initiator_id)
+        }
+
+
+
 
 
 
