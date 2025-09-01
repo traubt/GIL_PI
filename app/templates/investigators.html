@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block content %}
+{% include 'header-bar.html' %}
+{% include 'side-bar.html' %}
+{% include 'head.html' %}
+
+<div class="container mt-3">
+  <h4>תיקים שלי</h4>
+
+  <div class="table-responsive">
+    <table id="casesTable" class="table table-striped table-bordered">
+      <thead>
+        <tr>
+          <th>מספר תיק</th>
+          <th>שם</th>
+          <th>תעודת זהות</th>
+          <th>סטטוס</th>
+          <th>פעולות</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for case in cases %}
+        <tr>
+          <td>{{ case.ref_number }}</td>
+          <td>{{ case.first_name }} {{ case.last_name }}</td>
+          <td>{{ case.id_number }}</td>
+          <td>{{ case.status }}</td>
+          <td>
+            <a href="{{ url_for('main.view_insured', id=case.id) }}" class="btn btn-sm btn-primary">צפה</a>
+            <a href="{{ url_for('main.view_appointments', id=case.id) }}" class="btn btn-sm btn-info">פגישות</a>
+            {% if case.status != "In Progress" %}
+              <button class="btn btn-sm btn-success accept-btn" data-id="{{ case.id }}">קבל</button>
+            {% endif %}
+            {% if case.status != "הושלמה" %}
+              <button class="btn btn-sm btn-warning complete-btn" data-id="{{ case.id }}">סיים</button>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+$(document).ready(function() {
+  $('#casesTable').DataTable({
+    responsive: true,
+    paging: true,
+    language: {
+      url: "//cdn.datatables.net/plug-ins/1.10.21/i18n/Hebrew.json"
+    }
+  });
+
+  // Accept case
+  $('.accept-btn').on('click', function() {
+    let caseId = $(this).data('id');
+    $.post(`/case/${caseId}/accept`, function(response) {
+      alert(response.message);
+      location.reload();
+    });
+  });
+
+  // Complete case
+  $('.complete-btn').on('click', function() {
+    let caseId = $(this).data('id');
+    $.post(`/case/${caseId}/complete`, function(response) {
+      alert(response.message);
+      location.reload();
+    });
+  });
+});
+</script>
+
+{% include 'footer.html' %}
+{% endblock %}
+

@@ -350,16 +350,27 @@ class GilInvestigator(db.Model):
     email = db.Column(db.String(150))
 
     start_work = db.Column(db.Date)
-    active_status = db.Column(db.Enum('Active', 'Inactive', 'Suspended'), default='Active')
+    active_status = db.Column(
+        db.Enum('Active', 'Inactive', 'Suspended'),
+        default='Active'
+    )
 
     last_payment = db.Column(db.Numeric(12, 2), default=0.00)
     last_payment_date = db.Column(db.Date)
 
-    payment_frequency = db.Column(db.Enum('Monthly', 'Weekly', 'Per Case'), default='Per Case')
+    payment_frequency = db.Column(
+        db.Enum('Monthly', 'Weekly', 'Per Case'),
+        default='Per Case'
+    )
     total_cases = db.Column(db.Integer, default=0)
     rating = db.Column(db.Numeric(3, 2))  # Performance rating (0.00 - 5.00)
 
     notes = db.Column(db.Text)
+
+    # 🔗 Link to toc_users
+    user_id = db.Column(db.Integer, db.ForeignKey('toc_users.id'), nullable=True, unique=True)
+    user = db.relationship("User", backref="investigator_profile", uselist=False)
+
 
 
 class GilContact(db.Model):
@@ -475,6 +486,19 @@ class GilAppointment(db.Model):
         }
 
 
+class GilInvestigatorCase(db.Model):
+    __tablename__ = 'gil_investigator_case'
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    insured_id = db.Column(db.Integer, db.ForeignKey('gil_insured.id'), nullable=False, index=True)
+    investigator_id = db.Column(db.Integer, db.ForeignKey('gil_investigator.id'), nullable=False, index=True)
+    assigned_by = db.Column(db.Integer, db.ForeignKey('toc_users.id'), nullable=True)
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    active = db.Column(db.Boolean, default=True, nullable=False)
+
+    insured = db.relationship('GilInsured', backref=db.backref('investigator_links', cascade='all, delete-orphan'))
+    investigator = db.relationship('GilInvestigator', backref=db.backref('case_links', cascade='all, delete-orphan'))
+    assigned_by_user = db.relationship('User', foreign_keys=[assigned_by])
 
 
 

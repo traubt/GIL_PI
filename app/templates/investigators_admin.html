@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  {% include 'head.html' %}
+</head>
+
+<body>
+
+   {% include 'header-bar.html' %}
+   {% include 'side-bar.html' %}
+
+  <main id="main" class="main">
+
+    <div class="pagetitle">
+      <h1>Admin</h1>
+      <nav>
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="#">Home</a></li>
+          <li class="breadcrumb-item">Pages</li>
+          <li class="breadcrumb-item active">Investigator Admin</li>
+        </ol>
+      </nav>
+    </div><!-- End Page Title -->
+
+    <section class="section">
+      <div class="row">
+        <div class="col-lg-12">
+
+          <div class="card" dir="rtl">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center">
+                <h5 class="card-title mb-0">חוקרים</h5>
+              </div>
+
+              <div class="d-flex gap-1 mt-3">
+                <button class="btn btn-primary" id="getInvestigators">טען חוקרים</button>
+                <button class="btn btn-primary" id="createInvestigator">צור חוקר</button>
+              </div>
+
+              <!-- טבלת חוקרים -->
+              <table id="Investigators" border="1" class="table table-bordered mt-3">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- חלון עדכון חוקר -->
+          <div class="modal fade" id="updateModal" tabindex="-1" aria-hidden="true" dir="rtl">
+            <div class="modal-dialog">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title">עדכון חוקר</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                  <form id="updateInvestigatorForm">
+                    <input type="hidden" id="investigatorId" name="id">
+
+                    <div class="mb-3">
+                      <label class="form-label">שם פרטי</label>
+                      <input type="text" class="form-control" name="first_name" id="first_name">
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label">שם משפחה</label>
+                      <input type="text" class="form-control" name="last_name" id="last_name">
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label">כתובת</label>
+                      <input type="text" class="form-control" name="address" id="address">
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label">טלפון</label>
+                      <input type="text" class="form-control" name="phone" id="phone">
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label">אימייל</label>
+                      <input type="email" class="form-control" name="email" id="email">
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label">תחילת עבודה</label>
+                      <input type="date" class="form-control" name="start_work" id="start_work">
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label">שם משתמש</label>
+                      <input type="text" class="form-control" name="username" id="username">
+                    </div>
+
+                    <div class="mb-3">
+                      <label class="form-label">סיסמה</label>
+                      <input type="password" class="form-control" name="password" id="password">
+                    </div>
+
+                  </form>
+                </div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+                  <button type="button" class="btn btn-primary" id="saveChangesButton">עדכן</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <script>
+          $(document).ready(function() {
+
+            // Load investigators
+            $("#getInvestigators").on("click", function() {
+              $.get("/api/get_investigators", function(response) {
+                if ($.fn.DataTable.isDataTable("#Investigators")) {
+                  $('#Investigators').DataTable().destroy();
+                }
+
+                $('#Investigators tbody').empty();
+                $('#Investigators thead').empty();
+
+                const columnOrder = [
+                  "id","first_name","last_name","address","phone","email","start_work","username"
+                ];
+
+                let headerHtml = '<tr>';
+                columnOrder.forEach(h => headerHtml += `<th>${h}</th>`);
+                headerHtml += '<th>Actions</th></tr>';
+                $('#Investigators thead').append(headerHtml);
+
+                const tableData = response.map(inv => {
+                  let rowData = [];
+                  columnOrder.forEach(h => rowData.push(inv[h]));
+                  rowData.push(`
+                    <button class="btn btn-primary btn-update" data-id="${inv.id}">Update</button>
+                    <button class="btn btn-danger btn-delete" data-id="${inv.id}">Delete</button>
+                  `);
+                  return rowData;
+                });
+
+                $('#Investigators').DataTable({
+                  data: tableData,
+                  paging: false,
+                  searching: false,
+                  ordering: true
+                });
+              });
+            });
+
+            // Create new investigator
+            $("#createInvestigator").on("click", function() {
+              $('#updateInvestigatorForm')[0].reset();
+              $('#investigatorId').val('');
+              const modal = new bootstrap.Modal(document.getElementById('updateModal'));
+              modal.show();
+            });
+
+            // Edit
+            $('#Investigators').on('click', '.btn-update', function() {
+              const id = $(this).data('id');
+              $.get(`/api/get_investigator/${id}`, function(data) {
+                for (const key in data) { $(`#${key}`).val(data[key]); }
+                $('#investigatorId').val(id);
+                const modal = new bootstrap.Modal(document.getElementById('updateModal'));
+                modal.show();
+              });
+            });
+
+
+            // Delete
+            $('#Investigators').on('click', '.btn-delete', function() {
+              const id = $(this).data('id');
+              if (confirm("Delete investigator?")) {
+                $.ajax({ url: `/api/delete_investigator/${id}`, method: "DELETE" })
+                  .done(() => $("#getInvestigators").click());
+              }
+            });
+
+            // Save
+            $('#saveChangesButton').on('click', function () {
+              const id = $('#investigatorId').val();
+              const method = id ? "PUT" : "POST";
+              const url = id ? `/api/update_investigator/${id}` : "/api/create_investigator";
+
+              $.ajax({
+                url,
+                method,
+                data: $('#updateInvestigatorForm').serialize(),
+                success: function (resp) {
+                  alert(resp.message);
+
+                  // ✅ Bootstrap 5 way to hide modal
+                  const modalEl = document.getElementById('updateModal');
+                  const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                  modal.hide();
+
+                  // Refresh table
+                  $("#getInvestigators").click();
+                },
+                error: function (xhr) {
+                  alert(xhr.responseJSON?.error || "An error occurred while saving the investigator.");
+                }
+              });
+            });
+
+
+          });
+          </script>
+
+        </div>
+      </div>
+    </section>
+  </main><!-- End #main -->
+
+  {% include 'footer.html' %}
+</body>
+</html>

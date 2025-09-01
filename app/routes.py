@@ -1,26 +1,23 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, send_from_directory, current_app
-import pymysql
-import json
-import os
-from sqlalchemy.exc import SQLAlchemyError
+from flask import Blueprint,  flash
 from .models import *
 from .db_queries import *
-from datetime import datetime, timezone, timedelta, date
-from flask import Flask, request, jsonify
-from sqlalchemy import distinct, or_, text, desc
-from flask import session, jsonify
+from datetime import  timezone
+from flask import Flask
+from sqlalchemy import  desc
+from flask import session
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import logging
-import pandas as pd
 import openai
 import re
 from app.tables_for_openAI import DATABASE_SCHEMA
-import requests
-
-from shipday import Shipday
-from shipday.order import Address, Customer, Pickup, OrderItem, Order
+from datetime import datetime
+from flask import redirect, url_for, current_app
+import os
+from flask import render_template, request, jsonify
+from app import db
+from app.models import GilInsured
 
 
 logging.basicConfig(
@@ -229,7 +226,6 @@ def login_post():
     password = request.form.get('password')
     user = User.query.filter_by(username=username).first()
 
-
     if not user or user.password != password:
         flash('User/password invalid')
         return redirect(url_for('main.login'))
@@ -237,8 +233,8 @@ def login_post():
     # Serialize user object
     user_data = {
         'id': user.id,
-        'username' : user.username,
-        'password' : user.password,
+        'username': user.username,
+        'password': user.password,
         'first_name': user.first_name,
         'last_name': user.last_name,
         'email': user.email,
@@ -247,29 +243,31 @@ def login_post():
     }
     session['user'] = json.dumps(user_data)
 
-    #Save to the session shop data
+    # Save to the session shop data
     shop = TOC_SHOPS.query.filter_by(blName=user.shop).first()
-    # print(f"shop: {shop.store}")
-    shop_data = {
-        'name' : shop.blName,
-        'code' : shop.store,
-        'customer' : shop.customer
-    }
-    session['shop'] = json.dumps(shop_data)
+    if shop:
+        shop_data = {
+            'name': shop.blName,
+            'code': shop.store,
+            'customer': shop.customer
+        }
+        session['shop'] = json.dumps(shop_data)
 
-    # Create a new TOCUserActivity record
+    # Log user activity
     new_activity = TOCUserActivity(
-        user=user.username,  # Assuming the username is stored in user["username"]
-        shop=shop.customer,  # Assuming the shop name is stored in shop["customer"]
+        user=user.username,
+        shop=shop.customer if shop else None,
         activity="User login"
     )
-
-    # Add the record to the session and commit to the database
     db.session.add(new_activity)
     db.session.commit()
 
+    # Redirect based on role
+    if user.role == "Investigator":
+        return redirect(url_for('main.investigators'))
+    else:
+        return redirect(url_for('main.admin_insured'))
 
-    return redirect(url_for('main.admin_insured'))
 
 @main.route('/welcome/<username>')
 def welcome(username):
@@ -305,6 +303,26 @@ def admin_users():
 
     return render_template(
         'user_admin.html',
+        user=user,
+        shops=list_of_shops,
+        roles=roles_list,
+        users=users
+    )
+
+@main.route('/admin_investigators')
+def admin_investigators():
+    user_data = session.get('user')
+    user = json.loads(user_data)
+    shop_data = session.get('shop')
+    shop = json.loads(shop_data)
+    roles = TocRole.query.all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+    users = User.query.all()
+    shops = TOC_SHOPS.query.filter(TOC_SHOPS.store != '001').all()
+    list_of_shops = [shop.blName for shop in shops]
+
+    return render_template(
+        'investigators_admin.html',
         user=user,
         shops=list_of_shops,
         roles=roles_list,
@@ -871,20 +889,6 @@ def admin_insured():
         koopa_list=koopa_list
     )
 
-
-from datetime import datetime, date
-
-from datetime import datetime, date
-from flask import render_template, request, redirect, url_for, current_app
-from werkzeug.utils import secure_filename
-import os
-
-from flask import jsonify
-
-from flask import render_template, request, jsonify
-from app import db
-from app.models import GilInsured
-
 @main.route('/insured/create', methods=['GET', 'POST'])
 def create_insured():
     # Fetch clinics and koopa from the database
@@ -1098,21 +1102,6 @@ def edit_insured(id):
                            koopa=koopa)
 
 
-# routes.py
-
-
-# @main.route('/insured/assign_investigator', methods=['POST'])
-# def assign_investigator():
-#     insured_id = request.form.get('insured_id', type=int)
-#     selected = request.form.getlist('investigators')  # from checkboxes
-#
-#     insured = GilInsured.query.get_or_404(insured_id)
-#     insured.investigator = '*'.join([s for s in selected if s.strip()]) or None
-#     db.session.commit()
-#     return jsonify({"status": "success", "investigator": insured.investigator or ""})
-
-# routes.py
-
 @main.route('/insured/assign_investigator', methods=['POST'])
 def assign_investigator():
     try:
@@ -1123,20 +1112,46 @@ def assign_investigator():
         # Accept either "investigators" or "investigators[]" from jQuery
         selected = request.form.getlist('investigators') or request.form.getlist('investigators[]')
         selected = [s.strip() for s in selected if s and s.strip()]
-        inv_str = '*'.join(selected) if selected else None
 
         insured = GilInsured.query.get_or_404(insured_id)
-        insured.investigator = inv_str
+
+        # Resolve investigator IDs from names
+        inv_ids = []
+        for sel in selected:
+            inv = GilInvestigator.query.filter_by(full_name=sel).first()
+            if inv:
+                inv_ids.append(inv.id)
+
+        # --- Update legacy field (as today) ---
+        insured.investigator = '*'.join(selected) if selected else None
+
+        # --- Update relational table ---
+        existing_links = {link.investigator_id: link for link in insured.investigator_links if link.active}
+
+        # Add or reactivate selected
+        for inv_id in inv_ids:
+            link = existing_links.get(inv_id)
+            if link:
+                link.active = True
+            else:
+                db.session.add(GilInvestigatorCase(
+                    insured_id=insured.id,
+                    investigator_id=inv_id,
+                    assigned_by=json.loads(session.get('user'))["id"] if session.get('user') else None
+                ))
+
+        # Deactivate removed
+        for inv_id, link in existing_links.items():
+            if inv_id not in inv_ids:
+                link.active = False
+
         db.session.commit()
 
-        return jsonify({'status': 'success', 'investigator': inv_str or ''})
+        return jsonify({'status': 'success', 'investigator': insured.investigator or ''})
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f'assign_investigator error: {e}')
         return jsonify({'status': 'error', 'message': 'שגיאה בעדכון חוקר'}), 500
-
-
-
 
 
 def load_clinics():
@@ -1516,6 +1531,212 @@ def appointments_calendar():
 def get_appointment_json(id):
     appt = GilAppointment.query.get_or_404(id)
     return jsonify(appt.to_dict())
+
+
+
+#########################
+# GET ALL INVESTIGATORS #
+#########################
+@main.route('/api/get_investigators', methods=['GET'])
+def get_investigators():
+    investigators = GilInvestigator.query.all()
+    results = []
+    for inv in investigators:
+        # find linked user by email/username
+        user = User.query.filter_by(email=inv.email, role="Investigator").first()
+        results.append({
+            "id": inv.id,
+            "first_name": inv.full_name.split(" ")[0] if inv.full_name else "",
+            "last_name": " ".join(inv.full_name.split(" ")[1:]) if inv.full_name else "",
+            "address": inv.address,
+            "phone": inv.phone,
+            "email": inv.email,
+            "start_work": inv.start_work.strftime("%Y-%m-%d") if inv.start_work else "",
+            "username": user.username if user else "",
+            "role": user.role if user else "Investigator",
+            "shop": user.shop if user else "Head Office"
+        })
+    return jsonify(results)
+
+
+#########################
+# GET SINGLE INVESTIGATOR #
+#########################
+@main.route('/investigators')
+def investigators():
+    user_data = session.get('user')
+    user = json.loads(user_data) if user_data else {}
+    shop_data = session.get('shop')
+    shop = json.loads(shop_data) if shop_data else {}
+
+    if not user or user.get("role") != "Investigator":
+        return redirect(url_for('main.login'))
+
+    # --- Find investigator linked to this user ---
+    inv_row = GilInvestigator.query.filter_by(user_id=user["id"]).first()
+
+    if not inv_row:
+        current_app.logger.warning(f"No investigator linked for user_id={user.get('id')}")
+        insured_list = []
+    else:
+        current_app.logger.info(
+            f"Found investigator {inv_row.full_name} (id={inv_row.id}) for user_id={user['id']}"
+        )
+
+        query = (
+            db.session.query(GilInsured)
+            .join(GilInvestigatorCase, GilInsured.id == GilInvestigatorCase.insured_id)
+            .filter(
+                GilInvestigatorCase.investigator_id == inv_row.id,
+                GilInvestigatorCase.active.is_(True),
+                GilInsured.status != "הושלמה"
+            )
+        )
+
+        insured_list = query.order_by(GilInsured.received_date.desc()).all()
+        current_app.logger.info(
+            f"Investigator {inv_row.full_name} (id={inv_row.id}) has {len(insured_list)} active cases"
+        )
+
+    # Extra context (if template expects them)
+    investigators = GilInvestigator.query.order_by(GilInvestigator.full_name.asc()).all()
+    koopa_list = GilKoopa.query.order_by(GilKoopa.koopa_name.asc()).all()
+    roles = db.session.query(TocRole).all()
+    roles_list = [{'role': r.role, 'exclusions': r.exclusions} for r in roles]
+
+    return render_template(
+        'investigators.html',
+        user=user,
+        shop=shop,
+        roles=roles_list,
+        insured_list=insured_list,
+        investigators=investigators,
+        koopa_list=koopa_list
+    )
+
+
+
+
+#########################
+# CREATE INVESTIGATOR   #
+#########################
+@main.route('/api/create_investigator', methods=['POST'])
+def create_investigator():
+    data = request.form
+    first_name = data.get("first_name")
+    last_name = data.get("last_name")
+    full_name = f"{first_name} {last_name}".strip()
+
+    # check if user already exists
+    existing_user = User.query.filter_by(email=data.get("email")).first()
+    if existing_user:
+        return jsonify({
+            "status": "error",
+            "message": f"User with email {data.get('email')} already exists"
+        }), 400
+
+    # create linked user first
+    user = User(
+        username=data.get("username"),
+        password=data.get("password"),
+        first_name=first_name,
+        last_name=last_name,
+        email=data.get("email"),
+        phone=data.get("phone"),
+        role="Investigator",
+        shop="Head Office"
+    )
+    db.session.add(user)
+    db.session.flush()  # get user.id
+
+    # create investigator linked to user
+    inv = GilInvestigator(
+        full_name=full_name,
+        address=data.get("address"),
+        phone=data.get("phone"),
+        email=data.get("email"),
+        start_work=datetime.strptime(data.get("start_work"), "%Y-%m-%d") if data.get("start_work") else None,
+        active_status="Active",
+        user_id=user.id  # 🔗 reference
+    )
+    db.session.add(inv)
+
+    db.session.commit()
+
+    return jsonify({
+        "status": "success",
+        "message": "Investigator and user created",
+        "id": inv.id,
+        "user_id": user.id
+    })
+
+
+
+
+#########################
+# UPDATE INVESTIGATOR   #
+#########################
+@main.route('/api/update_investigator/<int:id>', methods=['PUT'])
+def update_investigator(id):
+    data = request.form
+    inv = GilInvestigator.query.get_or_404(id)
+
+    first_name = data.get("first_name")
+    last_name = data.get("last_name")
+    inv.full_name = f"{first_name} {last_name}".strip()
+    inv.address = data.get("address")
+    inv.phone = data.get("phone")
+    inv.email = data.get("email")
+    inv.start_work = datetime.strptime(data.get("start_work"), "%Y-%m-%d") if data.get("start_work") else None
+
+    # update linked user
+    user = User.query.filter_by(email=inv.email, role="Investigator").first()
+    if not user:
+        # if not found, create new
+        user = User(role="Investigator", shop="Head Office")
+        db.session.add(user)
+
+    user.username = data.get("username")
+    user.password = data.get("password")
+    user.first_name = first_name
+    user.last_name = last_name
+    user.email = data.get("email")
+    user.phone = data.get("phone")
+
+    db.session.commit()
+    return jsonify({"status": "success", "message": "Investigator updated"})
+
+
+#########################
+# DELETE INVESTIGATOR   #
+#########################
+@main.route('/api/delete_investigator/<int:id>', methods=['DELETE'])
+def delete_investigator(id):
+    inv = GilInvestigator.query.get_or_404(id)
+
+    # delete linked user
+    if inv.email:
+        user = User.query.filter_by(email=inv.email, role="Investigator").first()
+        if user:
+            db.session.delete(user)
+
+    db.session.delete(inv)
+    db.session.commit()
+    return jsonify({"status": "success", "message": "Investigator deleted"})
+
+@main.route('/case/<int:case_id>/accept', methods=['POST'])
+def accept_case(case_id):
+    case = GilInsured.query.get_or_404(case_id)
+    case.status = "בעבודה"
+    db.session.commit()
+    return jsonify({"status": "success", "message": "התיק התקבל בהצלחה"})
+
+@main.route('/case/<int:case_id>/complete', methods=['POST'])
+def complete_case(case_id):
+    case = GilInsured.query.get_or_404(case_id)
+    case.status = "הושלמה"
+    db.session.commit()
+    return jsonify({"status": "success", "message": "התיק הושלם בהצלחה"})
 
 
 ############################################################################
