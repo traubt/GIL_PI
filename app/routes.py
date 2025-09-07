@@ -1577,7 +1577,7 @@ def investigators():
 
     if not inv_row:
         current_app.logger.warning(f"No investigator linked for user_id={user.get('id')}")
-        insured_list = []
+        cases = []
     else:
         current_app.logger.info(
             f"Found investigator {inv_row.full_name} (id={inv_row.id}) for user_id={user['id']}"
@@ -1593,9 +1593,9 @@ def investigators():
             )
         )
 
-        insured_list = query.order_by(GilInsured.received_date.desc()).all()
+        cases = query.order_by(GilInsured.received_date.desc()).all()
         current_app.logger.info(
-            f"Investigator {inv_row.full_name} (id={inv_row.id}) has {len(insured_list)} active cases"
+            f"Investigator {inv_row.full_name} (id={inv_row.id}) has {len(cases)} active cases"
         )
 
     # Extra context (if template expects them)
@@ -1609,9 +1609,10 @@ def investigators():
         user=user,
         shop=shop,
         roles=roles_list,
-        insured_list=insured_list,
+        cases=cases,
         investigators=investigators,
-        koopa_list=koopa_list
+        koopa_list=koopa_list,
+        now=datetime.utcnow
     )
 
 
