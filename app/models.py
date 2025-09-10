@@ -87,40 +87,9 @@ class TocNotification(db.Model):
     not_status = db.Column(db.String(45), nullable=True)
 
 
-class TocStockOrder(db.Model):
-    __tablename__ = 'toc_stock_order'
 
-    shop_id = db.Column(db.String(45), primary_key=True, nullable=False)
-    order_open_date = db.Column(db.DateTime, primary_key=True, nullable=False)
-    sku = db.Column(db.String(45), primary_key=True, nullable=False)
-    order_id = db.Column(db.String(45))
-    user = db.Column(db.String(45))
-    item_name = db.Column(db.String(100))
-    order_qty = db.Column(db.Float)
-    comments = db.Column(db.String(100))
-    order_status = db.Column(db.String(45))
-    order_status_date = db.Column(db.DateTime)
 
-class TocReplenishOrder(db.Model):
-    __tablename__ = 'toc_replenish_order'
 
-    shop_id = db.Column(db.String(45), primary_key=True, nullable=False)
-    order_id = db.Column(db.String(45), primary_key=True, nullable=False)
-    sku = db.Column(db.String(45), primary_key=True, nullable=False)
-    order_open_date = db.Column(db.DateTime, nullable=True)
-    user = db.Column(db.String(45), nullable=True)
-    item_name = db.Column(db.String(100), nullable=True)
-    replenish_qty = db.Column(db.Float, nullable=True)
-    comments = db.Column(db.String(100), nullable=True)
-    received_qty = db.Column(db.Float, nullable=True)
-    rejected_qty = db.Column(db.Float, nullable=True)
-    variance = db.Column(db.Float, nullable=True)
-    received_date = db.Column(db.DateTime, nullable=True)
-    received_by = db.Column(db.String(45), nullable=True)
-    received_comment = db.Column(db.String(100), nullable=True)
-    pastel_ind = db.Column(db.Integer, default=0)
-    save_count = db.Column(db.Float, default=0)
-    pastel_date = db.Column(db.DateTime, nullable=True)
 
 class TocProduct(db.Model):
     __tablename__ = 'toc_product'
@@ -139,65 +108,7 @@ class TocProduct(db.Model):
     creation_date = db.Column(db.DateTime, default=datetime.now(timezone.utc))
     update_date = db.Column(db.DateTime, default=datetime.now(timezone.utc))
 
-class TOCReplenishCtrl(db.Model):
-    __tablename__ = 'toc_replenish_ctrl'
 
-    order_id = db.Column(db.String(45), primary_key=True)
-    shop_id = db.Column(db.String(45), nullable=True)
-    order_open_date = db.Column(db.DateTime, nullable=True)
-    user = db.Column(db.String(45), nullable=True)
-    order_status = db.Column(db.String(45), nullable=True)
-    order_status_date = db.Column(db.DateTime, nullable=True)
-    tracking_code = db.Column(db.String(45), nullable=True)
-    sold_qty = db.Column(db.Integer, nullable=True)
-    replenish_qty = db.Column(db.Integer, nullable=True)
-    sent_from = db.Column(db.String(45), nullable=True)
-
-class TocStock(db.Model):
-    __tablename__ = 'toc_stock'
-
-    shop_id = db.Column(db.String(20), primary_key=True, nullable=False)
-    sku = db.Column(db.String(45), primary_key=True, nullable=False)
-    stock_qty_date = db.Column(db.DateTime,  nullable=False)
-    product_name = db.Column(db.String(100), nullable=True)
-    stock_count = db.Column(db.Float, nullable=True)
-    count_by = db.Column(db.String(45), nullable=True)
-    last_stock_qty = db.Column(db.Float, nullable=True)
-    calc_stock_qty = db.Column(db.Float, nullable=True)
-    variance = db.Column(db.Float, nullable=False, default=0)
-    variance_rsn = db.Column(db.String(45), nullable=True)
-    stock_transfer = db.Column(db.Float, nullable=True, default=0)
-    shop_name = db.Column(db.String(45), nullable=True)
-    rejects_qty = db.Column(db.Float, nullable=True)
-    rcv_damaged = db.Column(db.Float, nullable=True)
-    final_stock_qty = db.Column(db.Float, nullable=True)
-    replenish_id = db.Column(db.String(45), nullable=True)
-    comments = db.Column(db.String(150), nullable=True)
-    pastel_ind = db.Column(db.Integer, default=0, nullable=True)
-    pastel_count = db.Column(db.Float, nullable=True)
-    pastel_date =  db.Column(db.DateTime, nullable=True)
-
-class TOCStockVariance(db.Model):
-    __tablename__ = 'toc_stock_variance'
-
-    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    creation_date = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))  # Use datetime.utcnow for default
-    shop_id = db.Column(db.String(20), nullable=True)
-    sku = db.Column(db.String(45), nullable=True)
-    stock_qty_date = db.Column(db.DateTime, nullable=True)
-    product_name = db.Column(db.String(100), nullable=True)
-    stock_count = db.Column(db.Float, nullable=True)
-    count_by = db.Column(db.String(45), nullable=True)
-    last_stock_qty = db.Column(db.Float, nullable=True)
-    calc_stock_qty = db.Column(db.Float, nullable=True)
-    variance = db.Column(db.Float, default=0)  # Ensure default is numeric
-    # variance_rsn = db.Column(db.String(45), nullable=True)
-    stock_recount = db.Column(db.Float, nullable=True)
-    shop_name = db.Column(db.String(45), nullable=True)
-    rejects_qty = db.Column(db.Float, nullable=True)
-    final_stock_qty = db.Column(db.Float, nullable=True)
-    replenish_id = db.Column(db.String(45), nullable=True)
-    comments = db.Column(db.String(150), nullable=True)
 
 
 class TocRole(db.Model):
@@ -228,31 +139,6 @@ class TocSalesLog(db.Model):
     source = db.Column(db.String(2), nullable=True)
     comment = db.Column(db.String(200), nullable=True)
 
-class TOCWeeks(db.Model):
-    __tablename__ = 'toc_weeks'
-
-    week = db.Column(db.String(10), primary_key=True)
-    from_date = db.Column(db.Date, nullable=False)
-    to_date = db.Column(db.Date, nullable=False)
-
-class TOCCasuals(db.Model):
-    __tablename__ = 'toc_casuals'
-
-    shop_id = db.Column(db.String(45), primary_key=True)
-    week = db.Column(db.String(45), primary_key=True)
-    date = db.Column(db.Date, primary_key=True)
-    casuals = db.Column(db.String(200), nullable=True)
-    confirmed_by = db.Column(db.String(45), nullable=True)
-    confirmation_date = db.Column(db.DateTime, nullable=True)
-
-class TOCCasualsCtrl(db.Model):
-    __tablename__ = 'toc_casuals_ctrl'
-
-    shop_id = db.Column(db.String(45), primary_key=True)
-    week = db.Column(db.String(45), primary_key=True)
-    status = db.Column(db.String(45), nullable=True)
-    status_date = db.Column(db.DateTime,  nullable=True)
-    confirmed_by = db.Column(db.String(45), nullable=True)
 
 class TOCOpenAI(db.Model):
     __tablename__ = 'toc_openai'
@@ -264,44 +150,7 @@ class TOCOpenAI(db.Model):
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     user_query = db.Column(db.Text, nullable=False)
 
-class TocCountCtrl(db.Model):
-    __tablename__ = 'toc_count_ctrl'
 
-    count_id = db.Column(db.String(45), primary_key=True)
-    name = db.Column(db.String(45))
-    username = db.Column(db.String(45))
-    shop_id = db.Column(db.String(45))
-    shop_name = db.Column(db.String(45))
-    creation_date = db.Column(db.DateTime, default=datetime.now(timezone.utc))
-
-class TocDamaged(db.Model):
-    __tablename__ = 'toc_damaged'
-
-    shop_id = db.Column(db.String(45), primary_key=True, nullable=False)
-    order_id = db.Column(db.String(45), primary_key=True, nullable=False)
-    sku = db.Column(db.String(45), primary_key=True, nullable=False)
-    order_open_date = db.Column(db.DateTime, nullable=True)
-    user = db.Column(db.String(45), nullable=True)
-    item_name = db.Column(db.String(100), nullable=True)
-    rejected_qty = db.Column(db.Float, nullable=True)  # Sent Damaged
-    rcv_damaged = db.Column(db.Float, nullable=True)   # Received Damaged
-    variance = db.Column(db.Float, nullable=True)      # Difference between sent and received damaged
-
-class TocShipday(db.Model):
-    __tablename__ = 'toc_shipday'
-
-    wc_orderid = db.Column(db.Integer, primary_key=True, nullable=False)
-    creation_date = db.Column(db.DateTime, default=datetime.utcnow)
-    wc_name = db.Column(db.String(45), nullable=True)
-    wc_email = db.Column(db.String(45), nullable=True)
-    wc_phone = db.Column(db.String(45), nullable=True)
-    shop_name = db.Column(db.String(45), nullable=True)
-    status = db.Column(db.String(45), nullable=True)
-    update_date = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    ls_order_id = db.Column(db.String(45), nullable=True)
-    shipday_id = db.Column(db.String(45), nullable=True)
-    total_amt = db.Column(db.Float, nullable=True)
-    closest_shop_json = db.Column(db.JSON)
 
 
     ###################  GIL INSURANCE  ######################
@@ -438,52 +287,46 @@ class GilAppointment(db.Model):
     time_from = db.Column(db.Time, nullable=False)
     time_to = db.Column(db.Time, nullable=False)
 
-    investigator_id_1 = db.Column(db.Integer, db.ForeignKey('gil_investigator.id'))
-    investigator_id_2 = db.Column(db.Integer, db.ForeignKey('gil_investigator.id'))
-    investigator_id_3 = db.Column(db.Integer, db.ForeignKey('gil_investigator.id'))
-
     address = db.Column(db.String(255))
-    actual_duration = db.Column(db.Numeric(5,2))
     notes = db.Column(db.Text)
+    status = db.Column(db.String(50), default="נוצר")
 
-    place = db.Column(db.String(100))
-    doctor = db.Column(db.String(100))
+    place = db.Column(db.String(255))
+    doctor = db.Column(db.String(255))
     koopa = db.Column(db.String(100))
 
-    case = db.relationship("GilInsured", backref="appointments")
+    # ✅ Corrected relationship
+    investigators = db.relationship("GilInvestigatorAppointment", back_populates="appointment")
 
-    # <-- HERE: add the helper method inside the class
     def to_dict(self):
-        def inv_name(inv_id):
-            if not inv_id:
-                return None
-            inv = GilInvestigator.query.get(inv_id)
-            return inv.full_name if inv else None
-
-        def user_name(user_id):
-            if not user_id:
-                return None
-            user = User.query.get(user_id)   # ✅ FIXED (was TocUser)
-            if user:
-                return f"{user.first_name or ''} {user.last_name or ''}".strip()
-            return None
-
         return {
             "id": self.id,
             "case_id": self.case_id,
-            "appointment_date": self.appointment_date.strftime("%Y-%m-%d"),
-            "time_from": self.time_from.strftime("%H:%M"),
-            "time_to": self.time_to.strftime("%H:%M"),
-            "investigator_1_name": inv_name(self.investigator_id_1),
-            "investigator_2_name": inv_name(self.investigator_id_2),
-            "investigator_3_name": inv_name(self.investigator_id_3),
+            "appointment_date": self.appointment_date.isoformat() if self.appointment_date else None,
+            "time_from": str(self.time_from) if self.time_from else None,
+            "time_to": str(self.time_to) if self.time_to else None,
+            "status": self.status,
             "address": self.address,
             "notes": self.notes,
             "place": self.place,
             "doctor": self.doctor,
             "koopa": self.koopa,
-            "initiator_name": user_name(self.initiator_id)
         }
+
+
+class GilInvestigatorAppointment(db.Model):
+    __tablename__ = 'gil_investigator_appointments'
+
+    appointment_id = db.Column(db.Integer, db.ForeignKey('gil_appointments.id', ondelete="CASCADE"), primary_key=True)
+    investigator_id = db.Column(db.Integer, db.ForeignKey('gil_investigator.id', ondelete="CASCADE"), primary_key=True)
+    assigned_by = db.Column(db.Integer, db.ForeignKey('toc_users.id'))
+    assigned_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # ✅ Match back_populates
+    appointment = db.relationship("GilAppointment", back_populates="investigators")
+    investigator = db.relationship("GilInvestigator")
+    assigned_user = db.relationship("User", foreign_keys=[assigned_by])
+
 
 
 class GilInvestigatorCase(db.Model):

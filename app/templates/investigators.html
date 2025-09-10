@@ -30,12 +30,7 @@
             <a href="{{ url_for('main.edit_insured', id=case.id) }}" class="btn btn-sm btn-primary">צפה</a>
 
             <a href="javascript:void(0);"
-               class="btn btn-sm btn-appointments
-                      {% if case.appointments|selectattr('date','gt', now())|list|length > 0 %}
-                         btn-success
-                      {% else %}
-                         btn-danger
-                      {% endif %}"
+               class="btn btn-sm btn-appointments {{ 'btn-success' if case.has_future_appointments else 'btn-danger' }}"
                data-id="{{ case.id }}"
                data-name="{{ case.first_name }} {{ case.last_name }}">
                פגישות

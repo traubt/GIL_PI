@@ -1,68 +1,79 @@
-<!-- Appointment Modal -->
-<div class="modal fade" id="appointmentsModal" tabindex="-1" aria-hidden="true">
+
+<div class="modal fade" id="appointmentsModal" tabindex="-1">
   <div class="modal-dialog modal-xl">
     <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title" id="appointmentsModalTitle">תור עבור: ...</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
-        </div>
+
+<div class="modal-header">
+  <h4 class="modal-title w-100 text-center fw-bold" id="appointmentsModalTitle"></h4>
+  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+</div>
+
 
       <div class="modal-body">
-
-        <!-- Appointments Table -->
-        <table id="appointmentsTable" class="table table-striped" style="width:100%">
+        <!-- Section 1: Events -->
+        <h5 class="fw-bold mb-3">ארוע/ים</h5>
+        <table id="appointmentsTable" class="table table-striped">
           <thead>
             <tr>
               <th>תאריך</th>
-              <th>שעה</th>
+              <th>טווח שעות</th>
               <th>חוקר/ים</th>
-              <th>מקום</th>
-              <th>רופא</th>
-              <th>קופה</th>
               <th>כתובת</th>
-              <th>יוזם</th>
               <th>הערות</th>
-              <th>פעולות</th>
+              <th>סטטוס</th>
             </tr>
           </thead>
           <tbody></tbody>
         </table>
 
+
+
         <hr>
 
-        <!-- Create Appointment Form -->
-        <form id="appointmentForm">
-          <input type="hidden" id="case_id" name="case_id">
+        <!-- Section 2: Event details -->
+        <h5 class="fw-bold mt-4 mb-3">פרטי ארוע</h5>
+        <form id="appointmentForm" style="display: none;">
+          <input type="hidden" id="appointment_id" name="id">
+          <input type="hidden" id="appointment_case_id" name="case_id">
 
           <div class="row mb-3">
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label for="appointment_date" class="form-label">תאריך</label>
-              <input type="date" id="appointment_date" name="appointment_date" class="form-control" required>
+              <input type="date" id="appointment_date" name="appointment_date" class="form-control">
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
               <label for="time_from" class="form-label">משעה</label>
-              <input type="time" id="time_from" name="time_from" class="form-control" required>
+              <input type="time" id="time_from" name="time_from" class="form-control">
             </div>
-            <div class="col-md-2">
+            <div class="col-md-3">
               <label for="time_to" class="form-label">עד שעה</label>
-              <input type="time" id="time_to" name="time_to" class="form-control" required>
+              <input type="time" id="time_to" name="time_to" class="form-control">
             </div>
-            <div class="col-md-4">
-              <label for="address" class="form-label">כתובת</label>
-              <input type="text" id="address" name="address" class="form-control">
+            <div class="col-md-3">
+              <label for="status" class="form-label">סטטוס</label>
+              <select id="status" name="status" class="form-select">
+                <option value="נוצר">נוצר</option>
+                <option value="באישור">באישור</option>
+                <option value="אושר">אושר</option>
+                <option value="נדחה">נדחה</option>
+                <option value="הושלם">הושלם</option>
+              </select>
             </div>
           </div>
 
           <div class="row mb-3">
-            <div class="col-md-4">
+            <div class="col-md-6">
               <label for="place" class="form-label">מקום</label>
               <input type="text" id="place" name="place" class="form-control">
             </div>
-            <div class="col-md-4">
+            <div class="col-md-6">
               <label for="doctor" class="form-label">רופא</label>
               <input type="text" id="doctor" name="doctor" class="form-control">
             </div>
-            <div class="col-md-4">
+          </div>
+
+          <div class="row mb-3">
+            <div class="col-md-6">
               <label for="koopa" class="form-label">קופה</label>
               <select id="koopa" name="koopa" class="form-select">
                 <option value="">בחר קופה...</option>
@@ -71,9 +82,11 @@
                 {% endfor %}
               </select>
             </div>
-
+            <div class="col-md-6">
+              <label for="address" class="form-label">כתובת</label>
+              <input type="text" id="address" name="address" class="form-control">
+            </div>
           </div>
-
 
           <div class="row mb-3">
             <div class="col-md-4">
@@ -105,14 +118,33 @@
             </div>
           </div>
 
-          <div class="mb-3">
-            <label for="notes" class="form-label">הערות</label>
-            <textarea id="notes" name="notes" class="form-control"></textarea>
+          <div class="row mb-3">
+            <div class="col-md-12">
+              <label for="notes" class="form-label">הערות</label>
+              <textarea id="notes" name="notes" class="form-control"></textarea>
+            </div>
           </div>
 
-          <button type="submit" class="btn btn-success">שמור תור</button>
         </form>
       </div>
+
+      <div class="modal-footer d-flex justify-content-end gap-2 flex-row-reverse">
+        <button id="newAppointment" class="btn btn-warning">ארוע חדש</button>
+        <button id="googleCalendar" class="btn btn-secondary" disabled>Google Calendar</button>
+        <button id="deleteAppointment" class="btn btn-danger" disabled>מחק</button>
+        <button id="saveAppointment" type="submit" form="appointmentForm" class="btn btn-success" disabled>שמור ארוע</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Toast container -->
+<div class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999">
+  <div id="toastMessage" class="toast align-items-center text-white bg-danger border-0" role="alert" aria-live="assertive" aria-atomic="true">
+    <div class="d-flex">
+      <div class="toast-body" id="toastBody"></div>
+      <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
     </div>
   </div>
 </div>

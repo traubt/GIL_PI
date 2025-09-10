@@ -3,6 +3,13 @@
   {% include 'header-bar.html' %}
   {% include 'side-bar.html' %}
 
+<style>
+#appointmentsTable tr.table-active {
+    background-color: #ffe08a !important; /* light yellow */
+}
+</style>
+
+
 <main id="main" class="main">
   <div class="pagetitle">
     <h1>ניהול מבוטחים</h1>
@@ -93,7 +100,7 @@
                 <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">עדכן</a>
 <!--                <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"-->
 <!--                        data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>-->
-                <button class="btn btn-sm btn-info open-appointments" data-case-id="{{ insured.id }}"> 📅תורים</button>
+                <button class="btn btn-sm btn-info open-appointments" data-case-id="{{ insured.id }}"> 📅ארועים</button>
                 <button type="button" class="btn btn-sm btn-secondary change-status-btn"
                         data-id="{{ insured.id }}" data-status="{{ insured.status|default('פתוחה') }}">שנה סטטוס</button>
               </td>
@@ -195,11 +202,9 @@
 
 {% include 'appointment_modal.html' %}
 
-
-
 <script>
 $(function () {
-  // ==== DataTable init ====
+  // ==== Insured DataTable init ====
   var table = $('#insuredTable').DataTable({
     dom: 'lrtip',
     scrollX: true,
@@ -218,7 +223,6 @@ $(function () {
       paginate: { first: "ראשון", last: "אחרון", next: "הבא", previous: "הקודם" }
     },
     initComplete: function () {
-      // only bind filtering to TEXT inputs, not the header checkbox
       this.api().columns().every(function () {
         var that = this;
         $('input[type="text"]', this.header()).on('keyup change', function () {
@@ -228,189 +232,35 @@ $(function () {
     }
   });
 
-  // --- keep top buttons in sync with selection
+  // --- bulk button + select all sync ---
   function updateBulkButton() {
     var selectedCount = table.rows({ selected: true }).count();
     $('#bulkAssignBtn, #btnExportSelected').prop('disabled', selectedCount === 0);
   }
-
-  // --- keep "select all" checkbox in sync with the table
   function syncSelectAllCheckbox() {
-    var total = table.rows({ search: 'applied' }).count();   // visible rows
+    var total = table.rows({ search: 'applied' }).count();
     var selected = table.rows({ selected: true, search: 'applied' }).count();
     $('#selectAll').prop('checked', total > 0 && selected === total);
   }
-
   table.on('select deselect draw', function () {
-    updateBulkButton();
-    syncSelectAllCheckbox();
+    updateBulkButton(); syncSelectAllCheckbox();
   });
-  updateBulkButton(); syncSelectAllCheckbox();
-
-  // --- header "select all" checkbox
   $('#selectAll').on('change', function () {
-    if (this.checked) {
-      table.rows({ search: 'applied' }).select();
-    } else {
-      table.rows().deselect();
-    }
+    if (this.checked) table.rows({ search: 'applied' }).select();
+    else table.rows().deselect();
   });
 
-  // ===== Helper: split A*B*C =====
-  function parseAssigned(str) {
-    return (str || '').split('*').map(s => s.trim()).filter(Boolean);
-  }
-
-  // ===== Per-row "Assign" =====
-  $(document).on('click', '.change-status-btn', function () {
-    const id = $(this).data('id');
-    const current = ($(this).data('status') || 'פתוחה').trim();
-    $('#statusInsuredId').val(id);
-    $('#statusSelect').val(current);
-    $('#changeStatusModal').modal('show');
-  });
-
-  // (kept for completeness if you still use per-row assign elsewhere)
-  $(document).on('click', '.assign-investigator-btn', function () {
-    $('#bulkMode').val('0');           // single mode
-    const id = $(this).data('id');
-    const current = ($(this).data('investigator') || '').trim();
-    const names = parseAssigned(current);
-
-    $('#assignInsuredId').val(id);
-    $('#assignInvestigatorForm input[type=checkbox]').prop('checked', false);
-    if (names.length) {
-      const set = new Set(names);
-      $('#assignInvestigatorForm input[type=checkbox]').each(function () {
-        if (set.has(this.value)) this.checked = true;
-      });
-    }
-
-    $('#assignInvestigatorModal').modal('show');
-  });
-
-  // ===== Top "Bulk Assign" =====
-  $('#bulkAssignBtn').on('click', function () {
-    if (!table.rows({ selected: true }).any()) return;
-    $('#bulkMode').val('1');       // bulk mode
-    $('#assignInsuredId').val(''); // no single id
-    $('#assignInvestigatorForm input[type=checkbox]').prop('checked', false);
-    $('#assignInvestigatorModal').modal('show');
-  });
-
-  // ===== Save (single OR bulk) =====
-  $('#saveInvestigatorBtn').on('click', function () {
-    const $btn = $(this).prop('disabled', true);
-
-    const selectedInvestigators = $('#assignInvestigatorForm input[name="investigators"]:checked')
-      .map(function () { return this.value; }).get();
-
-    if (!selectedInvestigators.length) {
-      alert('יש לבחור חוקר/ים');
-      $btn.prop('disabled', false);
-      return;
-    }
-
-    const isBulk = $('#bulkMode').val() === '1';
-
-    if (!isBulk) {
-      // single
-      const id = $('#assignInsuredId').val();
-      $.post('/insured/assign_investigator', { insured_id: id, investigators: selectedInvestigators })
-        .done(function (res) {
-          if (res && res.status === 'success') {
-            const text = res.investigator || selectedInvestigators.join('*');
-            const $row = $('#insuredTable tbody tr[data-id="' + id + '"]');
-            $row.find('.investigator-cell').text(text);
-            $row.find('.assign-investigator-btn').data('investigator', text);
-            $('#assignInvestigatorModal').modal('hide');
-          } else {
-            alert((res && res.message) || 'שגיאה בעדכון חוקר');
-          }
-        })
-        .fail(function (xhr) { alert(xhr.responseJSON?.message || 'שגיאת שרת'); })
-        .always(function () { $btn.prop('disabled', false); });
-      return;
-    }
-
-    // bulk
-    const ids = table.rows({ selected: true }).nodes().toArray()
-      .map(function (n) {
-        const $tr = $(n);
-        return $tr.data('id') || $tr.find('.assign-investigator-btn').data('id');
-      })
-      .filter(Boolean);
-
-    if (!ids.length) { $btn.prop('disabled', false); return; }
-
-    const reqs = ids.map(function (id) {
-      return $.post('/insured/assign_investigator', { insured_id: id, investigators: selectedInvestigators });
-    });
-
-    Promise.allSettled(reqs).then(function () {
-      const text = selectedInvestigators.join('*');
-      ids.forEach(function (id) {
-        const $row = $('#insuredTable tbody tr[data-id="' + id + '"]');
-        $row.find('.investigator-cell').text(text);
-        $row.find('.assign-investigator-btn').data('investigator', text);
-      });
-      $('#assignInvestigatorModal').modal('hide');
-
-      // >>> UNSELECT everything after bulk action
-      table.rows().deselect();
-      $('#selectAll').prop('checked', false);
-      updateBulkButton();
-    }).catch(function () {
-      alert('אירעה שגיאה בעדכון חוקר/ים לחלק מהרשומות.');
-    }).finally(function () {
-      $btn.prop('disabled', false);
-    });
-  });
-
-  // ===== Change Status (unchanged) =====
-  $('#saveStatusBtn').on('click', function () {
-    const $btn = $(this).prop('disabled', true);
-    const id = $('#statusInsuredId').val();
-    const newStatus = $('#statusSelect').val();
-
-    $.post(`/insured/${id}/status`, { status: newStatus })
-      .done(function (res) {
-        if (res && res.status === 'success') {
-          const $row = $('#insuredTable tbody tr[data-id="' + id + '"]');
-          $row.find('td').eq(13).text(newStatus); // status column
-          $row.find('.change-status-btn').data('status', newStatus);
-          if (newStatus === 'הושלמה') {
-            table.row($row).remove().draw(false);
-          }
-          $('#changeStatusModal').modal('hide');
-        } else {
-          alert((res && res.message) || 'שגיאה בעדכון סטטוס');
-        }
-      })
-      .fail(function (xhr) { alert(xhr.responseJSON?.message || 'שגיאת שרת'); })
-      .always(function () { $btn.prop('disabled', false); });
-  });
-});
-</script>
-
-
-<script>
-$(function () {
-  // --- Build preview table from server payload ---
+  // ==== Export Selected ====
   function buildPreviewFromPayload(payload) {
     const $t = $('#exportPreview').empty();
     const headers = payload.headers || [];
     const rows = payload.rows || [];
-
     const thead = '<thead><tr>' + headers.map(h => `<th>${h.label}</th>`).join('') + '</tr></thead>';
     const tbody = '<tbody>' + rows.map(r =>
       '<tr>' + headers.map(h => `<td>${(r[h.key] ?? '')}</td>`).join('') + '</tr>'
     ).join('') + '</tbody>';
-
     $t.append(thead + tbody);
   }
-
-  // --- Download the preview table as Excel (.xls) ---
   function downloadPreviewAsExcel() {
     const tableHtml = document.getElementById('exportPreview').outerHTML;
     const html = `
@@ -425,248 +275,252 @@ $(function () {
             td, th { border: 1px solid #ccc; padding: 4px; mso-number-format:"\\@"; }
           </style>
         </head>
-        <body dir="rtl">
-          ${tableHtml}
-        </body>
-      </html>
-    `.trim();
-
+        <body dir="rtl">${tableHtml}</body>
+      </html>`.trim();
     const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     const stamp = new Date().toISOString().replace(/[:\-T]/g, '').slice(0, 12);
-    a.href = url;
-    a.download = `מבוטחים_נבחרים_${stamp}.xls`;
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(url);
-    a.remove();
+    a.href = url; a.download = `מבוטחים_נבחרים_${stamp}.xls`;
+    document.body.appendChild(a); a.click();
+    URL.revokeObjectURL(url); a.remove();
   }
-
-  // --- Click: build preview via /insured/export_rows and show modal ---
-
   $('#btnExportSelected').on('click', function () {
-    const table = $('#insuredTable').DataTable();
     const ids = table.rows({ selected: true }).nodes().toArray()
-      .map(n => $(n).data('id') || $(n).find('.assign-investigator-btn').data('id'))
+      .map(n => $(n).data('id'))
       .filter(Boolean);
     if (!ids.length) return;
-
     $.ajax({
       url: '/insured/export_rows',
       method: 'POST',
       contentType: 'application/json',
       data: JSON.stringify({ ids: ids })
-    })
-    .done(function (res) {
+    }).done(function (res) {
       if (res.status !== 'success') { alert(res.message || 'שגיאה בשליפה'); return; }
       buildPreviewFromPayload(res);
       new bootstrap.Modal(document.getElementById('exportModal')).show();
-    })
-    .fail(function () { alert('שגיאת שרת בשליפה'); });
+    });
   });
-
   $('#downloadExcelBtn').on('click', function () {
     downloadPreviewAsExcel();
-
-    // >>> UNSELECT everything after export
-    const table = $('#insuredTable').DataTable();
     table.rows().deselect();
     $('#selectAll').prop('checked', false);
-
-    // close modal & disable buttons
     $('#exportModal').modal('hide');
     $('#bulkAssignBtn, #btnExportSelected').prop('disabled', true);
   });
-});
-</script>
 
-<script>
-$(function () {
-  let caseId = null;
+  // ==== Appointments Modal ====
+  let currentCaseId = null;
+  let selectedAppointmentId = null;
   let appointmentsTable = $('#appointmentsTable').DataTable({
+    dom: 't',
+    paging: false,
+    info: false,
+    searching: false,
     columns: [
       { data: 'appointment_date' },
-      { data: 'time_range' },
+      { data: null, render: d => `${d.time_from} - ${d.time_to}` },
       { data: 'investigators' },
-      { data: 'place' },
-      { data: 'doctor' },
-      { data: 'koopa' },
       { data: 'address' },
-      { data: 'initiator_name' },
       { data: 'notes' },
-      { data: 'actions' }
+      { data: 'status' }
     ],
-    language: {
-      search: "חיפוש:",
-      lengthMenu: "הצג _MENU_ רשומות",
-      info: "מציג _START_ עד _END_ מתוך _TOTAL_ רשומות",
-      paginate: { next: "הבא", previous: "הקודם" }
-    }
+    language: { emptyTable: "אין ארועים להצגה" }
   });
 
-  // Open modal + load appointments
   $(document).on('click', '.open-appointments', function () {
-    caseId = $(this).data('case-id');
-    $('#case_id').val(caseId);
-
-    // build the title from row info
-    const $row = $('#insuredTable tbody tr[data-id="' + caseId + '"]');
+    currentCaseId = $(this).data('case-id');
+    const $row = $('#insuredTable tbody tr[data-id="' + currentCaseId + '"]');
     const name = $row.find('td').eq(5).text() + " " + $row.find('td').eq(6).text();
     const insurance = $row.find('td').eq(9).text();
     const claimType = $row.find('td').eq(10).text();
     const refNum = $row.find('td').eq(3).text();
-    const koopa = $row.find('td').eq(8).text();   // column index 8 is קופה
-
-    $('#appointmentsModalTitle').text(`תור עבור: ${name} ${refNum} (${insurance}, ${claimType})`);
-
-    // set default koopa value
+    const koopa = $row.find('td').eq(8).text();
+    $('#appointmentsModalTitle').text(`ארועים: ${name} ${refNum} (${insurance}, ${claimType})`);
     $('#koopa').val(koopa);
-
-    loadAppointments(caseId);
+    loadAppointments(currentCaseId);
     $('#appointmentsModal').modal('show');
   });
 
-function buildCalendarUrl(a) {
-  // Build start/end datetime (assume stored as local, convert to UTC if needed)
-  const start = `${a.appointment_date.replace(/-/g, '')}T${a.time_from.replace(':','')}00Z`;
-  const end   = `${a.appointment_date.replace(/-/g, '')}T${a.time_to.replace(':','')}00Z`;
-
-  // Title
-  const title = encodeURIComponent(`תור עבור: ${a.insured_name || ''} (${a.case_id})`);
-
-  // Details
-  const investigators = [a.investigator_1_name, a.investigator_2_name, a.investigator_3_name]
-    .filter(Boolean).join(", ");
-  const details = encodeURIComponent(
-    `ביטוח: ${a.insurance || ''}\n` +
-    `סוג תביעה: ${a.claim_type || ''}\n` +
-    `יוזם: ${a.initiator_name || ''}\n` +
-    `חוקרים: ${investigators}\n` +
-    `הערות: ${a.notes || ''}`
-  );
-
-  // Location
-  const location = encodeURIComponent(`${a.place || ''} ${a.address || ''}`);
-
-  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
-}
-
-
-
-
-
   function loadAppointments(caseId) {
     $.getJSON(`/appointments/${caseId}`, function (data) {
-      appointmentsTable.clear().rows.add(
-        data.map(a => ({
-          appointment_date: a.appointment_date,
-          time_range: `${a.time_from} - ${a.time_to}`,
-          investigators: [a.investigator_1_name, a.investigator_2_name, a.investigator_3_name].filter(Boolean).join(", "),
-          place: a.place || '',
-          doctor: a.doctor || '',
-          koopa: a.koopa || '',
-          address: a.address || '',
-          initiator_name: a.initiator_name || '',
-          notes: a.notes || '',
-          actions: `  <button class="btn btn-sm btn-primary edit-appointment" data-id="${a.id}">עדכן</button>
-                      <button class="btn btn-sm btn-danger delete-appointment" data-id="${a.id}">מחק</button>
-                      <a href="${buildCalendarUrl(a)}" target="_blank" class="btn btn-sm btn-success">Google</a>`
-        }))
-      ).draw();
+      appointmentsTable.clear().rows.add(data).draw();
+
+      // attach data-id to each row after draw
+      $('#appointmentsTable tbody tr').each(function (i) {
+        const rowData = appointmentsTable.row(this).data();
+        if (rowData) {
+          $(this).attr('data-id', rowData.id);
+        }
+      });
+
+      // auto highlight closest
+      const today = new Date().toISOString().split("T")[0];
+      let closest = null, minDiff = Infinity;
+      data.forEach(a => {
+        if (a.appointment_date >= today) {
+          const diff = new Date(a.appointment_date) - new Date(today);
+          if (diff >= 0 && diff < minDiff) { minDiff = diff; closest = a; }
+        }
+      });
+      if (closest) highlightRowAndFill(closest.id);
     });
   }
 
-  // Save appointment
+
+  function highlightRowAndFill(id) {
+    $.getJSON(`/appointments/${id}/json`, function (a) {
+      fillAppointmentForm(a);
+      $('#appointmentsTable tr').removeClass('table-active');
+      $('#appointmentsTable').find(`tr[data-id="${id}"]`).addClass('table-active');
+    });
+  }
+
+  function fillAppointmentForm(a) {
+    $('#appointment_id').val(a.id);
+    $('#appointment_case_id').val(a.case_id);
+    $('#appointment_date').val(a.appointment_date);
+    $('#time_from').val(a.time_from);
+    $('#time_to').val(a.time_to);
+    $('#status').val(a.status);
+    $('#place').val(a.place);
+    $('#doctor').val(a.doctor);
+    $('#koopa').val(a.koopa);
+    $('#address').val(a.address);
+    $('#notes').val(a.notes);
+
+    // clear investigator selects
+    $('#investigator_id_1, #investigator_id_2, #investigator_id_3').val("");
+    if (a.investigator_ids && a.investigator_ids.length > 0) {
+      if (a.investigator_ids[0]) $('#investigator_id_1').val(a.investigator_ids[0]);
+      if (a.investigator_ids[1]) $('#investigator_id_2').val(a.investigator_ids[1]);
+      if (a.investigator_ids[2]) $('#investigator_id_3').val(a.investigator_ids[2]);
+    }
+  }
+
+
+  function clearAppointmentForm() {
+    $('#appointmentForm')[0].reset();
+    $('#appointment_id').val('');
+  }
+
+  $('#appointmentsTable').on('click', 'tr', function () {
+    const data = appointmentsTable.row(this).data();
+    if (!data) return;
+    selectedAppointmentId = data.id;
+
+    $('#appointmentsTable tr').removeClass('table-active');   // clear others
+    $(this).addClass('table-active');                        // highlight clicked
+
+    fillAppointmentForm(data);
+    $('#appointmentForm').show();
+    disableActionButtons(false);
+  });
+
+
+  $('#newAppointment').on('click', function (e) {
+    e.preventDefault();
+    selectedAppointmentId = null;
+    clearAppointmentForm();
+    $('#appointment_case_id').val(currentCaseId);
+    $('#appointmentForm').show();
+    disableActionButtons(false);
+  });
+
+  function disableActionButtons(disable) {
+    $('#saveAppointment, #deleteAppointment, #googleCalendar').prop('disabled', disable);
+    $('#newAppointment').prop('disabled', false);
+  }
+
   $('#appointmentForm').on('submit', function (e) {
     e.preventDefault();
-    const apptId = $(this).data('edit-id'); // check if editing
-
-    const payload = $(this).serializeArray().reduce((obj, item) => {
-      obj[item.name] = item.value;
-      return obj;
-    }, {});
-    payload.case_id = caseId;
-
-    const url = apptId ? `/appointments/${apptId}/update` : '/appointments/create';
-
+    const required = ['#appointment_date', '#time_from', '#time_to', '#place', '#address'];
+    for (let sel of required) if (!$(sel).val()) {
+      alert("יש למלא את כל השדות החובה"); return;
+    }
+    const payload = {
+      id: $('#appointment_id').val(),
+      case_id: currentCaseId,
+      appointment_date: $('#appointment_date').val(),
+      time_from: $('#time_from').val(),
+      time_to: $('#time_to').val(),
+      status: $('#status').val(),
+      place: $('#place').val(),
+      doctor: $('#doctor').val(),
+      koopa: $('#koopa').val(),
+      address: $('#address').val(),
+      notes: $('#notes').val(),
+      investigators: [
+        $('#investigator_id_1').val(),
+        $('#investigator_id_2').val(),
+        $('#investigator_id_3').val()
+      ].filter(Boolean)
+    };
     $.ajax({
-      url: url,
-      type: 'POST',
+      url: '/appointments/create',
+      method: 'POST',
       contentType: 'application/json',
       data: JSON.stringify(payload),
       success: function (res) {
         if (res.status === 'success') {
-          alert(apptId ? "✅ Appointment updated" : "✅ Appointment created");
-          loadAppointments(caseId);
-          $('#appointmentForm')[0].reset();
-          $('#appointmentForm').removeData('edit-id');
-        } else {
-          alert("❌ שגיאה בשמירת התור");
-        }
+          loadAppointments(currentCaseId);
+          alert("האירוע נשמר בהצלחה");
+        } else alert("שגיאה בשמירת האירוע: " + res.message);
       }
     });
   });
 
+  $('#deleteAppointment').on('click', function () {
+    const id = $('#appointment_id').val();
+    if (!id) { alert("לא נבחר ארוע למחיקה"); return; }
+    if (!confirm("האם למחוק את הארוע?")) return;
 
-  // Edit appointment
-    $(document).on('click', '.edit-appointment', function () {
-      const apptId = $(this).data('id');
-      $.getJSON(`/appointments/${apptId}/get`, function (a) {
-        $('#appointment_date').val(a.appointment_date);
-        $('#time_from').val(a.time_from);
-        $('#time_to').val(a.time_to);
-        $('#address').val(a.address);
-        $('#place').val(a.place);
-        $('#doctor').val(a.doctor);
-        $('#koopa').val(a.koopa);
-        $('#investigator_id_1').val(a.investigator_id_1);
-        $('#investigator_id_2').val(a.investigator_id_2);
-        $('#investigator_id_3').val(a.investigator_id_3);
-        $('#notes').val(a.notes);
-
-        // store editing id
-        $('#appointmentForm').data('edit-id', apptId);
-      });
+    $.post(`/appointments/${id}/delete`, function (res) {
+      console.log("Delete response:", res);
+      if (res.status === 'success') {
+        loadAppointments(currentCaseId);
+        clearAppointmentForm();
+        $('#appointmentsTable tr').removeClass('table-active');
+        alert("הארוע נמחק בהצלחה");
+      } else {
+        alert('שגיאה במחיקה');
+      }
+    }).fail(function(err) {
+      console.error("Delete request failed:", err);
+      alert('שגיאה בבקשת המחיקה');
     });
-
-
-  // Delete appointment
-  $(document).on('click', '.delete-appointment', function () {
-    const id = $(this).data('id');
-    if (confirm("האם למחוק את התור?")) {
-      $.ajax({
-        url: `/appointments/${id}/delete`,
-        type: 'POST',
-        success: function (res) {
-          if (res.status === 'success') {
-            loadAppointments(caseId);
-          }
-        }
-      });
-    }
   });
 
-});
 
+  $('#googleCalendar').on('click', function () {
+    const activeRow = appointmentsTable.row('.table-active').data();
+    if (!activeRow) { alert('יש לבחור ארוע'); return; }
+    const url = buildCalendarUrl(activeRow);
+    window.open(url, '_blank');
+  });
 
-$(document).ready(function () {
-  // Loop through all "קבע תור" buttons and check future appointments
+  function buildCalendarUrl(a) {
+    const start = `${a.appointment_date.replace(/-/g, '')}T${a.time_from.replace(':','')}00Z`;
+    const end   = `${a.appointment_date.replace(/-/g, '')}T${a.time_to.replace(':','')}00Z`;
+    const title = encodeURIComponent(`ארועים: ${a.insured_name || ''} (${a.case_id})`);
+    const details = encodeURIComponent(`ביטוח: ${a.insurance || ''}\nסוג תביעה: ${a.claim_type || ''}\nחוקרים: ${a.investigators}\nהערות: ${a.notes || ''}`);
+    const location = encodeURIComponent(`${a.place || ''} ${a.address || ''}`);
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
+  }
+
+  // ==== Mark insured buttons by future events ====
   $('.open-appointments').each(function () {
     const btn = $(this);
     const caseId = btn.data('case-id');
-
     $.getJSON(`/appointments/${caseId}/has_future`, function (res) {
-      if (res.has_future) {
-        btn.removeClass('btn-info btn-danger').addClass('btn-success'); // light green
-      } else {
-        btn.removeClass('btn-info btn-success').addClass('btn-danger'); // light red
-      }
+      if (res.has_future) btn.removeClass('btn-info btn-danger').addClass('btn-success');
+      else btn.removeClass('btn-info btn-success').addClass('btn-danger');
     });
   });
-});
 
+});
 </script>
+
 
 
 
