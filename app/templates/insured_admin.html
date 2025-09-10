@@ -376,12 +376,16 @@ $(function () {
     });
   }
 
+  function toHHMM(timeStr) {
+    return timeStr ? timeStr.substring(0,5) : "";
+  }
+
   function fillAppointmentForm(a) {
     $('#appointment_id').val(a.id);
     $('#appointment_case_id').val(a.case_id);
     $('#appointment_date').val(a.appointment_date);
-    $('#time_from').val(a.time_from);
-    $('#time_to').val(a.time_to);
+    $('#time_from').val(toHHMM(a.time_from));
+    $('#time_to').val(toHHMM(a.time_to));
     $('#status').val(a.status);
     $('#place').val(a.place);
     $('#doctor').val(a.doctor);
@@ -397,6 +401,7 @@ $(function () {
       if (a.investigator_ids[2]) $('#investigator_id_3').val(a.investigator_ids[2]);
     }
   }
+
 
 
   function clearAppointmentForm() {
@@ -500,13 +505,23 @@ $(function () {
   });
 
   function buildCalendarUrl(a) {
-    const start = `${a.appointment_date.replace(/-/g, '')}T${a.time_from.replace(':','')}00Z`;
-    const end   = `${a.appointment_date.replace(/-/g, '')}T${a.time_to.replace(':','')}00Z`;
-    const title = encodeURIComponent(`ארועים: ${a.insured_name || ''} (${a.case_id})`);
-    const details = encodeURIComponent(`ביטוח: ${a.insurance || ''}\nסוג תביעה: ${a.claim_type || ''}\nחוקרים: ${a.investigators}\nהערות: ${a.notes || ''}`);
+    const start = `${a.appointment_date.replace(/-/g, '')}T${a.time_from.replace(':','')}00`;
+    const end   = `${a.appointment_date.replace(/-/g, '')}T${a.time_to.replace(':','')}00`;
+
+    const modalTitle = $('#appointmentsModalTitle').text();  // use actual title
+
+    const details = encodeURIComponent(
+      `ביטוח: ${a.insurance || ''}\n` +
+      `סוג תביעה: ${a.claim_type || ''}\n` +
+      `חוקרים: ${a.investigators}\n` +
+      `הערות: ${a.notes || ''}`
+    );
+
     const location = encodeURIComponent(`${a.place || ''} ${a.address || ''}`);
-    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${start}/${end}&details=${details}&location=${location}`;
+
+    return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(modalTitle)}&dates=${start}/${end}&details=${details}&location=${location}`;
   }
+
 
   // ==== Mark insured buttons by future events ====
   $('.open-appointments').each(function () {

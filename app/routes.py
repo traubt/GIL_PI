@@ -1763,17 +1763,18 @@ def get_appointment_json(id):
         "id": row["id"],
         "case_id": row["case_id"],
         "appointment_date": row["appointment_date"].isoformat() if row["appointment_date"] else "",
-        "time_from": str(row["time_from"]) if row["time_from"] else "",
-        "time_to": str(row["time_to"]) if row["time_to"] else "",
-        "status": row["status"] or "",
-        "address": row["address"] or "",
-        "place": row["place"] or "",
-        "doctor": row["doctor"] or "",
-        "koopa": row["koopa"] or "",
-        "notes": row["notes"] or "",
+        "time_from": row["time_from"].strftime("%H:%M") if row["time_from"] else "",
+        "time_to": row["time_to"].strftime("%H:%M") if row["time_to"] else "",
+        "status": str(row["status"] or ""),
+        "address": str(row["address"] or ""),
+        "place": str(row["place"] or ""),
+        "doctor": str(row["doctor"] or ""),
+        "koopa": str(row["koopa"] or ""),
+        "notes": str(row["notes"] or ""),
         "investigator_ids": investigator_ids,
-        "investigators": row["investigator_names"] or ""
+        "investigators": str(row["investigator_names"] or "")
     })
+
 
 #########################
 # GET ALL INVESTIGATORS #
