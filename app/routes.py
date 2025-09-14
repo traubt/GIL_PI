@@ -12,12 +12,15 @@ import logging
 import openai
 import re
 from app.tables_for_openAI import DATABASE_SCHEMA
-from datetime import datetime
 from flask import redirect, url_for, current_app
 import os
 from flask import render_template, request, jsonify
 from app import db
 from app.models import GilInsured
+from datetime import datetime, timedelta
+
+from sqlalchemy import text
+
 
 
 logging.basicConfig(
@@ -157,6 +160,49 @@ def append_clinic(new_clinic):
         with open(current_app.config['CLINICS_FILE'], "w", encoding="utf-8") as f:
             json.dump(clinics, f, ensure_ascii=False, indent=2)
 
+def format_time(value):
+    """Convert MySQL TIME (timedelta) to HH:MM string."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value[:5]  # already a string "HH:MM:SS"
+    if isinstance(value, datetime.timedelta):
+        total_seconds = int(value.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}"
+    return str(value)
+
+def normalize_date(value):
+    """Return ISO date string YYYY-MM-DD or ''."""
+    if not value:
+        return ""
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value).split(" ")[0]  # fallback
+
+def normalize_time(value):
+    """Return HH:MM string or ''."""
+    if not value:
+        return ""
+    if isinstance(value, str):
+        return value[:5]  # "HH:MM"
+    if hasattr(value, "strftime"):
+        return value.strftime("%H:%M")
+    try:
+        # Handle timedelta from MySQL
+        total_seconds = int(value.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, _ = divmod(remainder, 60)
+        return f"{hours:02d}:{minutes:02d}"
+    except Exception:
+        return str(value)
+
+def parse_time(hhmm: str):
+    """Convert 'HH:MM' string to a datetime.time object."""
+    if not hhmm:
+        return None
+    return datetime.strptime(hhmm, "%H:%M").time()
 
 @main.route('/send_email', methods=['POST'])
 def handle_send_email():
@@ -1352,37 +1398,6 @@ def insured_export_rows():
     headers = [{'key': c, 'label': HEB_LABELS.get(c, c)} for c in cols]
     return jsonify({'status': 'success', 'headers': headers, 'rows': rows})
 
-from sqlalchemy.orm import joinedload
-
-# @main.route('/appointments/<int:case_id>', methods=['GET'])
-# def get_case_appointments(case_id):
-#     appts = GilAppointment.query.filter_by(case_id=case_id).all()
-#     results = []
-#     for a in appts:
-#         # fetch related investigators
-#         investigator_links = GilInvestigatorAppointment.query.filter_by(appointment_id=a.id).all()
-#         investigator_ids = [link.investigator_id for link in investigator_links]
-#         investigator_names = [
-#             GilInvestigator.query.get(i).full_name for i in investigator_ids if i
-#         ]
-#
-#         results.append({
-#             "id": a.id,
-#             "appointment_date": a.appointment_date.isoformat(),
-#             "time_from": str(a.time_from),
-#             "time_to": str(a.time_to),
-#             "status": a.status,
-#             "address": a.address,
-#             "notes": a.notes,
-#             "investigator_ids": investigator_ids,   # for modal pre-fill
-#             "investigators": ", ".join(investigator_names)  # for table
-#         })
-#     return jsonify(results)
-
-
-
-from sqlalchemy.sql import text
-
 @main.route('/appointments/<int:case_id>', methods=['GET'])
 def get_case_appointments(case_id):
     """
@@ -1439,12 +1454,8 @@ def get_case_appointments(case_id):
 
     return jsonify(results)
 
-
-from sqlalchemy import text
-
 @main.route('/appointments/create', methods=['POST'])
 def create_appointment():
-    # force=True ensures JSON is parsed even if headers are slightly off
     data = request.get_json(force=True, silent=True)
     current_app.logger.info(f"Incoming /appointments/create payload: {data}")
 
@@ -1455,12 +1466,17 @@ def create_appointment():
         user_data = json.loads(session.get('user')) if session.get('user') else {}
         user_id = user_data.get('id')
 
-        # 1) create appointment
+        # --- date / time handling ---
+        appointment_date = datetime.strptime(data["appointment_date"], "%Y-%m-%d").date()
+        time_from = parse_time(data.get("time_from"))
+        time_to   = parse_time(data.get("time_to"))
+
+        # --- create appointment ---
         appt = GilAppointment(
             case_id=int(data['case_id']),
-            appointment_date=datetime.strptime(data['appointment_date'], "%Y-%m-%d").date(),
-            time_from=datetime.strptime(data['time_from'], "%H:%M").time(),
-            time_to=datetime.strptime(data['time_to'], "%H:%M").time(),
+            appointment_date=appointment_date,
+            time_from=time_from,
+            time_to=time_to,
             address=data.get('address'),
             place=data.get('place'),
             doctor=data.get('doctor'),
@@ -1469,9 +1485,9 @@ def create_appointment():
             notes=data.get('notes')
         )
         db.session.add(appt)
-        db.session.flush()   # get appt.id before inserting links
+        db.session.flush()   # get appt.id
 
-        # 2) insert investigator links (if any)
+        # --- investigator links ---
         inv_ids = data.get('investigators', []) or []
         for inv_id in inv_ids:
             db.session.add(GilInvestigatorAppointment(
@@ -1480,10 +1496,9 @@ def create_appointment():
                 assigned_by=user_id
             ))
 
-        # 3) commit everything
         db.session.commit()
 
-        # 4) fetch the freshly created row using the same raw-SQL shape
+        # --- fetch the new row in consistent format ---
         sql = text("""
             SELECT
                 a.id,
@@ -1519,9 +1534,9 @@ def create_appointment():
                 "id": row["id"],
                 "case_id": row["case_id"],
                 "appointment_date": row["appointment_date"].isoformat() if row["appointment_date"] else "",
-                "time_from": str(row["time_from"]) if row["time_from"] else "",
-                "time_to": str(row["time_to"]) if row["time_to"] else "",
-                "status": row["status"] or "",
+                "time_from": normalize_time(row["time_from"]),
+                "time_to": normalize_time(row["time_to"]),
+                "appt_status": row["status"] or "",
                 "address": row["address"] or "",
                 "place": row["place"] or "",
                 "doctor": row["doctor"] or "",
@@ -1531,6 +1546,8 @@ def create_appointment():
                 "investigators": row["investigator_names"] or ""
             }
         })
+
+
 
     except Exception as e:
         db.session.rollback()
@@ -1560,6 +1577,8 @@ def get_appointment(id):
     appt = GilAppointment.query.get_or_404(id)
     return jsonify(appt.to_dict())
 
+from datetime import datetime, timedelta
+
 @main.route('/appointments/<int:id>/update', methods=['POST'])
 def update_appointment(id):
     data = request.get_json()
@@ -1568,8 +1587,17 @@ def update_appointment(id):
     try:
         # --- Update appointment fields ---
         appt.appointment_date = datetime.strptime(data['appointment_date'], "%Y-%m-%d").date()
-        appt.time_from = datetime.strptime(data['time_from'], "%H:%M").time()
-        appt.time_to = datetime.strptime(data['time_to'], "%H:%M").time()
+
+        # convert HH:MM → timedelta
+        def to_timedelta(timestr):
+            if not timestr:
+                return None
+            h, m = map(int, timestr.split(":"))
+            return timedelta(hours=h, minutes=m)
+
+        appt.time_from = to_timedelta(data['time_from'])
+        appt.time_to   = to_timedelta(data['time_to'])
+
         appt.address = data.get('address')
         appt.place = data.get('place')
         appt.doctor = data.get('doctor')
@@ -1627,8 +1655,8 @@ def update_appointment(id):
                 "id": row["id"],
                 "case_id": row["case_id"],
                 "appointment_date": row["appointment_date"].isoformat() if row["appointment_date"] else "",
-                "time_from": str(row["time_from"]) if row["time_from"] else "",
-                "time_to": str(row["time_to"]) if row["time_to"] else "",
+                "time_from": normalize_time(row["time_from"]),
+                "time_to": normalize_time(row["time_to"]),
                 "status": row["status"] or "",
                 "address": row["address"] or "",
                 "place": row["place"] or "",
@@ -1644,7 +1672,6 @@ def update_appointment(id):
         db.session.rollback()
         current_app.logger.error(f"update_appointment error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
-
 
 
 @main.route('/appointments/<int:case_id>/has_future', methods=['GET'])
@@ -1724,10 +1751,6 @@ def appointments_calendar():
 
 @main.route('/appointments/<int:id>/json', methods=['GET'])
 def get_appointment_json(id):
-    """
-    Raw-SQL: fetch a single appointment with investigator info.
-    Used to pre-fill the modal form.
-    """
     sql = text("""
         SELECT
             a.id,
@@ -1744,14 +1767,12 @@ def get_appointment_json(id):
             GROUP_CONCAT(ia.investigator_id ORDER BY ia.investigator_id SEPARATOR ',') AS investigator_ids_csv,
             GROUP_CONCAT(i.full_name ORDER BY ia.investigator_id SEPARATOR ', ')      AS investigator_names
         FROM gil_appointments a
-        LEFT JOIN gil_investigator_appointments ia
-               ON ia.appointment_id = a.id
-        LEFT JOIN gil_investigator i
-               ON i.id = ia.investigator_id
+        LEFT JOIN gil_investigator_appointments ia ON ia.appointment_id = a.id
+        LEFT JOIN gil_investigator i ON i.id = ia.investigator_id
         WHERE a.id = :id
-        GROUP BY a.id, a.case_id, a.appointment_date, a.time_from, a.time_to, a.status, a.address, a.notes, a.place, a.doctor, a.koopa
+        GROUP BY a.id, a.case_id, a.appointment_date, a.time_from, a.time_to,
+                 a.status, a.address, a.notes, a.place, a.doctor, a.koopa
     """)
-
     row = db.session.execute(sql, {"id": id}).mappings().first()
     if not row:
         return jsonify({"error": "Appointment not found"}), 404
@@ -1762,9 +1783,9 @@ def get_appointment_json(id):
     return jsonify({
         "id": row["id"],
         "case_id": row["case_id"],
-        "appointment_date": row["appointment_date"].isoformat() if row["appointment_date"] else "",
-        "time_from": row["time_from"].strftime("%H:%M") if row["time_from"] else "",
-        "time_to": row["time_to"].strftime("%H:%M") if row["time_to"] else "",
+        "appointment_date": normalize_date(row["appointment_date"]),
+        "time_from": normalize_time(row["time_from"]),
+        "time_to": normalize_time(row["time_to"]),
         "status": str(row["status"] or ""),
         "address": str(row["address"] or ""),
         "place": str(row["place"] or ""),
@@ -1774,6 +1795,7 @@ def get_appointment_json(id):
         "investigator_ids": investigator_ids,
         "investigators": str(row["investigator_names"] or "")
     })
+
 
 
 #########################

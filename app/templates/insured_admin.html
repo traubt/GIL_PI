@@ -3,11 +3,7 @@
   {% include 'header-bar.html' %}
   {% include 'side-bar.html' %}
 
-<style>
-#appointmentsTable tr.table-active {
-    background-color: #ffe08a !important; /* light yellow */
-}
-</style>
+
 
 
 <main id="main" class="main">
@@ -409,18 +405,23 @@ $(function () {
     $('#appointment_id').val('');
   }
 
-  $('#appointmentsTable').on('click', 'tr', function () {
-    const data = appointmentsTable.row(this).data();
-    if (!data) return;
-    selectedAppointmentId = data.id;
+$('#appointmentsTable').on('click', 'tr', function () {
+  const data = appointmentsTable.row(this).data();
+  if (!data) return;
+  selectedAppointmentId = data.id;
 
-    $('#appointmentsTable tr').removeClass('table-active');   // clear others
-    $(this).addClass('table-active');                        // highlight clicked
+  $('#appointmentsTable tr').removeClass('table-active');
+  $(this).addClass('table-active');
 
-    fillAppointmentForm(data);
+  // Always fetch full record from server
+  $.getJSON(`/appointments/${selectedAppointmentId}/json`, function (a) {
+    console.log("Clicked row full JSON:", a);   // 👈 debug
+    fillAppointmentForm(a);
     $('#appointmentForm').show();
     disableActionButtons(false);
   });
+});
+
 
 
   $('#newAppointment').on('click', function (e) {
@@ -437,43 +438,61 @@ $(function () {
     $('#newAppointment').prop('disabled', false);
   }
 
-  $('#appointmentForm').on('submit', function (e) {
-    e.preventDefault();
-    const required = ['#appointment_date', '#time_from', '#time_to', '#place', '#address'];
-    for (let sel of required) if (!$(sel).val()) {
-      alert("יש למלא את כל השדות החובה"); return;
+$('#appointmentForm').on('submit', function (e) {
+  e.preventDefault();
+
+  const required = ['#appointment_date', '#time_from', '#time_to', '#place', '#address'];
+  for (let sel of required) {
+    if (!$(sel).val()) {
+      alert("יש למלא את כל השדות החובה");
+      return;
     }
-    const payload = {
-      id: $('#appointment_id').val(),
-      case_id: currentCaseId,
-      appointment_date: $('#appointment_date').val(),
-      time_from: $('#time_from').val(),
-      time_to: $('#time_to').val(),
-      status: $('#status').val(),
-      place: $('#place').val(),
-      doctor: $('#doctor').val(),
-      koopa: $('#koopa').val(),
-      address: $('#address').val(),
-      notes: $('#notes').val(),
-      investigators: [
-        $('#investigator_id_1').val(),
-        $('#investigator_id_2').val(),
-        $('#investigator_id_3').val()
-      ].filter(Boolean)
-    };
-    $.ajax({
-      url: '/appointments/create',
-      method: 'POST',
-      contentType: 'application/json',
-      data: JSON.stringify(payload),
-      success: function (res) {
-        if (res.status === 'success') {
-          loadAppointments(currentCaseId);
-          alert("האירוע נשמר בהצלחה");
-        } else alert("שגיאה בשמירת האירוע: " + res.message);
+  }
+
+  const payload = {
+    id: $('#appointment_id').val(),
+    case_id: currentCaseId,
+    appointment_date: $('#appointment_date').val(),
+    time_from: $('#time_from').val(),
+    time_to: $('#time_to').val(),
+    status: $('#status').val(),
+    place: $('#place').val(),
+    doctor: $('#doctor').val(),
+    koopa: $('#koopa').val(),
+    address: $('#address').val(),
+    notes: $('#notes').val(),
+    investigators: [
+      $('#investigator_id_1').val(),
+      $('#investigator_id_2').val(),
+      $('#investigator_id_3').val()
+    ].filter(Boolean)
+  };
+
+  // decide endpoint
+  const url = payload.id
+    ? `/appointments/${payload.id}/update`
+    : '/appointments/create';
+
+  $.ajax({
+    url: url,
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify(payload),
+    success: function (res) {
+      if (res.status === 'success') {
+        loadAppointments(currentCaseId);
+        alert("האירוע נשמר בהצלחה");
+      } else {
+        alert("שגיאה בשמירת האירוע: " + res.message);
       }
-    });
+    },
+    error: function (xhr) {
+      alert("שגיאה בשרת: " + xhr.responseText);
+    }
   });
+});
+
+
 
   $('#deleteAppointment').on('click', function () {
     const id = $('#appointment_id').val();
