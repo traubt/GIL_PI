@@ -1646,27 +1646,32 @@ def has_future_appointment(case_id):
 @main.route('/appointments/all', methods=['GET'])
 def get_all_appointments():
     """
-    Raw-SQL: fetch ALL appointments with investigator info.
-    Useful for calendar view.
+    Fetch ALL appointments (with insured, insurance, type, and investigators).
     """
     sql = text("""
         SELECT
             a.id,
             a.case_id,
+            ins.ref_number,
             a.appointment_date,
             a.time_from,
             a.time_to,
             a.status,
             a.address,
             a.notes,
-            GROUP_CONCAT(ia.investigator_id ORDER BY ia.investigator_id SEPARATOR ',') AS investigator_ids_csv,
-            GROUP_CONCAT(i.full_name ORDER BY ia.investigator_id SEPARATOR ', ')      AS investigator_names
+            ins.first_name,
+            ins.last_name,
+            ins.insurance AS insurance,
+            ins.claim_type AS insurance_type,
+            COALESCE(GROUP_CONCAT(i.full_name ORDER BY ia.investigator_id SEPARATOR ', '), '') AS investigator_names
         FROM gil_appointments a
+        LEFT JOIN gil_insured ins
+               ON ins.id = a.case_id
         LEFT JOIN gil_investigator_appointments ia
                ON ia.appointment_id = a.id
         LEFT JOIN gil_investigator i
                ON i.id = ia.investigator_id
-        GROUP BY a.id, a.case_id, a.appointment_date, a.time_from, a.time_to, a.status, a.address, a.notes
+        GROUP BY a.id
         ORDER BY a.appointment_date, a.time_from
     """)
 
@@ -1674,12 +1679,18 @@ def get_all_appointments():
 
     results = []
     for row in rows:
-        ids_csv = row["investigator_ids_csv"]
-        names_csv = row["investigator_names"]
+        investigator_names = row["investigator_names"] or ""
 
-        investigator_ids = [int(x) for x in ids_csv.split(',')] if ids_csv else []
-        investigator_names = names_csv or ""
-
+        # Build full event title
+        title_parts = [
+            f"{normalize_time(row['time_from'])}-{normalize_time(row['time_to'])}",
+            f"תיק {row['ref_number']}",
+            f"{row['first_name']} {row['last_name']}",
+            row["insurance"] or "",
+            row["insurance_type"] or "",
+            investigator_names
+        ]
+        title = " ".join([part for part in title_parts if part.strip()])
 
         results.append({
             "id": row["id"],
@@ -1690,11 +1701,13 @@ def get_all_appointments():
             "status": row["status"] or "",
             "address": row["address"] or "",
             "notes": row["notes"] or "",
-            "investigator_ids": investigator_ids,
-            "investigators": investigator_names
+            "investigators": investigator_names,
+            "title": title   # ✅ send prebuilt title for calendar
         })
 
     return jsonify(results)
+
+
 
 
 @main.route('/appointments/calendar')

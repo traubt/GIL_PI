@@ -66,17 +66,29 @@ document.addEventListener('DOMContentLoaded', function () {
         success: function (data) {
           console.log("All appointments from server:", data);
 
-        events: data.map(appt => ({
-          id: appt.id,
-          title: `תיק ${appt.case_id} - ${appt.investigators || ''}`,
-          start: appt.time_from,   // already ISO 2025-09-17T08:00
-          end: appt.time_to,       // already ISO 2025-09-17T09:00
-          extendedProps: {
-            status: appt.status,
-            address: appt.address,
-            notes: appt.notes
-          }
-        }))
+          const events = data.map(appt => {
+            // build ISO datetime: YYYY-MM-DDTHH:MM
+            const start = appt.appointment_date && appt.time_from
+              ? `${appt.appointment_date}T${appt.time_from}`
+              : appt.appointment_date;
+
+            const end = appt.appointment_date && appt.time_to
+              ? `${appt.appointment_date}T${appt.time_to}`
+              : null;
+
+              return {
+                id: appt.id,
+                title: appt.title,   // ✅ use backend-built title
+                start: start,
+                end: end,
+                extendedProps: {
+                  status: appt.status,
+                  address: appt.address,
+                  notes: appt.notes
+                }
+              };
+
+          });
 
           console.log("Mapped events for calendar:", events);
           successCallback(events);
