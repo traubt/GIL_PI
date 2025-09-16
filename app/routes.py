@@ -198,11 +198,24 @@ def normalize_time(value):
     except Exception:
         return str(value)
 
-def parse_time(hhmm: str):
-    """Convert 'HH:MM' string to a datetime.time object."""
-    if not hhmm:
+from datetime import datetime, time
+
+def parse_time(value):
+    """Convert string like '14:30' or '14:30:00' to datetime.time."""
+    if not value:
         return None
-    return datetime.strptime(hhmm, "%H:%M").time()
+    if isinstance(value, time):
+        return value
+    if isinstance(value, str):
+        try:
+            return datetime.strptime(value.strip(), "%H:%M").time()
+        except ValueError:
+            try:
+                return datetime.strptime(value.strip(), "%H:%M:%S").time()
+            except ValueError:
+                return None
+    return None
+
 
 @main.route('/send_email', methods=['POST'])
 def handle_send_email():
@@ -870,6 +883,10 @@ def admin_insured():
     shop = json.loads(shop_data) if shop_data else {}
     investigators = GilInvestigator.query.order_by(GilInvestigator.full_name.asc()).all()
     koopa_list = GilKoopa.query.order_by(GilKoopa.koopa_name.asc()).all()
+    investigators_json = [
+        {"id": inv.id, "full_name": inv.full_name, "user_id": inv.user_id}
+        for inv in investigators
+    ]
 
     # role list
     roles = db.session.query(TocRole).all()
@@ -902,6 +919,7 @@ def admin_insured():
         roles=roles_list,
         insured_list=insured_list,
         investigators=investigators,
+        investigators_json=investigators_json,  # use only for JS logging
         koopa_list=koopa_list
     )
 
@@ -1400,19 +1418,19 @@ def insured_export_rows():
 
 @main.route('/appointments/<int:case_id>', methods=['GET'])
 def get_case_appointments(case_id):
-    """
-    Raw SQL version: fetch appointments for case_id +
-    aggregated investigators (ids + names) per appointment.
-    """
     sql = text("""
         SELECT
             a.id,
+            a.case_id,
             a.appointment_date,
             a.time_from,
             a.time_to,
             a.status,
             a.address,
             a.notes,
+            a.place,
+            a.doctor,
+            a.koopa,
             GROUP_CONCAT(ia.investigator_id ORDER BY ia.investigator_id SEPARATOR ',') AS investigator_ids_csv,
             GROUP_CONCAT(i.full_name ORDER BY ia.investigator_id SEPARATOR ', ')      AS investigator_names
         FROM gil_appointments a
@@ -1421,35 +1439,29 @@ def get_case_appointments(case_id):
         LEFT JOIN gil_investigator i
                ON i.id = ia.investigator_id
         WHERE a.case_id = :case_id
-        GROUP BY a.id, a.appointment_date, a.time_from, a.time_to, a.status, a.address, a.notes
+        GROUP BY a.id
         ORDER BY a.appointment_date, a.time_from
     """)
-
     rows = db.session.execute(sql, {"case_id": case_id}).mappings().all()
-    # mappings() gives you dict-like rows, easier to work with
 
     results = []
     for row in rows:
         ids_csv = row["investigator_ids_csv"]
-        names_csv = row["investigator_names"]
-
         investigator_ids = [int(x) for x in ids_csv.split(',')] if ids_csv else []
-        investigator_names = names_csv or ""
-
         results.append({
             "id": row["id"],
-            "appointment_date": (
-                row["appointment_date"].isoformat()
-                if hasattr(row["appointment_date"], "isoformat")
-                else str(row["appointment_date"])
-            ),
-            "time_from": str(row["time_from"]) if row["time_from"] else "",
-            "time_to": str(row["time_to"]) if row["time_to"] else "",
+            "case_id": row["case_id"],
+            "appointment_date": row["appointment_date"].isoformat() if row["appointment_date"] else "",
+            "time_from": normalize_time(row["time_from"]),
+            "time_to": normalize_time(row["time_to"]),
             "status": row["status"] or "",
             "address": row["address"] or "",
+            "place": row["place"] or "",
+            "doctor": row["doctor"] or "",
+            "koopa": row["koopa"] or "",
             "notes": row["notes"] or "",
-            "investigator_ids": investigator_ids,   # for modal pre-fill
-            "investigators": investigator_names     # for table display
+            "investigator_ids": investigator_ids,
+            "investigators": row["investigator_names"] or ""
         })
 
     return jsonify(results)
@@ -1466,17 +1478,29 @@ def create_appointment():
         user_data = json.loads(session.get('user')) if session.get('user') else {}
         user_id = user_data.get('id')
 
-        # --- date / time handling ---
-        appointment_date = datetime.strptime(data["appointment_date"], "%Y-%m-%d").date()
-        time_from = parse_time(data.get("time_from"))
-        time_to   = parse_time(data.get("time_to"))
+        # --- Parse appointment_date ---
+        appt_date = datetime.strptime(data['appointment_date'], "%Y-%m-%d").date()
 
-        # --- create appointment ---
+        # --- Parse times safely (returns datetime.time) ---
+        def parse_time(val: str):
+            if not val:
+                return None
+            try:
+                return datetime.strptime(val, "%H:%M").time()
+            except ValueError:
+                try:
+                    return datetime.strptime(val, "%H:%M:%S").time()
+                except ValueError:
+                    return None
+
+        time_from = parse_time(data.get('time_from'))
+        time_to = parse_time(data.get('time_to'))
+
         appt = GilAppointment(
             case_id=int(data['case_id']),
-            appointment_date=appointment_date,
-            time_from=time_from,
-            time_to=time_to,
+            appointment_date=appt_date,
+            time_from=time_from,     # ✅ store as time
+            time_to=time_to,         # ✅ store as time
             address=data.get('address'),
             place=data.get('place'),
             doctor=data.get('doctor'),
@@ -1485,9 +1509,8 @@ def create_appointment():
             notes=data.get('notes')
         )
         db.session.add(appt)
-        db.session.flush()   # get appt.id
+        db.session.flush()
 
-        # --- investigator links ---
         inv_ids = data.get('investigators', []) or []
         for inv_id in inv_ids:
             db.session.add(GilInvestigatorAppointment(
@@ -1498,61 +1521,13 @@ def create_appointment():
 
         db.session.commit()
 
-        # --- fetch the new row in consistent format ---
-        sql = text("""
-            SELECT
-                a.id,
-                a.case_id,
-                a.appointment_date,
-                a.time_from,
-                a.time_to,
-                a.status,
-                a.address,
-                a.notes,
-                a.place,
-                a.doctor,
-                a.koopa,
-                GROUP_CONCAT(ia.investigator_id ORDER BY ia.investigator_id SEPARATOR ',') AS investigator_ids_csv,
-                GROUP_CONCAT(i.full_name ORDER BY ia.investigator_id SEPARATOR ', ')      AS investigator_names
-            FROM gil_appointments a
-            LEFT JOIN gil_investigator_appointments ia
-                   ON ia.appointment_id = a.id
-            LEFT JOIN gil_investigator i
-                   ON i.id = ia.investigator_id
-            WHERE a.id = :id
-            GROUP BY a.id, a.case_id, a.appointment_date, a.time_from, a.time_to,
-                     a.status, a.address, a.notes, a.place, a.doctor, a.koopa
-        """)
-        row = db.session.execute(sql, {"id": appt.id}).mappings().first()
-
-        ids_csv = row["investigator_ids_csv"]
-        investigator_ids = [int(x) for x in ids_csv.split(',')] if ids_csv else []
-
-        return jsonify({
-            "status": "success",
-            "appointment": {
-                "id": row["id"],
-                "case_id": row["case_id"],
-                "appointment_date": row["appointment_date"].isoformat() if row["appointment_date"] else "",
-                "time_from": normalize_time(row["time_from"]),
-                "time_to": normalize_time(row["time_to"]),
-                "appt_status": row["status"] or "",
-                "address": row["address"] or "",
-                "place": row["place"] or "",
-                "doctor": row["doctor"] or "",
-                "koopa": row["koopa"] or "",
-                "notes": row["notes"] or "",
-                "investigator_ids": investigator_ids,
-                "investigators": row["investigator_names"] or ""
-            }
-        })
-
-
+        return jsonify({"status": "success", "appointment_id": appt.id})
 
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"create_appointment error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
+
 
 @main.route('/appointments/<int:id>/delete', methods=['POST'])
 def delete_appointment(id):
@@ -1572,12 +1547,35 @@ def delete_appointment(id):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+# --- Single appointment as JSON ---
 @main.route('/appointments/<int:id>/get', methods=['GET'])
-def get_appointment(id):
+@main.route('/appointments/<int:id>/json', methods=['GET'])
+def get_appointment_json(id):
     appt = GilAppointment.query.get_or_404(id)
-    return jsonify(appt.to_dict())
 
-from datetime import datetime, timedelta
+    # fetch linked investigators
+    inv_links = GilInvestigatorAppointment.query.filter_by(appointment_id=appt.id).all()
+    investigator_ids = [link.investigator_id for link in inv_links]
+    investigator_names = [link.investigator.full_name for link in inv_links if link.investigator]
+
+    data = {
+        "id": appt.id,
+        "case_id": appt.case_id,
+        "appointment_date": appt.appointment_date.isoformat() if appt.appointment_date else "",
+        "time_from": normalize_time(appt.time_from),
+        "time_to": normalize_time(appt.time_to),
+        "status": appt.status or "",
+        "place": appt.place or "",
+        "doctor": appt.doctor or "",
+        "koopa": appt.koopa or "",
+        "address": appt.address or "",
+        "notes": appt.notes,
+        "investigator_ids": investigator_ids,
+        "investigators": ", ".join(investigator_names)
+    }
+    return jsonify(data)
+
+
 
 @main.route('/appointments/<int:id>/update', methods=['POST'])
 def update_appointment(id):
@@ -1585,19 +1583,26 @@ def update_appointment(id):
     appt = GilAppointment.query.get_or_404(id)
 
     try:
-        # --- Update appointment fields ---
-        appt.appointment_date = datetime.strptime(data['appointment_date'], "%Y-%m-%d").date()
+        # --- Parse appointment_date (date only) ---
+        if data.get('appointment_date'):
+            appt.appointment_date = datetime.strptime(data['appointment_date'], "%Y-%m-%d").date()
 
-        # convert HH:MM → timedelta
-        def to_timedelta(timestr):
-            if not timestr:
+        # --- Safe parse for TIME columns ---
+        def parse_time(val: str):
+            if not val:
                 return None
-            h, m = map(int, timestr.split(":"))
-            return timedelta(hours=h, minutes=m)
+            try:
+                return datetime.strptime(val, "%H:%M").time()
+            except ValueError:
+                try:
+                    return datetime.strptime(val, "%H:%M:%S").time()
+                except ValueError:
+                    return None
 
-        appt.time_from = to_timedelta(data['time_from'])
-        appt.time_to   = to_timedelta(data['time_to'])
+        appt.time_from = parse_time(data.get('time_from'))
+        appt.time_to = parse_time(data.get('time_to'))
 
+        # --- Update other fields ---
         appt.address = data.get('address')
         appt.place = data.get('place')
         appt.doctor = data.get('doctor')
@@ -1605,7 +1610,7 @@ def update_appointment(id):
         appt.status = data.get('status', appt.status)
         appt.notes = data.get('notes')
 
-        # --- Replace investigator assignments ---
+        # --- Reset investigators ---
         GilInvestigatorAppointment.query.filter_by(appointment_id=id).delete()
         inv_ids = data.get('investigators', [])
         user_data = json.loads(session.get('user')) if session.get('user') else {}
@@ -1613,65 +1618,18 @@ def update_appointment(id):
         for inv_id in inv_ids:
             db.session.add(GilInvestigatorAppointment(
                 appointment_id=id,
-                investigator_id=inv_id,
+                investigator_id=int(inv_id),
                 assigned_by=user_id
             ))
 
         db.session.commit()
-
-        # --- Fetch fresh row using raw SQL ---
-        sql = text("""
-            SELECT
-                a.id,
-                a.case_id,
-                a.appointment_date,
-                a.time_from,
-                a.time_to,
-                a.status,
-                a.address,
-                a.notes,
-                a.place,
-                a.doctor,
-                a.koopa,
-                GROUP_CONCAT(ia.investigator_id ORDER BY ia.investigator_id SEPARATOR ',') AS investigator_ids_csv,
-                GROUP_CONCAT(i.full_name ORDER BY ia.investigator_id SEPARATOR ', ')      AS investigator_names
-            FROM gil_appointments a
-            LEFT JOIN gil_investigator_appointments ia
-                   ON ia.appointment_id = a.id
-            LEFT JOIN gil_investigator i
-                   ON i.id = ia.investigator_id
-            WHERE a.id = :id
-            GROUP BY a.id, a.case_id, a.appointment_date, a.time_from, a.time_to, 
-                     a.status, a.address, a.notes, a.place, a.doctor, a.koopa
-        """)
-        row = db.session.execute(sql, {"id": id}).mappings().first()
-
-        ids_csv = row["investigator_ids_csv"]
-        investigator_ids = [int(x) for x in ids_csv.split(',')] if ids_csv else []
-
-        return jsonify({
-            "status": "success",
-            "appointment": {
-                "id": row["id"],
-                "case_id": row["case_id"],
-                "appointment_date": row["appointment_date"].isoformat() if row["appointment_date"] else "",
-                "time_from": normalize_time(row["time_from"]),
-                "time_to": normalize_time(row["time_to"]),
-                "status": row["status"] or "",
-                "address": row["address"] or "",
-                "place": row["place"] or "",
-                "doctor": row["doctor"] or "",
-                "koopa": row["koopa"] or "",
-                "notes": row["notes"] or "",
-                "investigator_ids": investigator_ids,
-                "investigators": row["investigator_names"] or ""
-            }
-        })
+        return jsonify({"status": "success"})
 
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"update_appointment error: {e}")
         return jsonify({"status": "error", "message": str(e)}), 400
+
 
 
 @main.route('/appointments/<int:case_id>/has_future', methods=['GET'])
@@ -1722,12 +1680,13 @@ def get_all_appointments():
         investigator_ids = [int(x) for x in ids_csv.split(',')] if ids_csv else []
         investigator_names = names_csv or ""
 
+
         results.append({
             "id": row["id"],
             "case_id": row["case_id"],
             "appointment_date": row["appointment_date"].isoformat() if row["appointment_date"] else "",
-            "time_from": str(row["time_from"]) if row["time_from"] else "",
-            "time_to": str(row["time_to"]) if row["time_to"] else "",
+            "time_from": normalize_time(row["time_from"]),
+            "time_to": normalize_time(row["time_to"]),
             "status": row["status"] or "",
             "address": row["address"] or "",
             "notes": row["notes"] or "",
@@ -1736,6 +1695,7 @@ def get_all_appointments():
         })
 
     return jsonify(results)
+
 
 @main.route('/appointments/calendar')
 def appointments_calendar():
@@ -1749,52 +1709,7 @@ def appointments_calendar():
 
     return render_template("calendar.html", user=user, roles=roles_list)
 
-@main.route('/appointments/<int:id>/json', methods=['GET'])
-def get_appointment_json(id):
-    sql = text("""
-        SELECT
-            a.id,
-            a.case_id,
-            a.appointment_date,
-            a.time_from,
-            a.time_to,
-            a.status,
-            a.address,
-            a.notes,
-            a.place,
-            a.doctor,
-            a.koopa,
-            GROUP_CONCAT(ia.investigator_id ORDER BY ia.investigator_id SEPARATOR ',') AS investigator_ids_csv,
-            GROUP_CONCAT(i.full_name ORDER BY ia.investigator_id SEPARATOR ', ')      AS investigator_names
-        FROM gil_appointments a
-        LEFT JOIN gil_investigator_appointments ia ON ia.appointment_id = a.id
-        LEFT JOIN gil_investigator i ON i.id = ia.investigator_id
-        WHERE a.id = :id
-        GROUP BY a.id, a.case_id, a.appointment_date, a.time_from, a.time_to,
-                 a.status, a.address, a.notes, a.place, a.doctor, a.koopa
-    """)
-    row = db.session.execute(sql, {"id": id}).mappings().first()
-    if not row:
-        return jsonify({"error": "Appointment not found"}), 404
 
-    ids_csv = row["investigator_ids_csv"]
-    investigator_ids = [int(x) for x in ids_csv.split(',')] if ids_csv else []
-
-    return jsonify({
-        "id": row["id"],
-        "case_id": row["case_id"],
-        "appointment_date": normalize_date(row["appointment_date"]),
-        "time_from": normalize_time(row["time_from"]),
-        "time_to": normalize_time(row["time_to"]),
-        "status": str(row["status"] or ""),
-        "address": str(row["address"] or ""),
-        "place": str(row["place"] or ""),
-        "doctor": str(row["doctor"] or ""),
-        "koopa": str(row["koopa"] or ""),
-        "notes": str(row["notes"] or ""),
-        "investigator_ids": investigator_ids,
-        "investigators": str(row["investigator_names"] or "")
-    })
 
 
 
@@ -2012,6 +1927,138 @@ def assign_investigators(id):
         db.session.add(link)
     db.session.commit()
     return jsonify({"status": "success"})
+
+### Tasks management
+
+@main.route('/tasks/<int:case_id>', methods=['GET'])
+def get_case_tasks(case_id):
+    """
+    Fetch all tasks for a given case_id, including investigator + creator names.
+    """
+    sql = text("""
+        SELECT
+            t.id,
+            t.case_id,
+            t.title,
+            t.description,
+            t.due_date,
+            t.status,
+            t.investigator_id,
+            i.full_name AS investigator_name,
+            t.creator_id,
+            u.username AS creator_name,
+            t.date_created,
+            t.date_modified
+        FROM gil_tasks t
+        LEFT JOIN gil_investigator i ON i.id = t.investigator_id
+        LEFT JOIN toc_users u ON u.id = t.creator_id
+        WHERE t.case_id = :case_id
+        ORDER BY t.due_date, t.id
+    """)
+
+    rows = db.session.execute(sql, {"case_id": case_id}).mappings().all()
+
+    results = []
+    for row in rows:
+        results.append({
+            "id": row["id"],
+            "case_id": row["case_id"],
+            "title": row["title"] or "",
+            "description": row["description"] or "",
+            "due_date": str(row["due_date"]) if row["due_date"] else "",
+            "status": row["status"] or "",
+            "investigator_id": row["investigator_id"],
+            "investigator_name": row["investigator_name"] or "",
+            "creator_id": row["creator_id"],
+            "creator_name": row["creator_name"] or "",
+            "date_created": row["date_created"].isoformat() if row["date_created"] else "",
+            "date_modified": row["date_modified"].isoformat() if row["date_modified"] else ""
+        })
+
+    return jsonify(results)
+
+
+@main.route('/tasks/<int:id>/json', methods=['GET'])
+def get_task_json(id):
+    task = GilTask.query.get_or_404(id)
+    return jsonify({
+        "id": task.id,
+        "case_id": task.case_id,
+        "title": task.title,
+        "description": task.description or "",
+        "due_date": str(task.due_date) if task.due_date else "",
+        "status": task.status or "",
+        "investigator_id": task.investigator_id
+    })
+
+
+
+@main.route('/tasks/create', methods=['POST'])
+def create_task():
+    try:
+        user_data = json.loads(session.get('user')) if session.get('user') else {}
+        creator_id = user_data.get('id') if user_data else None
+
+        task = GilTask(
+            case_id=request.form.get('case_id'),
+            investigator_id=request.form.get('investigator_id'),
+            title=request.form.get('title'),
+            description=request.form.get('description'),
+            due_date=request.form.get('due_date'),
+            status=request.form.get('status'),
+            creator_id=creator_id
+        )
+        db.session.add(task)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Task created"})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"create_task error: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+
+@main.route('/tasks/<int:id>/update', methods=['POST'])
+def update_task(id):
+    try:
+        task = GilTask.query.get(id)
+        if not task:
+            return jsonify({"status": "error", "message": "Task not found"})
+
+        task.title = request.form.get('title')
+        task.description = request.form.get('description')
+        task.investigator_id = request.form.get('investigator_id')
+
+        due_date_str = request.form.get('due_date')
+        if due_date_str:
+            try:
+                task.due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                return jsonify({"status": "error", "message": "Invalid date format"}), 400
+
+        task.status = request.form.get('status')
+        db.session.commit()
+
+        return jsonify({"status": "success", "message": "Task updated"})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"update_task error: {e}")
+        return jsonify({"status": "error", "message": str(e)})
+
+
+
+@main.route('/tasks/<int:id>/delete', methods=['POST'])
+def delete_task(id):
+    try:
+        task = GilTask.query.get(id)
+        if not task:
+            return jsonify({"status": "error", "message": "Task not found"})
+
+        db.session.delete(task)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Task deleted"})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)})
 
 ############################################################################
 

@@ -284,8 +284,8 @@ class GilAppointment(db.Model):
     initiator_id = db.Column(db.Integer, db.ForeignKey('toc_users.id'))
 
     appointment_date = db.Column(db.Date, nullable=False)
-    time_from = db.Column(db.Time, nullable=False)
-    time_to = db.Column(db.Time, nullable=False)
+    time_from = db.Column(db.DateTime, nullable=False)
+    time_to = db.Column(db.DateTime, nullable=False)
 
     address = db.Column(db.String(255))
     notes = db.Column(db.Text)
@@ -342,6 +342,24 @@ class GilInvestigatorCase(db.Model):
     insured = db.relationship('GilInsured', backref=db.backref('investigator_links', cascade='all, delete-orphan'))
     investigator = db.relationship('GilInvestigator', backref=db.backref('case_links', cascade='all, delete-orphan'))
     assigned_by_user = db.relationship('User', foreign_keys=[assigned_by])
+
+
+from datetime import datetime
+from . import db
+
+class GilTask(db.Model):
+    __tablename__ = 'gil_tasks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    case_id = db.Column(db.Integer, db.ForeignKey('gil_insured.id'), nullable=False)
+    investigator_id = db.Column(db.Integer, db.ForeignKey('gil_investigator.id'))
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text)
+    due_date = db.Column(db.Date)
+    status = db.Column(db.String(50), default="פתוחה")
+    creator_id = db.Column(db.Integer, db.ForeignKey('toc_users.id'))
+    date_created = db.Column(db.DateTime, default=datetime.utcnow)
+    date_modified = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 

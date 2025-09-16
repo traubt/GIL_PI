@@ -10,6 +10,21 @@
 
 
       <div class="modal-body">
+
+                <!-- 👇 Custom CSS for highlight -->
+        <style>
+          /* highlight selected row */
+          #appointmentsTable tr.table-active {
+              background-color: #d4edda !important; /* light green */
+              color: #155724; /* dark green text */
+          }
+
+          /* highlight row on hover */
+          #appointmentsTable tbody tr:hover {
+              background-color: #eafaf1 !important; /* very light green */
+              cursor: pointer;
+          }
+        </style>
         <!-- Section 1: Events -->
         <h5 class="fw-bold mb-3">ארוע/ים</h5>
         <table id="appointmentsTable" class="table table-striped">

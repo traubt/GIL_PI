@@ -47,118 +47,54 @@
 
 {% include 'appointment_modal.html' %}
 
-
 <script>
 document.addEventListener('DOMContentLoaded', function () {
   var calendarEl = document.getElementById('calendar');
+
   var calendar = new FullCalendar.Calendar(calendarEl, {
     initialView: 'dayGridMonth',
     locale: 'he',
-    direction: 'rtl',
     headerToolbar: {
       left: 'prev,next today',
       center: 'title',
       right: 'dayGridMonth,timeGridWeek,timeGridDay'
     },
-    events: '/appointments/all',
-    selectable: true,
-    editable: true,
+    events: function (fetchInfo, successCallback, failureCallback) {
+      $.ajax({
+        url: '/appointments/all',
+        method: 'GET',
+        success: function (data) {
+          console.log("All appointments from server:", data);
 
-    // 🔹 כאן מוסיפים עיבוד מותאם של האירוע
-    eventContent: function(arg) {
-      let event = arg.event.extendedProps;
-      let title = arg.event.title;
-
-      let details = [];
-      if (event.insurance) details.push("ביטוח: " + event.insurance);
-      if (event.place) details.push("מקום: " + event.place);
-      if (event.investigator_1_name) details.push("חוקר: " + event.investigator_1_name);
-
-      return {
-        html: `
-          <div style="font-weight:bold;">${title}</div>
-          <div style="font-size:smaller;">${details.join("<br>")}</div>
-        `
-      };
-    },
-
-    // יצירת תור חדש
-    select: function(info) {
-      const notes = prompt('פרטי התור:');
-      if (notes) {
-        const payload = {
-          case_id: 1, // TODO: לשייך למבוטח ספציפי
-          appointment_date: info.startStr.split("T")[0],
-          time_from: "09:00",
-          time_to: "10:00",
-          notes: notes
-        };
-        fetch('/appointments/create', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }).then(r => r.json()).then(res => {
-          if (res.status === 'success') {
-            calendar.refetchEvents();
-          } else {
-            alert("שגיאה בשמירת התור");
+        events: data.map(appt => ({
+          id: appt.id,
+          title: `תיק ${appt.case_id} - ${appt.investigators || ''}`,
+          start: appt.time_from,   // already ISO 2025-09-17T08:00
+          end: appt.time_to,       // already ISO 2025-09-17T09:00
+          extendedProps: {
+            status: appt.status,
+            address: appt.address,
+            notes: appt.notes
           }
-        });
-      }
-      calendar.unselect();
-    },
+        }))
 
-    // עדכון ע"י גרירה
-    eventDrop: function(info) {
-      const id = info.event.id;
-      fetch(`/appointments/${id}/update`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          appointment_date: info.event.startStr.split("T")[0],
-          time_from: info.event.startStr.substring(11,16),
-          time_to: info.event.endStr ? info.event.endStr.substring(11,16) : "23:59",
-          notes: info.event.extendedProps.notes
-        })
-      }).then(r => r.json()).then(res => {
-        if (res.status !== 'success') {
-          alert('שגיאה בעדכון');
-          info.revert();
+          console.log("Mapped events for calendar:", events);
+          successCallback(events);
+        },
+        error: function (err) {
+          console.error("Error fetching appointments:", err);
+          failureCallback(err);
         }
       });
     },
-
-    eventClick: function(info) {
-      // load appointment into modal
-      const apptId = info.event.id;
-
-      // clear previous form
-      $('#appointmentForm')[0].reset();
-
-      // load appointment details
-      $.getJSON(`/appointments/${apptId}/json`, function(data) {
-        $('#appointment_id').val(data.id);
-        $('#case_id').val(data.case_id);
-        $('#appointment_date').val(data.appointment_date);
-        $('#time_from').val(data.time_from);
-        $('#time_to').val(data.time_to);
-        $('#address').val(data.address);
-        $('#place').val(data.place);
-        $('#doctor').val(data.doctor);
-        $('#koopa').val(data.koopa);
-        $('#investigator_id_1').val(data.investigator_id_1);
-        $('#investigator_id_2').val(data.investigator_id_2);
-        $('#investigator_id_3').val(data.investigator_id_3);
-        $('#notes').val(data.notes);
-      });
-
-      // show modal
-      $('#appointmentsModal').modal('show');
-    }
-
+    selectable: true
   });
+
   calendar.render();
 });
 </script>
+
+
+
 
 {% endblock %}

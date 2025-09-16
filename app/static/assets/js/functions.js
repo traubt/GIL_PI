@@ -421,6 +421,44 @@ function fetchLastUpdateTime() {
         });
 }
 
+/**
+ * Create a notification
+ * @param {string} toUser  - recipient username or user_id
+ * @param {string} subject - notification subject
+ * @param {string} body    - notification body
+ */
+async function createNotification(toUser, subject, body) {
+    const now = new Date();
+    const data = {
+        not_date: now.toISOString().slice(0, 19).replace("T", " "), // ✅ MySQL DATETIME
+        not_address: toUser,           // in GIL PI -> user instead of shop
+        not_subject: subject,
+        not_body: body,
+        not_status: "unread"
+    };
+
+    try {
+        const response = await fetch('/create_notification', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
+        });
+
+        const res = await response.json();
+        if (response.ok) {
+            console.log("✅ Notification created:", res);
+            return true;
+        } else {
+            console.error("⚠️ Error creating notification:", res);
+            return false;
+        }
+    } catch (error) {
+        console.error("💥 Fetch error in createNotification:", error);
+        return false;
+    }
+}
 
 
 

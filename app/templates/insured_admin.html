@@ -97,6 +97,7 @@
 <!--                <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"-->
 <!--                        data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>-->
                 <button class="btn btn-sm btn-info open-appointments" data-case-id="{{ insured.id }}"> 📅ארועים</button>
+                <button class="btn btn-sm btn-info tasks-btn" data-id="{{ insured.id }}">    משימות</button>
                 <button type="button" class="btn btn-sm btn-secondary change-status-btn"
                         data-id="{{ insured.id }}" data-status="{{ insured.status|default('פתוחה') }}">שנה סטטוס</button>
               </td>
@@ -197,8 +198,11 @@
 </div>
 
 {% include 'appointment_modal.html' %}
+{% include 'tasks_modal.html' %}
 
 <script>
+
+
 $(function () {
   // ==== Insured DataTable init ====
   var table = $('#insuredTable').DataTable({
@@ -553,6 +557,161 @@ $('#appointmentForm').on('submit', function (e) {
   });
 
 });
+
+// ==== Change Status ====
+$(document).on('click', '.change-status-btn', function () {
+  const insuredId = $(this).data('id');
+  const currentStatus = $(this).data('status');
+
+  $('#statusInsuredId').val(insuredId);
+  $('#statusSelect').val(currentStatus);
+
+  $('#changeStatusModal').modal('show');
+});
+
+$('#saveStatusBtn').on('click', function () {
+  const insuredId = $('#statusInsuredId').val();
+  const newStatus = $('#statusSelect').val();
+
+  $.ajax({
+    url: `/insured/${insuredId}/status`,
+    method: 'POST',
+    data: { status: newStatus },
+    success: function (res) {
+      if (res.status === 'success') {
+        // update table cell without refresh
+        const row = $(`#insuredTable tr[data-id="${insuredId}"]`);
+        row.find('td:nth-child(14)').text(res.new_status); // 14th column = status
+        row.find('.change-status-btn').data('status', res.new_status);
+
+        $('#changeStatusModal').modal('hide');
+        alert('סטטוס עודכן בהצלחה');
+      } else {
+        alert(res.message || 'שגיאה בעדכון סטטוס');
+      }
+    },
+    error: function (xhr) {
+      alert('שגיאת שרת: ' + xhr.responseText);
+    }
+  });
+});
+
+    // Open modal
+    $('.tasks-btn').on('click', function () {
+        const caseId = $(this).data('id');
+        $('#task_case_id').val(caseId);
+        $('#taskModal').modal('show');
+    });
+
+
+  function loadTasks(caseId) {
+    $.getJSON(`/tasks/${caseId}`, function (tasks) {
+        const $tbody = $('#tasksTable tbody').empty();
+        if (tasks.length === 0) {
+            $tbody.append(`<tr><td colspan="6" class="text-center">אין משימות</td></tr>`);
+        } else {
+            tasks.forEach(t => {
+              $tbody.append(`
+                <tr data-id="${t.id}" data-description="${t.description}" data-investigator-id="${t.investigator_id || ''}">
+                  <td>${t.date_created ? t.date_created.substring(0,10) : ''}</td>
+                  <td>${t.title}</td>
+                  <td>${t.investigator_name || ''}</td>
+                  <td>${t.due_date || ''}</td>
+                  <td>${t.status}</td>
+                  <td>
+                    <button class="btn btn-sm btn-primary edit-task">✏️</button>
+                    <button class="btn btn-sm btn-danger delete-task">🗑</button>
+                  </td>
+                </tr>
+              `);
+            });
+        }
+    });
+}
+
+// Reload tasks when modal opened
+$(document).on('click', '.tasks-btn', function () {
+    const caseId = $(this).data('id');
+    const $row = $('#insuredTable tbody tr[data-id="' + caseId + '"]');
+    const name = $row.find('td').eq(5).text() + " " + $row.find('td').eq(6).text();
+    const insurance = $row.find('td').eq(9).text();
+    const claimType = $row.find('td').eq(10).text();
+    const refNum = $row.find('td').eq(3).text();
+
+    $('#tasksModalTitle').text(`משימות עבור ${name} ${refNum} (${insurance}, ${claimType})`);
+    $('#task_case_id').val(caseId);
+    loadTasks(caseId);
+    $('#taskModal').modal('show');
+});
+
+
+// Save new task
+$('#taskForm').on('submit', async function(e) {
+    e.preventDefault();
+    const $this = $(this);
+    const id = $('#task_id').val() || 0;
+    const url = id ? `/tasks/${id}/update` : '/tasks/create';
+
+    $.post(url, $this.serialize(), async function(res) {
+        if (res.status === "success") {
+            alert("משימה נשמרה בהצלחה ✅");
+
+            // --- Send notification to investigator BEFORE reset ---
+            const $inv = $('#task_investigator option:selected');
+            const invUserId = $inv.data('user-id') || null;
+            const invName = $inv.text();
+
+            if (invUserId) {
+                await createNotification(
+                    parseInt(invUserId),   // ensure INT
+                    "משימה חדשה",
+                    `משימה חדשה הוקצתה לחוקר ${invName}: ${$('input[name="title"]').val()}`
+                );
+            }
+
+            // --- Reload tasks ---
+            const caseId = $("#task_case_id").val();
+            loadTasks(caseId);
+
+            // --- Now reset form ---
+            $('#taskForm')[0].reset();
+            $('#task_id').val("");
+        } else {
+            alert("⚠️ " + res.message);
+        }
+    });
+});
+
+
+
+
+// Delete task
+$(document).on('click', '.delete-task', function () {
+    const id = $(this).closest('tr').data('id');
+    if (!confirm("האם למחוק את המשימה?")) return;
+    $.post(`/tasks/${id}/delete`, function (res) {
+        if (res.status === 'success') {
+            alert("🗑️ המשימה נמחקה");
+            loadTasks($('#task_case_id').val());
+        } else {
+            alert("⚠️ " + res.message);
+        }
+    });
+});
+
+// Edit task (load into form for update)
+$(document).on('click', '.edit-task', function () {
+    const $tr = $(this).closest('tr');
+    $('#task_id').val($tr.data('id'));
+    $('input[name="title"]').val($tr.find('td').eq(1).text());
+    $('textarea[name="description"]').val($tr.data('description'));
+    $('select[name="investigator_id"]').val($tr.data('investigator-id') || "");
+    $('input[name="due_date"]').val($tr.find('td').eq(3).text());
+    $('select[name="status"]').val($tr.find('td').eq(4).text());
+});
+
+
+
 </script>
 
 
