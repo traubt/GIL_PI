@@ -1,0 +1,86 @@
+<div class="modal fade" id="taskModal" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title w-100 text-center" id="tasksModalTitle">משימות</h5>
+
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <!-- Task list table -->
+        <h6 class="mb-2 fw-bold">רשימת משימות קיימות</h6>
+        <div class="table-responsive mb-3">
+          <table id="tasksTable" class="table table-sm table-bordered table-striped">
+            <thead class="table-light">
+              <tr>
+                <th>תאריך פתיחה</th>
+                <th>כותרת</th>
+                <th>חוקר</th>
+                <th>תאריך יעד</th>
+                <th>סטטוס</th>
+                <th>פעולות</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+
+        <hr>
+
+        <!-- New task form -->
+        <h6 class="mb-2">משימה חדשה</h6>
+        <form id="taskForm">
+          <input type="hidden" id="task_case_id" name="case_id">
+          <input type="hidden" id="task_id" name="id">
+
+
+          <div class="form-group mb-2">
+            <label>כותרת</label>
+            <input type="text" class="form-control" name="title" required>
+          </div>
+
+          <div class="form-group mb-2">
+            <label>תיאור</label>
+            <textarea class="form-control" name="description" required></textarea>
+          </div>
+
+          <div class="form-group mb-2">
+            <label>חוקר</label>
+              <select class="form-control" name="investigator_id" id="task_investigator">
+                <option value="">בחר חוקר</option>
+                {% for inv in investigators %}
+                  <option value="{{ inv.id }}" data-user-id="{{ inv.user_id or '' }}">
+                      {{ inv.full_name }}
+                  </option>
+                {% endfor %}
+              </select>
+
+
+          </div>
+
+          <div class="form-group mb-2">
+            <label>תאריך יעד</label>
+            <input type="date" class="form-control" name="due_date" required>
+          </div>
+
+          <div class="form-group mb-2">
+            <label>סטטוס</label>
+            <select class="form-control" name="status">
+              <option value="פתוחה">פתוחה</option>
+              <option value="בתהליך">בתהליך</option>
+              <option value="הושלמה">הושלמה</option>
+            </select>
+          </div>
+
+          <div class="modal-footer px-0">
+            <button type="submit" class="btn btn-success">שמור</button>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
