@@ -2179,6 +2179,113 @@ def get_appointment_details_json(appointment_id):
         "investigator_ids": investigator_ids
     })
 
+#### Task amdin
+
+# Admin tasks
+@main.route('/admin_tasks')
+def admin_tasks():
+    # session context
+    user_data = session.get('user')
+    user = json.loads(user_data) if user_data else {}
+    shop_data = session.get('shop')
+    shop = json.loads(shop_data) if shop_data else {}
+
+    # roles
+    roles = db.session.query(TocRole).all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    sql = text("""
+        SELECT 
+            t.id,
+            t.case_id,
+            t.title,
+            t.description,
+            t.due_date,
+            t.status,
+            t.date_created,
+            t.creator_id,
+            i.full_name AS investigator_name
+        FROM gil_tasks t
+        LEFT JOIN gil_investigator i ON i.id = t.investigator_id
+        ORDER BY t.date_created DESC
+    """)
+    rows = db.session.execute(sql).mappings().all()
+
+    # Also fetch all investigators for dropdown
+    investigators = db.session.execute(text("""
+        SELECT id, full_name FROM gil_investigator ORDER BY full_name ASC
+    """)).mappings().all()
+
+    return render_template(
+        'tasks_admin.html',
+        tasks=rows,
+        investigators=investigators,
+        user=user,
+        shop=shop,
+        roles=roles_list
+    )
+
+
+# Admin task JSON
+@main.route('/admin_tasks/<int:task_id>/json')
+def get_admin_task_json(task_id):
+    sql = text("""
+        SELECT 
+            t.id,
+            t.case_id,
+            t.title,
+            t.description,
+            t.due_date,
+            t.status,
+            t.investigator_id
+        FROM gil_tasks t
+        WHERE t.id = :task_id
+    """)
+    row = db.session.execute(sql, {"task_id": task_id}).mappings().first()
+
+    if not row:
+        return jsonify({"status": "error", "message": "Task not found"}), 404
+
+    return jsonify({
+        "id": row["id"],
+        "case_id": row["case_id"],
+        "title": row["title"],
+        "description": row["description"],
+        "due_date": row["due_date"].isoformat() if row["due_date"] else "",
+        "status": row["status"],
+        "investigator_id": row["investigator_id"]
+    })
+
+# Admin task update
+@main.route('/admin_tasks/<int:task_id>/update', methods=['POST'])
+def update_admin_task(task_id):
+    data = request.get_json()
+
+    sql = text("""
+        UPDATE gil_tasks
+        SET 
+            title = :title,
+            description = :description,
+            due_date = :due_date,
+            status = :status,
+            investigator_id = :investigator_id,
+            date_modified = NOW()
+        WHERE id = :task_id
+    """)
+
+    db.session.execute(sql, {
+        "title": data.get("title"),
+        "description": data.get("description"),
+        "due_date": data.get("due_date"),
+        "status": data.get("status"),
+        "investigator_id": data.get("investigator_id"),
+        "task_id": task_id
+    })
+    db.session.commit()
+
+    return jsonify({"status": "success", "message": "Task updated successfully"})
+
+
 
 
 ############################################################################

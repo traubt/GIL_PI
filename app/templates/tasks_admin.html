@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% block content %}
+{% include 'header-bar.html' %}
+{% include 'side-bar.html' %}
+
+<main id="main" class="main">
+  <div class="pagetitle">
+    <h1>ניהול משימות</h1>
+  </div>
+
+  <section class="section">
+    <div class="card">
+      <div class="card-body">
+        <table id="tasksTable" class="table table-bordered display nowrap" style="width:100%">
+<thead>
+  <tr>
+    <th>מספר</th>
+    <th>תאריך יצירה</th>
+    <th>תאריך יעד</th>
+    <th>תיק</th>
+    <th>כותרת</th>
+    <th>תיאור</th>
+    <th>חוקר</th>
+    <th>סטטוס</th>
+    <th>פעולות</th>
+  </tr>
+  <tr>
+    <th><input type="text" placeholder="חיפוש"></th>
+    <th><input type="text" placeholder="חיפוש"></th>
+    <th><input type="text" placeholder="חיפוש"></th>
+    <th><input type="text" placeholder="חיפוש"></th>
+    <th><input type="text" placeholder="חיפוש"></th>
+    <th><input type="text" placeholder="חיפוש"></th>
+    <th><input type="text" placeholder="חיפוש"></th>
+    <th><input type="text" placeholder="חיפוש"></th>
+    <th></th>
+  </tr>
+</thead>
+<tbody>
+  {% for t in tasks %}
+  <tr data-id="{{ t.id }}">
+    <td>{{ t.id }}</td>
+    <td>{{ t.date_created }}</td>
+    <td>{{ t.due_date }}</td>
+    <td>{{ t.case_id }}</td>
+    <td>{{ t.title }}</td>
+    <td>{{ t.description }}</td>
+    <td>{{ t.investigator_name or '' }}</td>
+    <td>{{ t.status }}</td>
+    <td>
+      <button class="btn btn-sm btn-primary update-task" data-id="{{ t.id }}">עדכן</button>
+      <button class="btn btn-sm btn-danger delete-task" data-id="{{ t.id }}">מחק</button>
+    </td>
+  </tr>
+  {% endfor %}
+</tbody>
+
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+$(document).ready(function () {
+  // ✅ הוספת חיפוש לכל עמודה (בלי שכפול)
+  $('#tasksTable thead tr:eq(0) th').each(function (i) {
+    var title = $(this).text();
+    if (title !== "פעולות") {
+      $(this).append('<br><input type="text" class="form-control form-control-sm" placeholder="חיפוש" />');
+    }
+  });
+
+  var table = $('#tasksTable').DataTable({
+    dom: 'lrtip',
+    scrollX: true,
+    paging: false,
+    ordering: true,
+    info: false,
+    order: [[0, "desc"]],
+    language: {
+      search: "חיפוש כללי:",
+      zeroRecords: "לא נמצאו רשומות",
+      infoEmpty: "אין נתונים זמינים"
+    }
+  });
+
+  // ✅ חיפוש לפי עמודות
+  table.columns().every(function () {
+    var that = this;
+    $('input', this.header()).on('keyup change clear', function () {
+      if (that.search() !== this.value) {
+        that.search(this.value).draw();
+      }
+    });
+  });
+
+  // ✅ מחיקה
+  $(document).on('click', '.delete-task', function () {
+    const id = $(this).data('id');
+    if (!confirm("האם למחוק את המשימה?")) return;
+    $.post(`/tasks/${id}/delete`, function (res) {
+      if (res.status === 'success') {
+        table.row($(`tr[data-id="${id}"]`)).remove().draw();
+        alert('נמחק בהצלחה');
+      } else {
+        alert('שגיאה במחיקה');
+      }
+    });
+  });
+
+  // ✅ עדכון - פתיחת מודאל
+  $(document).on('click', '.update-task', function () {
+    const taskId = $(this).data('id');
+
+    $.getJSON(`/admin_tasks/${taskId}/json`, function (data) {
+      $('#update_task_id').val(data.id);
+      $('#update_task_title').val(data.title);
+      $('#update_task_description').val(data.description);
+      $('#update_task_due_date').val(data.due_date);
+      $('#update_task_status').val(data.status);
+      $('#update_task_investigator').val(data.investigator_id);
+
+      $('#updateTaskModalTitle').text(`עדכון משימה - מספר ${data.id}`);
+      $('#updateTaskModal').modal('show');
+    });
+  });
+
+// עדכון - פתיחת מודאל חדש
+$(document).on('click', '.update-task', function () {
+    const taskId = $(this).data('id');
+
+    $.getJSON(`/admin_tasks/${taskId}/json`, function (data) {
+        $('#update_task_id').val(data.id);
+        $('#update_task_title').val(data.title);
+        $('#update_task_description').val(data.description);
+        $('#update_task_due_date').val(data.due_date);
+        $('#update_task_status').val(data.status);
+
+        // ✅ Pre-select investigator
+        $('#update_task_investigator').val(data.investigator_id);
+
+        $('#updateTaskModalTitle').text(`עדכון משימה - מספר ${data.id}`);
+        $('#updateTaskModal').modal('show');
+    });
+});
+
+// שמירת עדכון
+$('#saveUpdateTask').on('click', function () {
+    const taskId = $('#update_task_id').val();
+
+    const payload = {
+        title: $('#update_task_title').val(),
+        description: $('#update_task_description').val(),
+        due_date: $('#update_task_due_date').val(),
+        status: $('#update_task_status').val(),
+        investigator_id: $('#update_task_investigator').val()
+    };
+
+    $.ajax({
+        url: `/admin_tasks/${taskId}/update`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(payload),
+        success: function (res) {
+            if (res.status === 'success') {
+                $('#updateTaskModal').modal('hide');
+                alert('המשימה עודכנה בהצלחה');
+                location.reload();
+            } else {
+                alert('שגיאה בעדכון: ' + res.message);
+            }
+        },
+        error: function (err) {
+            console.error('Update error:', err);
+            alert('שגיאה בעדכון');
+        }
+    });
+});
+
+
+});
+</script>
+
+
+
+<!-- Update Task Modal -->
+<div class="modal fade" id="updateTaskModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="updateTaskModalTitle">עדכון משימה</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="updateTaskForm">
+          <input type="hidden" id="update_task_id">
+
+          <div class="mb-3">
+            <label for="update_task_title" class="form-label">כותרת</label>
+            <input type="text" class="form-control" id="update_task_title">
+          </div>
+
+          <div class="mb-3">
+            <label for="update_task_description" class="form-label">תיאור</label>
+            <textarea class="form-control" id="update_task_description"></textarea>
+          </div>
+
+          <div class="mb-3">
+            <label for="update_task_due_date" class="form-label">תאריך יעד</label>
+            <input type="date" class="form-control" id="update_task_due_date">
+          </div>
+
+          <div class="mb-3">
+            <label for="update_task_status" class="form-label">סטטוס</label>
+            <select class="form-control" id="update_task_status">
+              <option value="פתוחה">פתוחה</option>
+              <option value="בביצוע">בביצוע</option>
+              <option value="סגורה">סגורה</option>
+            </select>
+          </div>
+
+        <div class="mb-3">
+          <label for="update_task_investigator" class="form-label">חוקר</label>
+          <select class="form-control" id="update_task_investigator">
+            {% for inv in investigators %}
+              <option value="{{ inv.id }}">{{ inv.full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+        <button type="button" class="btn btn-primary" id="saveUpdateTask">שמור שינויים</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+{% endblock %}
