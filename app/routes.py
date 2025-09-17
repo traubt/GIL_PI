@@ -2073,6 +2073,114 @@ def delete_task(id):
         db.session.rollback()
         return jsonify({"status": "error", "message": str(e)})
 
+
+# Admin appointments
+@main.route('/admin_appointments')
+def admin_appointments():
+    # session context
+    user_data = session.get('user')
+    user = json.loads(user_data) if user_data else {}
+    shop_data = session.get('shop')
+    shop = json.loads(shop_data) if shop_data else {}
+
+    # roles
+    roles = db.session.query(TocRole).all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    # appointments
+    sql = text("""
+        SELECT 
+            a.id,
+            a.case_id,
+            a.appointment_date,
+            a.time_from,
+            a.time_to,
+            a.status,
+            a.address,
+            a.notes,
+            ins.first_name,
+            ins.last_name,
+            ins.insurance,
+            ins.claim_type,
+            COALESCE(GROUP_CONCAT(i.full_name SEPARATOR ', '), '') AS investigators
+        FROM gil_appointments a
+        LEFT JOIN gil_insured ins ON ins.id = a.case_id
+        LEFT JOIN gil_investigator_appointments ia ON ia.appointment_id = a.id
+        LEFT JOIN gil_investigator i ON i.id = ia.investigator_id
+        GROUP BY a.id
+        ORDER BY a.appointment_date DESC, a.time_from
+    """)
+    rows = db.session.execute(sql).mappings().all()
+
+    # investigators for dropdown
+    investigators = GilInvestigator.query.order_by(GilInvestigator.full_name.asc()).all()
+    investigators_list = [{"id": i.id, "full_name": i.full_name} for i in investigators]
+
+    return render_template(
+        'appointments_admin.html',
+        appointments=rows,
+        user=user,
+        shop=shop,
+        roles=roles_list,
+        investigators=investigators_list   # ✅ inject into template
+    )
+
+
+@main.route('/appointments/<int:appointment_id>/details_json')
+def get_appointment_details_json(appointment_id):
+    sql = text("""
+        SELECT 
+            a.id,
+            a.case_id,
+            a.appointment_date,
+            a.time_from,
+            a.time_to,
+            a.status,
+            a.address,
+            a.place,
+            a.doctor,
+            a.koopa,
+            a.notes,
+            ins.first_name,
+            ins.last_name,
+            ins.insurance,
+            ins.claim_type,
+            COALESCE(GROUP_CONCAT(ia.investigator_id), '') AS investigator_ids
+        FROM gil_appointments a
+        LEFT JOIN gil_insured ins ON ins.id = a.case_id
+        LEFT JOIN gil_investigator_appointments ia ON ia.appointment_id = a.id
+        WHERE a.id = :appointment_id
+        GROUP BY a.id
+    """)
+
+    row = db.session.execute(sql, {"appointment_id": appointment_id}).mappings().first()
+
+    if not row:
+        return jsonify({"status": "error", "message": "Appointment not found"}), 404
+
+    investigator_ids = [int(x) for x in row["investigator_ids"].split(',') if x]
+
+    return jsonify({
+        "id": row["id"],
+        "case_id": row["case_id"],
+        "appointment_date": row["appointment_date"].isoformat() if row["appointment_date"] else "",
+        "time_from": str(row["time_from"]),
+        "time_to": str(row["time_to"]),
+        "status": row["status"],
+        "address": row["address"],
+        "place": row["place"],
+        "doctor": row["doctor"],
+        "koopa": row["koopa"],
+        "notes": row["notes"],
+        "first_name": row["first_name"],
+        "last_name": row["last_name"],
+        "insurance": row["insurance"],
+        "claim_type": row["claim_type"],
+        "investigator_ids": investigator_ids
+    })
+
+
+
 ############################################################################
 
 if __name__ == '__main__':

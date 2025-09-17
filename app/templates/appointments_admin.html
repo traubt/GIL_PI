@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+{% block content %}
+{% include 'header-bar.html' %}
+{% include 'side-bar.html' %}
+
+<main id="main" class="main">
+  <div class="pagetitle">
+    <h1>ניהול ארועים</h1>
+  </div>
+
+  <section class="section">
+    <div class="card">
+      <div class="card-body">
+        <table id="appointmentsTable" class="table table-bordered display nowrap" style="width:100%">
+          <thead>
+            <tr>
+              <th>תאריך</th>
+              <th>שעה</th>
+              <th>מספר תיק</th>
+              <th>מבוטח</th>
+              <th>ביטוח</th>
+              <th>סוג תביעה</th>
+              <th>חוקר/ים</th>
+              <th>כתובת</th>
+              <th>סטטוס</th>
+              <th>פעולות</th>
+            </tr>
+            <tr>
+              <th><input type="text" placeholder="חיפוש" style="width:100%"></th>
+              <th><input type="text" placeholder="חיפוש" style="width:100%"></th>
+              <th><input type="text" placeholder="חיפוש" style="width:100%"></th>
+              <th><input type="text" placeholder="חיפוש" style="width:100%"></th>
+              <th><input type="text" placeholder="חיפוש" style="width:100%"></th>
+              <th><input type="text" placeholder="חיפוש" style="width:100%"></th>
+              <th><input type="text" placeholder="חיפוש" style="width:100%"></th>
+              <th><input type="text" placeholder="חיפוש" style="width:100%"></th>
+              <th><input type="text" placeholder="חיפוש" style="width:100%"></th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in appointments %}
+            <tr data-id="{{ a.id }}">
+              <td>{{ a.appointment_date }}</td>
+              <td>{{ a.time_from }} - {{ a.time_to }}</td>
+              <td>{{ a.case_id }}</td>
+              <td>{{ a.first_name }} {{ a.last_name }}</td>
+              <td>{{ a.insurance }}</td>
+              <td>{{ a.claim_type }}</td>
+              <td>{{ a.investigators }}</td>
+              <td>{{ a.address }}</td>
+              <td>{{ a.status }}</td>
+              <td>
+                <button class="btn btn-sm btn-primary update-appointment" data-id="{{ a.id }}">עדכן</button>
+                <button class="btn btn-sm btn-danger delete-appointment" data-id="{{ a.id }}">מחק</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+
+var investigatorsList = {{ investigators | tojson | safe }};
+
+$(document).ready(function () {
+  var table = $('#appointmentsTable').DataTable({
+    dom: 'lrtip',
+    scrollX: true,
+    paging: false,
+    orderCellsTop: true,
+    fixedHeader: { header: true },
+    order: [[0, "desc"]],
+    language: {
+      search: "חיפוש בטבלה:",
+      zeroRecords: "לא נמצאו רשומות",
+      infoEmpty: "אין נתונים זמינים"
+    },
+    initComplete: function () {
+      this.api().columns().every(function () {
+        var that = this;
+        $('input[type="text"]', this.header()).on('keyup change clear', function () {
+          if (that.search() !== this.value) {
+            that.search(this.value).draw();
+          }
+        });
+      });
+    }
+  });
+
+  // מחיקה
+  $(document).on('click', '.delete-appointment', function () {
+    const id = $(this).data('id');
+    if (!confirm("האם למחוק את הארוע?")) return;
+
+    $.post(`/appointments/${id}/delete`, function (res) {
+      if (res.status === 'success') {
+        table.row($(`tr[data-id="${id}"]`)).remove().draw();
+        alert('נמחק בהצלחה');
+      } else {
+        alert('שגיאה במחיקה');
+      }
+    });
+  });
+
+// עדכון - פתיחת מודאל חדש
+$(document).on('click', '.update-appointment', function () {
+  const apptId = $(this).data('id');
+
+  $.getJSON(`/appointments/${apptId}/details_json`, function (data) {
+    // Populate fields
+    $('#update_appointment_id').val(data.id);
+    $('#update_appointment_date').val(data.appointment_date);
+    $('#update_time_from').val(data.time_from);
+    $('#update_time_to').val(data.time_to);
+    $('#update_address').val(data.address);
+    $('#update_place').val(data.place);
+    $('#update_doctor').val(data.doctor);
+    $('#update_koopa').val(data.koopa);
+    $('#update_status').val(data.status);
+    $('#update_notes').val(data.notes);
+
+    // Populate investigators list (from global variable rendered server-side)
+    let $invSelect = $('#update_investigators');
+    $invSelect.empty();
+    investigatorsList.forEach(inv => {
+      $invSelect.append(
+        `<option value="${inv.id}" ${data.investigator_ids.includes(inv.id) ? 'selected' : ''}>${inv.full_name}</option>`
+      );
+    });
+
+    // Title with more details
+    $('#updateAppointmentModalTitle').text(
+      `עדכון ארוע - ${data.case_id} ${data.first_name} ${data.last_name} | ${data.insurance} | ${data.claim_type}`
+    );
+
+    $('#updateAppointmentModal').modal('show');
+  });
+});
+
+// שמירת עדכון
+$('#saveUpdateAppointment').on('click', function () {
+  const apptId = $('#update_appointment_id').val();
+
+  const payload = {
+    appointment_date: $('#update_appointment_date').val(),
+    time_from: $('#update_time_from').val(),
+    time_to: $('#update_time_to').val(),
+    address: $('#update_address').val(),
+    place: $('#update_place').val(),
+    doctor: $('#update_doctor').val(),
+    koopa: $('#update_koopa').val(),
+    status: $('#update_status').val(),
+    notes: $('#update_notes').val(),
+    investigators: $('#update_investigators').val() || [] // multi-select values
+  };
+
+  $.ajax({
+    url: `/appointments/${apptId}/update`,
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify(payload),
+    success: function (res) {
+      if (res.status === 'success') {
+        $('#updateAppointmentModal').modal('hide');
+        alert('הארוע עודכן בהצלחה');
+        location.reload(); // simplest for now
+      } else {
+        alert('שגיאה בעדכון: ' + res.message);
+      }
+    },
+    error: function (err) {
+      console.error('Update error:', err);
+      alert('שגיאה בעדכון');
+    }
+  });
+});
+
+
+
+
+});
+</script>
+
+<div class="modal fade" id="updateAppointmentModal" tabindex="-1" aria-labelledby="updateAppointmentModalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="updateAppointmentModalTitle">עדכון ארוע</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+      </div>
+      <div class="modal-body">
+        <form id="updateAppointmentForm">
+          <input type="hidden" id="update_appointment_id" name="appointment_id">
+
+          <div class="row mb-3">
+            <div class="col">
+              <label for="update_appointment_date" class="form-label">תאריך</label>
+              <input type="date" class="form-control" id="update_appointment_date" name="appointment_date">
+            </div>
+            <div class="col">
+              <label for="update_time_from" class="form-label">משעה</label>
+              <input type="time" class="form-control" id="update_time_from" name="time_from">
+            </div>
+            <div class="col">
+              <label for="update_time_to" class="form-label">עד שעה</label>
+              <input type="time" class="form-control" id="update_time_to" name="time_to">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="update_address" class="form-label">כתובת</label>
+            <input type="text" class="form-control" id="update_address" name="address">
+          </div>
+
+          <div class="row mb-3">
+            <div class="col">
+              <label for="update_place" class="form-label">מקום</label>
+              <input type="text" class="form-control" id="update_place" name="place">
+            </div>
+            <div class="col">
+              <label for="update_doctor" class="form-label">רופא</label>
+              <input type="text" class="form-control" id="update_doctor" name="doctor">
+            </div>
+            <div class="col">
+              <label for="update_koopa" class="form-label">קופה</label>
+              <select id="update_koopa" name="koopa" class="form-select">
+                <option value="מאוחדת">מאוחדת</option>
+                <option value="כללית">כללית</option>
+                <option value="מכבי">מכבי</option>
+                <option value="לאומית">לאומית</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label for="update_status" class="form-label">סטטוס</label>
+            <select id="update_status" name="status" class="form-select">
+              <option value="נוצר">נוצר</option>
+              <option value="בביצוע">בביצוע</option>
+              <option value="הושלם">הושלם</option>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label for="update_investigators" class="form-label">חוקרים</label>
+            <select id="update_investigators" name="investigators[]" class="form-select" multiple>
+              <!-- options will be populated dynamically -->
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label for="update_notes" class="form-label">הערות</label>
+            <textarea class="form-control" id="update_notes" name="notes" rows="3"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+        <button type="button" id="saveUpdateAppointment" class="btn btn-primary">שמור שינויים</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+{% endblock %}

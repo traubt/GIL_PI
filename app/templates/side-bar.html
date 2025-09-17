@@ -63,12 +63,13 @@
       </a>
     </li>
 
-    <li class="nav-item" id="agents">
-      <a class="nav-link collapsed" href="{{ url_for('main.ChatGPT') }}">
-        <i class="bi bi-robot"></i>
-        <span>סוכנים</span>
-      </a>
-    </li>
+<li class="nav-item" id="appointments_admin">
+  <a class="nav-link collapsed" href="{{ url_for('main.admin_appointments') }}">
+    <i class="bi bi-calendar-event"></i>
+    <span>ארועים</span>
+  </a>
+</li>
+
 
     <li class="nav-item" id="appointments">
       <a class="nav-link collapsed" href="{{ url_for('main.appointments_calendar') }}">
