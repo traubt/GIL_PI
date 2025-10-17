@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+{% block content %}
+  {% include 'header-bar.html' %}
+  {% include 'side-bar.html' %}
+
+<main id="main" class="main" dir="rtl">
+
+  <div class="pagetitle">
+    <h1>דוחות חקירה — עורך</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="{{ url_for('main.admin_insured') }}">מבוטחים</a></li>
+        <li class="breadcrumb-item active">דוחות חקירה</li>
+      </ol>
+    </nav>
+  </div>
+
+  <section class="section">
+
+    <!-- Top toolbar -->
+    <div class="d-flex justify-content-end gap-2 mb-3">
+      <div class="text-muted me-auto small d-flex align-items-center">
+        <span id="templateBadge" class="badge bg-light text-dark border">תבנית: —</span>
+      </div>
+      <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>
+      <button id="btnPreview" class="btn btn-primary">תצוגה מקדימה (PDF)</button>
+
+      <div class="btn-group">
+        <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+          פעולות סופיות
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end">
+          <li><a class="dropdown-item" href="#" data-action="version">צור גרסה חדשה</a></li>
+          <li><a class="dropdown-item" href="#" data-action="save_to_dropbox">שמור ל-Dropbox</a></li>
+          <li><a class="dropdown-item" href="#" data-action="send_to_insurer">שלח לחברת הביטוח</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="row">
+
+      <!-- LEFT: form -->
+      <div class="col-lg-7">
+        <div class="card">
+          <div class="card-body">
+
+            <h5 class="card-title">פרטי דו״ח</h5>
+
+            <div class="row g-3">
+              <!-- *** 1) INSURED SELECT (extended label + data attributes) *** -->
+              <div class="col-md-6">
+                <label for="insuredId" class="form-label">מבוטח</label>
+                <select id="insuredId" class="form-select">
+                  <option value="">בחר מבוטח…</option>
+                  {% for ins in insureds %}
+                    <option
+                      value="{{ ins.id }}"
+                      data-insurance="{{ ins.insurance or '' }}"
+                      data-claim-type="{{ ins.claim_type or '' }}"
+                      data-ref="{{ ins.ref_number or ins.ref or '' }}"
+                    >
+                      {{ (ins.last_name ~ ' ' ~ ins.first_name)|trim }}
+                      · רפרנס {{ ins.ref_number or ins.ref or '—' }}
+                      · {{ ins.insurance or '—' }}
+                      · {{ ins.claim_type or '—' }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </div>
+
+              <div class="col-md-6">
+                <label for="reportType" class="form-label">סוג דו״ח</label>
+                <select id="reportType" class="form-select">
+                  <option value="TRACKING" selected>דוח מעקב</option>
+                  <option value="ID_PHOTOS">דוח תמונת זיהוי</option>
+                  <option value="PERSONAL">דוח פרטים אישיים</option>
+                  <option value="PHOTOSET">דוח תמונות</option>
+                </select>
+              </div>
+
+              <!-- The following blocks are reusable “sections”.
+                   They are toggled on/off by the template rules in JS. -->
+
+              <div class="col-12 section-block" data-section="title">
+                <label for="title" class="form-label">כותרת</label>
+                <input id="title" class="form-control" placeholder="למשל: דוח מעקב — שם מבוטח">
+              </div>
+
+              <div class="col-12 section-block" data-section="intro">
+                <label for="intro" class="form-label">מבוא</label>
+                <textarea id="intro" class="form-control" rows="4" placeholder="תקציר: מטרת הדו״ח, רקע קצר…"></textarea>
+              </div>
+
+              <!-- TRACKING DATES (for “דוח מעקב”) -->
+              <div class="col-12 section-block" data-section="tracking_dates">
+                <div class="row g-2">
+                  <div class="col-md-6">
+                    <label class="form-label">תחילת פעילות</label>
+                    <input id="trackStart" type="datetime-local" class="form-control">
+                  </div>
+                  <div class="col-md-6">
+                    <label class="form-label">סיום פעילות</label>
+                    <input id="trackEnd" type="datetime-local" class="form-control">
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-12 section-block" data-section="timeline">
+                <label for="timeline" class="form-label">מהלך המעקב</label>
+                <textarea id="timeline" class="form-control" rows="8" placeholder="למשל: 08:15 הגעה לכתובת..."></textarea>
+              </div>
+
+              <!-- PERSONAL REPORT EXTRA SECTIONS -->
+              <div class="col-12 section-block" data-section="background">
+                <label for="background" class="form-label">רקע</label>
+                <textarea id="background" class="form-control" rows="4" placeholder="המבוטח יליד..., פרטים כלליים..."></textarea>
+              </div>
+
+              <div class="col-12 section-block" data-section="occupation">
+                <label for="occupation" class="form-label">עיסוק</label>
+                <textarea id="occupation" class="form-control" rows="3" placeholder="המקצוע/עבודה..."></textarea>
+              </div>
+
+              <div class="col-12 section-block" data-section="authorities">
+                <label for="authorities" class="form-label">חקירת רשויות</label>
+                <textarea id="authorities" class="form-control" rows="3" placeholder="מע״מ, מס הכנסה, ניכוי מס..."></textarea>
+              </div>
+
+              <div class="col-12 section-block" data-section="dnb">
+                <label for="dnb" class="form-label">דן אנד ברדסטריט</label>
+                <textarea id="dnb" class="form-control" rows="3" placeholder="בדיקת מניות בחברות..."></textarea>
+              </div>
+
+              <div class="col-12 section-block" data-section="web_investigation">
+                <label for="web" class="form-label">חקירה במאגרי מידע</label>
+                <textarea id="web" class="form-control" rows="3" placeholder="סריקה ברשת ובמדיה החברתית..."></textarea>
+              </div>
+
+              <div class="col-12 section-block" data-section="summary">
+                <label for="summary" class="form-label">סיכום</label>
+                <textarea id="summary" class="form-control" rows="4" placeholder="מסקנות והמלצות…"></textarea>
+              </div>
+
+              <!-- Photos placeholder; will become Dropbox picker -->
+              <div class="col-12 section-block" data-section="photos">
+                <div class="d-flex align-items-center justify-content-between">
+                  <label class="form-label m-0">תמונות לדו״ח</label>
+                  <small class="text-muted">בשלב הבא נוסיף בורר תמונות מ-Dropbox</small>
+                </div>
+                <div id="photoChips" class="mt-1"></div>
+                <button id="addDummyPhoto" type="button" class="btn btn-sm btn-outline-secondary mt-2">הוסף תמונת דמה</button>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: preview -->
+      <div class="col-lg-5">
+        <div class="card position-sticky" style="top: 12px;">
+          <div class="card-body">
+            <h5 class="card-title">תצוגה מקדימה</h5>
+            <p class="text-muted mb-2">לחץ על “תצוגה מקדימה (PDF)” כדי לרנדר את הדו״ח.</p>
+
+            <div id="previewHolder"
+                 class="border border-2 rounded d-flex align-items-center justify-content-center"
+                 style="min-height: 520px;">
+              <span class="text-muted">אין תצוגה כרגע</span>
+            </div>
+
+            <div class="small text-muted mt-2">
+              ה-PDF מוצג בתוך המסך; אפשר לפתוח בלשונית חדשה להורדה/הדפסה.
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+</main>
+
+<script>
+  // --- simple state store ---
+  const state = {
+    insured_id: "",
+    insured_insurance: "",
+    insured_claim_type: "",
+    ref_number: "",
+    report_type: "TRACKING",
+    title: "",
+    intro: "",
+    track_start: "",
+    track_end: "",
+    timeline: "",
+    background: "",
+    occupation: "",
+    authorities: "",
+    dnb: "",
+    web: "",
+    summary: "",
+    photos: []   // [{name, path}]
+  };
+
+  // ===== TEMPLATE RULES =====
+  // Map insurer + report type -> sections to show
+  // (based on the docx files you provided; reuses shared blocks)
+  const TEMPLATE_RULES = {
+    "הפניקס": {
+      "TRACKING":   ["title","intro","tracking_dates","timeline","summary","photos"],
+      "PERSONAL":   ["title","intro","background","occupation","authorities","dnb","web_investigation","summary"],
+      "PHOTOSET":   ["title","photos"],
+      "ID_PHOTOS":  ["title","photos"]   // will become a special layout later
+    },
+    "מנורה": {
+      "TRACKING":   ["title","intro","background","occupation","authorities","dnb","web_investigation","tracking_dates","timeline","summary","photos"],
+      "PHOTOSET":   ["title","photos"],
+      "ID_PHOTOS":  ["title","photos"],
+      "PERSONAL":   ["title","intro","background","occupation","authorities","dnb","web_investigation","summary"]
+    },
+    "איילון": {
+      "TRACKING":   ["title","intro","tracking_dates","timeline","summary","photos"],
+      "PHOTOSET":   ["title","photos"],
+      "ID_PHOTOS":  ["title","photos"],
+      "PERSONAL":   ["title","intro","summary"]
+    }
+  };
+
+  function currentInsurer(){
+    return state.insured_insurance || "הפניקס"; // default if not selected yet
+  }
+  function computeTemplateName(){
+    const ins = currentInsurer();
+    const mapName = {
+      "TRACKING":  "דוח מעקב",
+      "ID_PHOTOS": "תמונת זיהוי",
+      "PERSONAL":  "דוח פרטים אישיים",
+      "PHOTOSET":  "תמונות"
+    }[state.report_type] || state.report_type;
+
+    // Approximate the docx naming for display only
+    // e.g. "הפניקס - דוח מעקב.docx"
+    return `${ins} - ${mapName}.docx`;
+  }
+
+  function applyTemplateSections(){
+    const ins = currentInsurer();
+    const rule = (TEMPLATE_RULES[ins] && TEMPLATE_RULES[ins][state.report_type]) || ["title","intro","summary"];
+    document.querySelectorAll('.section-block').forEach(b=>{
+      const key = b.getAttribute('data-section');
+      b.style.display = rule.includes(key) ? '' : 'none';
+    });
+    document.getElementById('templateBadge').innerText = 'תבנית: ' + computeTemplateName();
+  }
+
+  // helpers
+  const $ = (s)=>document.querySelector(s);
+
+  // bind form fields
+  $('#insuredId').addEventListener('change', e=>{
+    const opt = e.target.selectedOptions[0];
+    state.insured_id = e.target.value || "";
+    state.insured_insurance = opt ? (opt.dataset.insurance || "") : "";
+    state.insured_claim_type = opt ? (opt.dataset.claimType || opt.getAttribute('data-claim-type') || "") : "";
+    state.ref_number = opt ? (opt.dataset.ref || "") : "";
+    applyTemplateSections();
+  });
+
+  $('#reportType').addEventListener('change', e=>{
+    state.report_type = e.target.value;
+    applyTemplateSections();
+  });
+
+  $('#title').addEventListener('input', e=> state.title = e.target.value);
+  $('#intro').addEventListener('input', e=> state.intro = e.target.value);
+  $('#trackStart').addEventListener('change', e=> state.track_start = e.target.value);
+  $('#trackEnd').addEventListener('change', e=> state.track_end = e.target.value);
+  $('#timeline').addEventListener('input', e=> state.timeline = e.target.value);
+  $('#background').addEventListener('input', e=> state.background = e.target.value);
+  $('#occupation').addEventListener('input', e=> state.occupation = e.target.value);
+  $('#authorities').addEventListener('input', e=> state.authorities = e.target.value);
+  $('#dnb').addEventListener('input', e=> state.dnb = e.target.value);
+  $('#web').addEventListener('input', e=> state.web = e.target.value);
+  $('#summary').addEventListener('input', e=> state.summary = e.target.value);
+
+  // photo chips (placeholder until Dropbox picker)
+  function renderChips(){
+    const host = document.getElementById('photoChips');
+    host.innerHTML = '';
+    state.photos.forEach((p, idx)=>{
+      const chip = document.createElement('span');
+      chip.className = 'badge rounded-pill bg-light text-dark border me-1';
+      chip.innerHTML = `${p.name} <button type="button" data-i="${idx}" class="btn btn-sm btn-link p-0 ms-1">✕</button>`;
+      chip.querySelector('button').onclick = (ev)=>{
+        const i = +ev.currentTarget.dataset.i;
+        state.photos.splice(i,1);
+        renderChips();
+      };
+      host.appendChild(chip);
+    });
+  }
+  document.getElementById('addDummyPhoto').onclick = ()=>{
+    state.photos.push({name: 'תמונה_' + (state.photos.length+1), path: '/dropbox/path/placeholder.jpg'});
+    renderChips();
+  };
+
+  // save draft (stub)
+  document.getElementById('btnSaveDraft').onclick = async ()=>{
+    const res = await fetch('/reports/save_draft', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(state)
+    });
+    const j = await res.json();
+    if (j.status === 'ok') alert('נשמר כטיוטה ✅'); else alert('שגיאה בשמירה');
+  };
+
+  // preview (stubbed PDF)
+  document.getElementById('btnPreview').onclick = async ()=>{
+    const holder = document.getElementById('previewHolder');
+    holder.innerHTML = '<div class="text-muted">מייצר PDF…</div>';
+    const resp = await fetch('/reports/preview', { method:'POST', body: new FormData() });
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    holder.innerHTML = '';
+    const iframe = document.createElement('iframe');
+    iframe.src = url;
+    iframe.style.width = '100%';
+    iframe.style.height = '520px';
+    iframe.style.border = '0';
+    holder.appendChild(iframe);
+  };
+
+  // final actions (stubs)
+  document.querySelectorAll('.dropdown-item[data-action]').forEach(a=>{
+    a.addEventListener('click', async (e)=>{
+      e.preventDefault();
+      const action = e.currentTarget.dataset.action;
+      const fd = new FormData(); fd.append('action', action);
+      const res = await fetch('/reports/finalize', { method:'POST', body: fd });
+      const j = await res.json();
+      const map = {
+        version: 'נוצרה גרסה חדשה',
+        save_to_dropbox: 'נשמר ל-Dropbox (דמה)',
+        send_to_insurer: 'נשלח לחברת הביטוח (דמה)'
+      };
+      alert(j.status === 'ok' ? (map[action] || 'בוצע') + ' ✅' : 'פעולה נכשלה');
+    });
+  });
+
+  // initial apply
+  applyTemplateSections();
+</script>
+
+<!-- keep NiceAdmin JS last -->
+<script src="static/assets/js/main.js"></script>
+{% endblock %}

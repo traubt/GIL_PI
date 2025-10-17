@@ -73,6 +73,14 @@
       </a>
     </li>
 
+    <li class="nav-item">
+      <a class="nav-link" href="{{ url_for('reports_ui.reports_editor') }}">
+        <i class="bi bi-file-earmark-text"></i>
+        <span>דוחות חקירה</span>
+      </a>
+    </li>
+
+
 
   </ul>
 </aside>
@@ -82,7 +90,8 @@
 
 
 <script>
-    var roles = {{ roles | tojson }};
+    {# old: var roles = {{ roles | tojson }}; #}
+    var roles = {{ roles | default([]) | tojson }};
     var user_role = "{{user.role}}";
     disableControlsPerRole(roles,user_role);
 </script>

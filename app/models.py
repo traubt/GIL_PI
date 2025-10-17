@@ -4,6 +4,7 @@ from . import db
 from flask_sqlalchemy import SQLAlchemy
 import datetime
 from datetime import datetime,timezone
+from sqlalchemy.dialects.mysql import MEDIUMTEXT, LONGTEXT
 
 
 class User(db.Model):
@@ -361,6 +362,45 @@ class GilTask(db.Model):
     date_created = db.Column(db.DateTime, default=datetime.utcnow)
     date_modified = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+
+class GilReport(db.Model):
+    __tablename__ = 'gil_reports'
+    id = db.Column(db.Integer, primary_key=True)
+
+    # links
+    case_id = db.Column(db.Integer, nullable=False)
+    insurer_id = db.Column(db.Integer)  # if you have insurers table; else varchar
+    report_type = db.Column(db.String(50), nullable=False)  # e.g., 'TRACKING', 'ID_PHOTOS', 'PERSONAL', 'PHOTOSET'
+    template_key = db.Column(db.String(50), nullable=False) # e.g., 'phenix_tracking_v1'
+
+    # editor state
+    title = db.Column(db.String(255))
+    status = db.Column(db.String(20), default='Draft')  # Draft | Approved | Sent
+    editor_json = db.Column(MEDIUMTEXT)  # serialized block content (for WYSIWYG) OR custom section JSON
+    generated_html = db.Column(LONGTEXT)   # last compiled HTML
+    generated_pdf_path = db.Column(db.String(255))  # saved pdf path (if you want)
+
+    created_by = db.Column(db.Integer)
+    updated_by = db.Column(db.Integer)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class GilReportPhoto(db.Model):
+    __tablename__ = 'gil_report_photos'
+    id = db.Column(db.Integer, primary_key=True)
+    report_id = db.Column(db.Integer,  nullable=False)
+
+    # Dropbox path of the original and chosen rendition
+    dropbox_path = db.Column(db.String(512), nullable=False)        # e.g., /Phoenix/InsuredName/photos/IMG_1234.jpg
+    caption = db.Column(db.String(255))
+    order_index = db.Column(db.Integer, default=0)
+    placement = db.Column(db.String(20))  # 'full', 'half-left', 'half-right', 'stack-top', 'stack-bottom'
+
+    # cached meta (for fast layout)
+    width = db.Column(db.Integer)
+    height = db.Column(db.Integer)
+    orientation = db.Column(db.String(10))  # 'landscape' | 'portrait' | 'square'
 
 
 
