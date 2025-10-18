@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <style>
+    @page {
+      size: A4;
+      margin: 28mm 18mm 22mm 18mm;
+      @top-center { content: element(header); }
+      @bottom-center { content: element(footer); }
+    }
+    body { font-family: "Assistant", Arial, sans-serif; line-height: 1.5; color:#111; }
+    .header { position: running(header); }
+    .footer { position: running(footer); font-size: 11px; color:#666; }
+    .row { display:flex; align-items:flex-start; justify-content:space-between; }
+    .muted { color:#666; }
+    .title { font-weight:700; font-size: 22px; }
+    .sec-title { font-weight:700; text-decoration: underline; margin: 14px 0 6px; }
+    .kv td { padding: 2px 0; }
+    .kv td:first-child { padding-left: 10px; }
+    .page-num:before { content: counter(page); }
+    hr.sep { border:0; border-top:1px solid #ddd; margin: 10px 0 16px; }
+  </style>
+</head>
+<body>
+
+<!-- ===== Header (logo bar + “גיל סוכנות מידע”) ===== -->
+<div class="header">
+  <div style="height:38px; background:#2e2e2e; color:#fff; display:flex; align-items:center; padding:6px 12px; justify-content:space-between;">
+    <img src="{{ logo_url }}" alt="" style="height:26px">
+    <div style="font-weight:800; font-size:20px;">גיל סוכנות מידע</div>
+  </div>
+
+  <div class="row" style="margin-top:20px;">
+    <div style="font-size:16px; font-weight:700;">
+      <div>{{ report_date }}</div>
+      <div>מספרנו: {{ reference_no }}</div>
+    </div>
+    <div style="text-align:right; font-size:16px;">
+      <div>לכבוד</div>
+      <div style="font-weight:700">{{ insurer }}</div>
+      <div>{{ insurer_dept }}</div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Footer ===== -->
+<div class="footer">
+  <div class="row">
+    <div>info@gilinv.co.il &nbsp;&nbsp; 03-7523537 &nbsp;&nbsp; 03-7523536</div>
+    <div>1 <span class="page-num"></span></div>
+  </div>
+  <div>5268102 | דרך בגין 7, רמת גן</div>
+</div>
+
+<!-- ===== Body ===== -->
+<main>
+
+  <p style="margin-top:60px;">א.נ,</p>
+
+  <p class="title" style="text-align:center; margin-top:20px;">
+    <span style="text-decoration:underline;">הנדון: דו"ח חקירה – ביטוח סיעודי</span>
+  </p>
+
+  <table class="kv" style="margin: 8px auto 22px; width: 80%; font-size:16px;">
+    <tr>
+      <td>הנפגע</td><td>:</td><td>{{ full_name }} מ{{ address }}</td>
+    </tr>
+    <tr>
+      <td>תעודת זהות</td><td>:</td><td>{{ id_number }}</td>
+    </tr>
+    <tr>
+      <td>מס' תביעה</td><td>:</td><td>{{ claim_number }}</td>
+    </tr>
+    <tr>
+      <td>סוג פגיעה</td><td>:</td><td>{{ injury_type }}</td>
+    </tr>
+  </table>
+
+  <h3 class="sec-title">1.&nbsp; נושא החקירה</h3>
+  <p>
+    מדובר במבוטח {{ full_name }} יליד {{ birth_year }}, אשר טוען למצב סיעודי.
+    נתבקשנו לבצע מעקב סיעודי לגבי מצבו ולגבי אופן תפקודו.
+    פעלנו בהתאם.
+  </p>
+
+  <h3 class="sec-title">2.&nbsp; פעילות החקירה</h3>
+  <ol style="margin-top:0;">
+    <li>
+      ביצענו פעילות בתאריך <span style="border-bottom:1px solid #999; display:inline-block; min-width:120px;">הכנס תאריך פעילות</span>
+      והצלחנו לתעדו/ה מחוץ לביתו/ה.
+    </li>
+  </ol>
+
+  <h3 class="sec-title">3.&nbsp; ממצאי החקירה</h3>
+  <p class="muted">(יישום חלק התמונות יתווסף בהמשך)</p>
+
+  <h3 class="sec-title">4.&nbsp; סיכום</h3>
+  <p>
+    חקירה זאת נערכה אודות המבוטח, אשר טוען למצב סיעודי.
+  </p>
+
+  <p style="margin-top:40px;">בברכה,</p>
+  <p style="font-weight:700;">גל סוכנות מידע וניהול</p>
+
+</main>
+</body>
+</html>

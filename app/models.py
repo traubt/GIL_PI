@@ -366,19 +366,19 @@ class GilTask(db.Model):
 class GilReport(db.Model):
     __tablename__ = 'gil_reports'
     id = db.Column(db.Integer, primary_key=True)
-
-    # links
     case_id = db.Column(db.Integer, nullable=False)
-    insurer_id = db.Column(db.Integer)  # if you have insurers table; else varchar
-    report_type = db.Column(db.String(50), nullable=False)  # e.g., 'TRACKING', 'ID_PHOTOS', 'PERSONAL', 'PHOTOSET'
-    template_key = db.Column(db.String(50), nullable=False) # e.g., 'phenix_tracking_v1'
+    insurer_id = db.Column(db.Integer)
+    report_type = db.Column(db.String(50), nullable=False)
+    template_key = db.Column(db.String(50), nullable=False)
 
-    # editor state
     title = db.Column(db.String(255))
-    status = db.Column(db.String(20), default='Draft')  # Draft | Approved | Sent
-    editor_json = db.Column(MEDIUMTEXT)  # serialized block content (for WYSIWYG) OR custom section JSON
-    generated_html = db.Column(LONGTEXT)   # last compiled HTML
-    generated_pdf_path = db.Column(db.String(255))  # saved pdf path (if you want)
+    status = db.Column(db.String(20), default='Draft')      # Empty | Draft | Final | Submitted | Revised
+    version_no = db.Column(db.Integer, default=0)           # 0 for first Final; increments on revisions
+    reference_no = db.Column(db.String(50))                 # e.g. 65951 or 65951.1
+
+    editor_json = db.Column(db.Text)        # or MEDIUMTEXT
+    generated_html = db.Column(db.Text)     # or LONGTEXT
+    generated_pdf_path = db.Column(db.String(255))
 
     created_by = db.Column(db.Integer)
     updated_by = db.Column(db.Integer)
