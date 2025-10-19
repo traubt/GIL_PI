@@ -47,7 +47,6 @@ def _wkhtmltopdf_bytes(html: str) -> bytes:
     if not wkhtml or not os.path.exists(wkhtml):
         raise RuntimeError(f"wkhtmltopdf not found at: {wkhtml!r}")
 
-    # Write HTML to a temp file so wkhtmltopdf can read it
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as fhtml:
         fhtml.write(html.encode('utf-8'))
         fhtml.flush()
@@ -88,7 +87,6 @@ def save_draft():
         rpt = db.session.get(GilReport, int(report_id))
         if not rpt:
             return jsonify({'status': 'error', 'message': 'Report not found'}), 404
-        # if insured_id not sent (editing existing draft), derive insured from report
         if not insured and rpt and rpt.case_id:
             insured = db.session.get(GilInsured, rpt.case_id)
     else:
@@ -103,11 +101,9 @@ def save_draft():
         )
         db.session.add(rpt)
 
-    # persist editor state
     rpt.title = payload.get('title') or rpt.title
     rpt.editor_json = json.dumps(payload, ensure_ascii=False)
 
-    # compute reference based on insured.ref_number and version
     ref_number = _get_first_nonempty(insured or object(), 'ref_number', 'ref', default=None)
     rpt.reference_no = _compute_reference(ref_number, int(rpt.version_no or 0))
     rpt.updated_at = datetime.utcnow()
@@ -142,7 +138,6 @@ def finalize():
         rpt.reference_no = _compute_reference(ref_number, rpt.version_no)
 
     elif action == 'save_to_dropbox':
-        # TODO: generate and upload
         pass
 
     elif action == 'send_to_insurer':
@@ -164,13 +159,10 @@ def finalize():
 @reports_ui_bp.route('/preview', methods=['POST'])
 def preview():
     """
-    Renders a real preview for:
+    Real preview for:
       - Insurer: 'מנורה'
       - Claim type contains 'סיעוד'
-      - Report type: 'TRACKING' (דוח מעקב)
-
-    Template: templates/reports/templates/menora_siudi_tracking.html
-    Others get a simple placeholder for now.
+      - Report type: 'TRACKING'
     """
     payload = request.get_json(silent=True) or {}
     insured_id = payload.get('insured_id')
@@ -183,15 +175,14 @@ def preview():
     claim_type = (insured.claim_type or "").strip()
     reference_no = payload.get('reference_no') or _get_first_nonempty(insured, 'ref_number', 'ref', default="00000")
     report_date_text = _he_date(payload.get('report_date'))
+    activity_date = payload.get('activity_date') or ""
 
-    # fields from gil_insured
     full_name    = f"{_get_first_nonempty(insured, 'last_name')} {_get_first_nonempty(insured, 'first_name')}".strip()
     address      = f"{_get_first_nonempty(insured, 'city')} {_get_first_nonempty(insured, 'address')}".strip()
     id_number    = _get_first_nonempty(insured, 'id_number')
     claim_number = _get_first_nonempty(insured, 'claim_number', 'claim_no', 'claim', 'claimnumber')
     injury_type  = "מצב סיעודי"
 
-    # birth year
     birth_year = ""
     try:
         bd = insured.birth_date
@@ -200,9 +191,10 @@ def preview():
     except Exception:
         pass
 
-    # Absolute logo URL for wkhtmltopdf
-    base_url = request.url_root  # includes trailing slash
-    logo_url = urljoin(base_url, "static/gil_logo.png")
+    # Absolute URLs for header/footer PNGs (you saved them in /static/)
+    base_url   = request.url_root
+    header_url = urljoin(base_url, "static/report_header_gil.png")
+    footer_url = urljoin(base_url, "static/report_footer_gil.png")
 
     if insurer == "מנורה" and "סיעוד" in claim_type and report_type == "TRACKING":
         html = render_template(
@@ -217,7 +209,9 @@ def preview():
             claim_number=claim_number,
             injury_type=injury_type,
             birth_year=birth_year,
-            logo_url=logo_url
+            activity_date=activity_date,
+            header_url=header_url,
+            footer_url=footer_url
         )
     else:
         html = f"""
@@ -228,6 +222,5 @@ def preview():
           <p><b>חברה:</b> {insurer} &nbsp; <b>סוג תביעה:</b> {claim_type} &nbsp; <b>סוג דו"ח:</b> {report_type}</p>
         </body></html>"""
 
-    # Render to PDF via wkhtmltopdf
     pdf_bytes = _wkhtmltopdf_bytes(html)
     return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf', as_attachment=False, download_name='preview.pdf')

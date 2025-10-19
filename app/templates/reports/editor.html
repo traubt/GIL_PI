@@ -55,7 +55,7 @@
             <h5 class="card-title">פרטי דו״ח</h5>
 
             <div class="row g-3">
-              <!-- *** 1) INSURED SELECT (extended label + data attributes) *** -->
+              <!-- insured -->
               <div class="col-md-6">
                 <label for="insuredId" class="form-label">מבוטח</label>
                 <select id="insuredId" class="form-select">
@@ -86,16 +86,19 @@
                 </select>
               </div>
 
-              <!-- Report date (Menora · סיעוד uses only this for now) -->
+              <!-- report date -->
               <div class="col-md-6 section-block" data-section="report_date">
                 <label for="reportDate" class="form-label">תאריך הדו״ח</label>
                 <input id="reportDate" type="date" class="form-control">
               </div>
 
+              <!-- NEW: activity date (only Menora · סיעוד · TRACKING) -->
+              <div class="col-md-6 section-block" data-section="activity_date">
+                <label for="activityDate" class="form-label">תאריך פעילות</label>
+                <input id="activityDate" type="date" class="form-control">
+              </div>
 
-              <!-- The following blocks are reusable “sections”.
-                   They are toggled on/off by the template rules in JS. -->
-
+              <!-- generic sections (unchanged) -->
               <div class="col-12 section-block" data-section="title">
                 <label for="title" class="form-label">כותרת</label>
                 <input id="title" class="form-control" placeholder="למשל: דוח מעקב — שם מבוטח">
@@ -106,7 +109,6 @@
                 <textarea id="intro" class="form-control" rows="4" placeholder="תקציר: מטרת הדו״ח, רקע קצר…"></textarea>
               </div>
 
-              <!-- TRACKING DATES (for “דוח מעקב”) -->
               <div class="col-12 section-block" data-section="tracking_dates">
                 <div class="row g-2">
                   <div class="col-md-6">
@@ -125,7 +127,6 @@
                 <textarea id="timeline" class="form-control" rows="8" placeholder="למשל: 08:15 הגעה לכתובת..."></textarea>
               </div>
 
-              <!-- PERSONAL REPORT EXTRA SECTIONS -->
               <div class="col-12 section-block" data-section="background">
                 <label for="background" class="form-label">רקע</label>
                 <textarea id="background" class="form-control" rows="4" placeholder="המבוטח יליד..., פרטים כלליים..."></textarea>
@@ -156,7 +157,6 @@
                 <textarea id="summary" class="form-control" rows="4" placeholder="מסקנות והמלצות…"></textarea>
               </div>
 
-              <!-- Photos placeholder; will become Dropbox picker -->
               <div class="col-12 section-block" data-section="photos">
                 <div class="d-flex align-items-center justify-content-between">
                   <label class="form-label m-0">תמונות לדו״ח</label>
@@ -196,22 +196,16 @@
 </main>
 
 <script>
-  // ---------- STATE ----------
   const state = {
-    // identifiers
     report_id: null,
     insured_id: "",
     insured_insurance: "",
     insured_claim_type: "",
     ref_number: "",
-
-    // meta
     report_type: "TRACKING",
     version_no: 0,
     status_str: "Draft",
     reference_no: "—",
-
-    // content (shared)
     title: "",
     intro: "",
     track_start: "",
@@ -223,12 +217,11 @@
     dnb: "",
     web: "",
     summary: "",
-    report_date: "",  // <-- NEW: YYYY-MM-DD
-    photos: []        // [{name, path}]
+    report_date: "",
+    activity_date: "",     // NEW
+    photos: []
   };
 
-  // ---------- TEMPLATE RULES ----------
-  // Section keys correspond to .section-block[data-section="..."] in the DOM
   const TEMPLATE_RULES = {
     "הפניקס": {
       "TRACKING":  ["title","intro","tracking_dates","timeline","summary","photos"],
@@ -237,7 +230,6 @@
       "ID_PHOTOS": ["title","photos"]
     },
     "מנורה": {
-      // base for Menora; we'll override for claim type סיעוד at runtime
       "TRACKING":  ["title","intro","tracking_dates","timeline","summary","photos"],
       "PERSONAL":  ["title","intro","background","occupation","authorities","dnb","web_investigation","summary"],
       "PHOTOSET":  ["title","photos"],
@@ -251,7 +243,6 @@
     }
   };
 
-  // ---------- HELPERS ----------
   const $ = (s)=>document.querySelector(s);
 
   function currentInsurer(){ return state.insured_insurance || "הפניקס"; }
@@ -267,14 +258,13 @@
   }
 
   function applyTemplateSections(){
-    // default from the map
     let set = (TEMPLATE_RULES[currentInsurer()] || {})[state.report_type] || ["title","intro","summary"];
 
-    // Specialization: Menora + סיעוד + דוח מעקב => show only the report date (and later photos)
+    // SPECIAL: Menora + סיעוד + TRACKING => show only dates (report + activity) + photos
     if (currentInsurer()==="מנורה" &&
         state.report_type==="TRACKING" &&
         (state.insured_claim_type || "").includes("סיעוד")) {
-      set = ["report_date","photos"];
+      set = ["report_date","activity_date","photos"];
     }
 
     document.querySelectorAll('.section-block').forEach(b=>{
@@ -292,22 +282,18 @@
   }
 
   function recomputeReferenceNow(){
-    // Base is insured.ref_number (or "00000"), padded to 5 for consistency
     const base = (state.ref_number && state.ref_number.toString().trim()) || "00000";
     const padded = base.padStart(5, "0");
     state.reference_no = (state.version_no > 0) ? `${padded}.${state.version_no}` : padded;
     updateMetaBadges();
   }
 
-  // ---------- BIND INPUTS ----------
   $('#insuredId').addEventListener('change', e=>{
     const opt = e.target.selectedOptions[0];
     state.insured_id = e.target.value || "";
     state.insured_insurance = opt ? (opt.dataset.insurance || "") : "";
     state.insured_claim_type = opt ? (opt.dataset.claimType || opt.getAttribute('data-claim-type') || "") : "";
     state.ref_number = opt ? (opt.dataset.ref || "") : "";
-
-    // show correct sections and update reference immediately
     applyTemplateSections();
     recomputeReferenceNow();
   });
@@ -328,9 +314,9 @@
   $('#dnb').addEventListener('input', e=> state.dnb = e.target.value);
   $('#web').addEventListener('input', e=> state.web = e.target.value);
   $('#summary').addEventListener('input', e=> state.summary = e.target.value);
-  $('#reportDate').addEventListener('change', e=> state.report_date = e.target.value); // <-- NEW
+  $('#reportDate').addEventListener('change', e=> state.report_date = e.target.value);
+  $('#activityDate').addEventListener('change', e=> state.activity_date = e.target.value);  // NEW
 
-  // ---------- PHOTOS (placeholder chips until Dropbox picker) ----------
   function renderChips(){
     const host = $('#photoChips');
     host.innerHTML = '';
@@ -351,7 +337,6 @@
     renderChips();
   };
 
-  // ---------- SAVE DRAFT ----------
   async function saveDraft(){
     const res = await fetch('/reports/save_draft', {
       method:'POST',
@@ -360,10 +345,10 @@
     });
     const j = await res.json();
     if (j.status === 'ok') {
-      state.report_id   = j.report_id;
-      state.version_no  = j.version_no;
-      state.reference_no= j.reference_no;
-      state.status_str  = j.status_str || state.status_str;
+      state.report_id    = j.report_id;
+      state.version_no   = j.version_no;
+      state.reference_no = j.reference_no;
+      state.status_str   = j.status_str || state.status_str;
       updateMetaBadges();
       return true;
     }
@@ -371,11 +356,8 @@
     return false;
   }
 
-  $('#btnSaveDraft').onclick = async ()=>{
-    if (await saveDraft()) alert('נשמר כטיוטה ✅');
-  };
+  $('#btnSaveDraft').onclick = async ()=>{ if (await saveDraft()) alert('נשמר כטיוטה ✅'); };
 
-  // ---------- FINALIZE (סגירת דו"ח סופי) ----------
   $('#btnFinalize').onclick = async ()=>{
     const ok = await saveDraft(); if (!ok) return;
     const fd = new FormData();
@@ -394,7 +376,6 @@
     }
   };
 
-  // ---------- PREVIEW (send full state as JSON) ----------
   $('#btnPreview').onclick = async ()=>{
     const holder = $('#previewHolder');
     holder.innerHTML = '<div class="text-muted">מייצר PDF…</div>';
@@ -415,7 +396,6 @@
     holder.appendChild(iframe);
   };
 
-  // ---------- DROPDOWN ACTIONS ----------
   document.querySelectorAll('.dropdown-item[data-action]').forEach(a=>{
     a.addEventListener('click', async (e)=>{
       e.preventDefault();
@@ -443,14 +423,9 @@
     });
   });
 
-  // ---------- INIT ----------
   applyTemplateSections();
   updateMetaBadges();
 </script>
 
-
-
-
-<!-- keep NiceAdmin JS last -->
 <script src="static/assets/js/main.js"></script>
 {% endblock %}

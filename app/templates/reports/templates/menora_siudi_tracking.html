@@ -5,76 +5,80 @@
   <style>
     @page {
       size: A4;
-      margin: 28mm 18mm 22mm 18mm;
-      @top-center { content: element(header); }
-      @bottom-center { content: element(footer); }
+      margin: 35mm 20mm 28mm 20mm;   /* top, right, bottom, left */
+      @top-center    { content: element(doc-header) }
+      @bottom-center { content: element(doc-footer) }
     }
-    body { font-family: "Assistant", Arial, sans-serif; line-height: 1.5; color:#111; }
-    .header { position: running(header); }
-    .footer { position: running(footer); font-size: 11px; color:#666; }
+
+    html, body { font-family: "Assistant", Arial, sans-serif; color:#111; line-height:1.5; }
+    img.block { display:block; width:100%; height:auto; }
+
+    .doc-header { position: running(doc-header); }
+    .doc-footer { position: running(doc-footer); }
+
     .row { display:flex; align-items:flex-start; justify-content:space-between; }
+    .title { font-weight:700; font-size:22px; text-align:center; margin:24px 0 8px; }
+    .sec-title { font-weight:700; text-decoration:underline; margin:14px 0 6px; }
+    .kv td { padding:2px 0; }
+    .kv td:first-child { padding-left:10px; }
     .muted { color:#666; }
-    .title { font-weight:700; font-size: 22px; }
-    .sec-title { font-weight:700; text-decoration: underline; margin: 14px 0 6px; }
-    .kv td { padding: 2px 0; }
-    .kv td:first-child { padding-left: 10px; }
-    .page-num:before { content: counter(page); }
-    hr.sep { border:0; border-top:1px solid #ddd; margin: 10px 0 16px; }
+
+    /* Page-number badge – sits in the transparent left slot of footer image */
+    .page-badge {
+      position: fixed;
+      left: 22mm;     /* line up with margins; tweak if you change page margins */
+      bottom: 12mm;
+      width: 12mm;
+      height: 12mm;
+      background: #333;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 11pt;
+      border-radius: 2px;
+    }
+    .page-badge .num:before { content: counter(page); }
   </style>
 </head>
 <body>
 
-<!-- ===== Header (logo bar + “גיל סוכנות מידע”) ===== -->
-<div class="header">
-  <div style="height:38px; background:#2e2e2e; color:#fff; display:flex; align-items:center; padding:6px 12px; justify-content:space-between;">
-    <img src="{{ logo_url }}" alt="" style="height:26px">
-    <div style="font-weight:800; font-size:20px;">גיל סוכנות מידע</div>
-  </div>
-
-  <div class="row" style="margin-top:20px;">
-    <div style="font-size:16px; font-weight:700;">
+<!-- HEADER: your full-width image + the date/reference row -->
+<div class="doc-header">
+  <img class="block" src="{{ header_url }}" alt="">
+  <div class="row" style="margin-top:18px;">
+    <div style="font-size:16px; font-weight:700; white-space:nowrap;">
       <div>{{ report_date }}</div>
       <div>מספרנו: {{ reference_no }}</div>
     </div>
     <div style="text-align:right; font-size:16px;">
       <div>לכבוד</div>
-      <div style="font-weight:700">{{ insurer }}</div>
-      <div>{{ insurer_dept }}</div>
+      <div style="font-weight:700">מנורה – חברה לביטוח</div>
+      <div>מחלקת תביעות סיעודי</div>
     </div>
   </div>
 </div>
 
-<!-- ===== Footer ===== -->
-<div class="footer">
-  <div class="row">
-    <div>info@gilinv.co.il &nbsp;&nbsp; 03-7523537 &nbsp;&nbsp; 03-7523536</div>
-    <div>1 <span class="page-num"></span></div>
-  </div>
-  <div>5268102 | דרך בגין 7, רמת גן</div>
+<!-- FOOTER: your full-width image (has a transparent gap on the left) -->
+<div class="doc-footer">
+  <img class="block" src="{{ footer_url }}" alt="">
 </div>
 
-<!-- ===== Body ===== -->
+<!-- Page number -->
+<div class="page-badge"><span class="num"></span></div>
+
 <main>
+  <div style="height:8px;"></div>
+  <p>א.נ,</p>
 
-  <p style="margin-top:60px;">א.נ,</p>
-
-  <p class="title" style="text-align:center; margin-top:20px;">
-    <span style="text-decoration:underline;">הנדון: דו"ח חקירה – ביטוח סיעודי</span>
-  </p>
+  <p class="title"><span style="text-decoration:underline;">הנדון: דו"ח חקירה – ביטוח סיעודי</span></p>
 
   <table class="kv" style="margin: 8px auto 22px; width: 80%; font-size:16px;">
-    <tr>
-      <td>הנפגע</td><td>:</td><td>{{ full_name }} מ{{ address }}</td>
-    </tr>
-    <tr>
-      <td>תעודת זהות</td><td>:</td><td>{{ id_number }}</td>
-    </tr>
-    <tr>
-      <td>מס' תביעה</td><td>:</td><td>{{ claim_number }}</td>
-    </tr>
-    <tr>
-      <td>סוג פגיעה</td><td>:</td><td>{{ injury_type }}</td>
-    </tr>
+    <tr><td>הנפגע</td><td>:</td><td>{{ full_name }} מ{{ address }}</td></tr>
+    <tr><td>תעודת זהות</td><td>:</td><td>{{ id_number }}</td></tr>
+    <tr><td>מס' תביעה</td><td>:</td><td>{{ claim_number }}</td></tr>
+    <tr><td>סוג פגיעה</td><td>:</td><td>{{ injury_type }}</td></tr>
   </table>
 
   <h3 class="sec-title">1.&nbsp; נושא החקירה</h3>
@@ -87,8 +91,7 @@
   <h3 class="sec-title">2.&nbsp; פעילות החקירה</h3>
   <ol style="margin-top:0;">
     <li>
-      ביצענו פעילות בתאריך <span style="border-bottom:1px solid #999; display:inline-block; min-width:120px;">הכנס תאריך פעילות</span>
-      והצלחנו לתעדו/ה מחוץ לביתו/ה.
+      ביצענו פעילות בתאריך {{ activity_date or '__________' }} והצלחנו לתעדו/ה מחוץ לביתו/ה.
     </li>
   </ol>
 
@@ -96,13 +99,10 @@
   <p class="muted">(יישום חלק התמונות יתווסף בהמשך)</p>
 
   <h3 class="sec-title">4.&nbsp; סיכום</h3>
-  <p>
-    חקירה זאת נערכה אודות המבוטח, אשר טוען למצב סיעודי.
-  </p>
+  <p>חקירה זאת נערכה אודות המבוטח, אשר טוען למצב סיעודי.</p>
 
   <p style="margin-top:40px;">בברכה,</p>
   <p style="font-weight:700;">גל סוכנות מידע וניהול</p>
-
 </main>
 </body>
 </html>
