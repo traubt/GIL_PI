@@ -3,106 +3,52 @@
 <head>
   <meta charset="utf-8">
   <style>
-    @page {
-      size: A4;
-      margin: 35mm 20mm 28mm 20mm;   /* top, right, bottom, left */
-      @top-center    { content: element(doc-header) }
-      @bottom-center { content: element(doc-footer) }
-    }
-
-    html, body { font-family: "Assistant", Arial, sans-serif; color:#111; line-height:1.5; }
-    img.block { display:block; width:100%; height:auto; }
-
-    .doc-header { position: running(doc-header); }
-    .doc-footer { position: running(doc-footer); }
-
-    .row { display:flex; align-items:flex-start; justify-content:space-between; }
+    html, body { font-family:"Assistant", Arial, sans-serif; color:#111; line-height:1.5; }
     .title { font-weight:700; font-size:22px; text-align:center; margin:24px 0 8px; }
     .sec-title { font-weight:700; text-decoration:underline; margin:14px 0 6px; }
+    .kv { margin: 8px auto 22px; width: 80%; font-size:16px; border-collapse:collapse; }
     .kv td { padding:2px 0; }
     .kv td:first-child { padding-left:10px; }
     .muted { color:#666; }
-
-    /* Page-number badge – sits in the transparent left slot of footer image */
-    .page-badge {
-      position: fixed;
-      left: 22mm;     /* line up with margins; tweak if you change page margins */
-      bottom: 12mm;
-      width: 12mm;
-      height: 12mm;
-      background: #333;
-      color: #fff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 700;
-      font-size: 11pt;
-      border-radius: 2px;
-    }
-    .page-badge .num:before { content: counter(page); }
+    .pad-top { height: 8px; }
   </style>
 </head>
 <body>
 
-<!-- HEADER: your full-width image + the date/reference row -->
-<div class="doc-header">
-  <img class="block" src="{{ header_url }}" alt="">
-  <div class="row" style="margin-top:18px;">
-    <div style="font-size:16px; font-weight:700; white-space:nowrap;">
-      <div>{{ report_date }}</div>
-      <div>מספרנו: {{ reference_no }}</div>
-    </div>
-    <div style="text-align:right; font-size:16px;">
-      <div>לכבוד</div>
-      <div style="font-weight:700">מנורה – חברה לביטוח</div>
-      <div>מחלקת תביעות סיעודי</div>
-    </div>
-  </div>
-</div>
+<div class="pad-top"></div>
+<p>א.נ,</p>
 
-<!-- FOOTER: your full-width image (has a transparent gap on the left) -->
-<div class="doc-footer">
-  <img class="block" src="{{ footer_url }}" alt="">
-</div>
+<p class="title"><span style="text-decoration:underline;">הנדון: דו"ח חקירה – ביטוח סיעודי</span></p>
 
-<!-- Page number -->
-<div class="page-badge"><span class="num"></span></div>
+<table class="kv">
+  <tr><td>הנפגע</td><td>:</td><td>{{ full_name }} מ{{ address }}</td></tr>
+  <tr><td>תעודת זהות</td><td>:</td><td>{{ id_number }}</td></tr>
+  <tr><td>מס' תביעה</td><td>:</td><td>{{ claim_number }}</td></tr>
+  <tr><td>סוג פגיעה</td><td>:</td><td>{{ injury_type }}</td></tr>
+</table>
 
-<main>
-  <div style="height:8px;"></div>
-  <p>א.נ,</p>
+<h3 class="sec-title">1.&nbsp; נושא החקירה</h3>
+<p>
+  מדובר במבוטח/ת {{ full_name }} יליד/ת {{ birth_year }}, אשר טוען/ת למצב סיעודי.
+  נתבקשנו לבצע מעקב סיעודי לגבי מצבו/ה ולגבי אופן תפקודו/ה.
+  פעלנו בהתאם.
+</p>
 
-  <p class="title"><span style="text-decoration:underline;">הנדון: דו"ח חקירה – ביטוח סיעודי</span></p>
+<h3 class="sec-title">2.&nbsp; פעילות החקירה</h3>
+<ol style="margin-top:0;">
+  <li>
+    ביצענו פעילות בתאריך {{ activity_date or '__________' }} והצלחנו לתעדו/ה מחוץ לביתו/ה.
+  </li>
+</ol>
 
-  <table class="kv" style="margin: 8px auto 22px; width: 80%; font-size:16px;">
-    <tr><td>הנפגע</td><td>:</td><td>{{ full_name }} מ{{ address }}</td></tr>
-    <tr><td>תעודת זהות</td><td>:</td><td>{{ id_number }}</td></tr>
-    <tr><td>מס' תביעה</td><td>:</td><td>{{ claim_number }}</td></tr>
-    <tr><td>סוג פגיעה</td><td>:</td><td>{{ injury_type }}</td></tr>
-  </table>
+<h3 class="sec-title">3.&nbsp; ממצאי החקירה</h3>
+<p class="muted">(יישום חלק התמונות יתווסף בהמשך)</p>
 
-  <h3 class="sec-title">1.&nbsp; נושא החקירה</h3>
-  <p>
-    מדובר במבוטח {{ full_name }} יליד {{ birth_year }}, אשר טוען למצב סיעודי.
-    נתבקשנו לבצע מעקב סיעודי לגבי מצבו ולגבי אופן תפקודו.
-    פעלנו בהתאם.
-  </p>
+<h3 class="sec-title">4.&nbsp; סיכום</h3>
+<p>חקירה זאת נערכה אודות המבוטח/ת, אשר טוען/ת למצב סיעודי.</p>
 
-  <h3 class="sec-title">2.&nbsp; פעילות החקירה</h3>
-  <ol style="margin-top:0;">
-    <li>
-      ביצענו פעילות בתאריך {{ activity_date or '__________' }} והצלחנו לתעדו/ה מחוץ לביתו/ה.
-    </li>
-  </ol>
+<p style="margin-top:40px;">בברכה,</p>
+<p style="font-weight:700;">גיל סוכנות מידע וניהול</p>
 
-  <h3 class="sec-title">3.&nbsp; ממצאי החקירה</h3>
-  <p class="muted">(יישום חלק התמונות יתווסף בהמשך)</p>
-
-  <h3 class="sec-title">4.&nbsp; סיכום</h3>
-  <p>חקירה זאת נערכה אודות המבוטח, אשר טוען למצב סיעודי.</p>
-
-  <p style="margin-top:40px;">בברכה,</p>
-  <p style="font-weight:700;">גל סוכנות מידע וניהול</p>
-</main>
 </body>
 </html>

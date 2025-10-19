@@ -10,7 +10,7 @@ from urllib.parse import urljoin
 reports_ui_bp = Blueprint('reports_ui', __name__, url_prefix='/reports')
 
 
-# ---------------------- helpers ----------------------
+# ---------- helpers ----------
 
 def _compute_reference(ref_number: str | None, version_no: int) -> str:
     base = (ref_number or "00000").strip()
@@ -33,6 +33,14 @@ def _he_date(iso_date: str | None) -> str:
     months = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני","יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"]
     return f"{dt.day} ב{months[dt.month-1]} {dt.year}"
 
+def _ddmmyyyy(iso_date: str | None) -> str:
+    """YYYY-MM-DD -> DD.MM.YYYY (empty if missing/invalid)."""
+    try:
+        y, m, d = map(int, (iso_date or '').split('-'))
+        return f"{d:02d}.{m:02d}.{y}"
+    except Exception:
+        return ""
+
 def _get_first_nonempty(obj, *names, default=""):
     for n in names:
         if hasattr(obj, n):
@@ -41,32 +49,47 @@ def _get_first_nonempty(obj, *names, default=""):
                 return v
     return default
 
-def _wkhtmltopdf_bytes(html: str) -> bytes:
-    """Render HTML string to PDF bytes using wkhtmltopdf (no external Python pkgs)."""
+def _wkhtmltopdf_bytes(body_html: str, header_html: str, footer_html: str) -> bytes:
+    """Render HTML string to PDF bytes using wkhtmltopdf with header/footer HTMLs."""
     wkhtml = current_app.config.get('WKHTMLTOPDF_CMD')
     if not wkhtml or not os.path.exists(wkhtml):
         raise RuntimeError(f"wkhtmltopdf not found at: {wkhtml!r}")
 
-    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as fhtml:
-        fhtml.write(html.encode('utf-8'))
-        fhtml.flush()
-        html_path = fhtml.name
+    # temp files: body, header, footer
+    with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as fbody, \
+         tempfile.NamedTemporaryFile(suffix=".html", delete=False) as fhead, \
+         tempfile.NamedTemporaryFile(suffix=".html", delete=False) as ffoot:
+        fbody.write(body_html.encode('utf-8'));  fbody.flush()
+        fhead.write(header_html.encode('utf-8')); fhead.flush()
+        ffoot.write(footer_html.encode('utf-8')); ffoot.flush()
+        body_path, head_path, foot_path = fbody.name, fhead.name, ffoot.name
 
     try:
-        cmd = [wkhtml, "--enable-local-file-access", "--quiet", html_path, "-"]
+        # margins sized for your header/footer PNGs
+        cmd = [
+            wkhtml,
+            "--enable-local-file-access",
+            "--quiet",
+            "--margin-top", "46",
+            "--margin-bottom", "36",  # ↓ was 44 — tighter footer area
+            "--header-html", head_path,
+            "--header-spacing", "0",
+            "--footer-html", foot_path,
+            "--footer-spacing", "0",
+            body_path, "-"
+        ]
+
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if proc.returncode != 0:
-            err = proc.stderr.decode('utf-8', 'ignore')
-            raise RuntimeError(f"wkhtmltopdf error (code {proc.returncode}): {err}")
+            raise RuntimeError(proc.stderr.decode('utf-8', 'ignore'))
         return proc.stdout
     finally:
-        try:
-            os.remove(html_path)
-        except Exception:
-            pass
+        for p in (body_path, head_path, foot_path):
+            try: os.remove(p)
+            except Exception: pass
 
 
-# ---------------------- pages & APIs ----------------------
+# ---------- UI pages ----------
 
 @reports_ui_bp.route('/editor', methods=['GET'])
 def reports_editor():
@@ -74,10 +97,12 @@ def reports_editor():
     return render_template('reports/editor.html', insureds=insureds)
 
 
+# ---------- Draft/Finalize APIs (unchanged behaviour) ----------
+
 @reports_ui_bp.route('/save_draft', methods=['POST'])
 def save_draft():
     payload = request.get_json(silent=True) or {}
-    report_id = payload.get('report_id')
+    report_id  = payload.get('report_id')
     insured_id = payload.get('insured_id')
     report_type = payload.get('report_type', 'TRACKING')
 
@@ -87,7 +112,7 @@ def save_draft():
         rpt = db.session.get(GilReport, int(report_id))
         if not rpt:
             return jsonify({'status': 'error', 'message': 'Report not found'}), 404
-        if not insured and rpt and rpt.case_id:
+        if not insured and rpt.case_id:
             insured = db.session.get(GilInsured, rpt.case_id)
     else:
         if not insured:
@@ -104,7 +129,7 @@ def save_draft():
     rpt.title = payload.get('title') or rpt.title
     rpt.editor_json = json.dumps(payload, ensure_ascii=False)
 
-    ref_number = _get_first_nonempty(insured or object(), 'ref_number', 'ref', default=None)
+    ref_number = _get_first_nonempty(insured or object(), 'ref_number','ref', default=None)
     rpt.reference_no = _compute_reference(ref_number, int(rpt.version_no or 0))
     rpt.updated_at = datetime.utcnow()
     db.session.commit()
@@ -136,13 +161,10 @@ def finalize():
         rpt.version_no = (rpt.version_no or 0) + 1
         rpt.status = 'Revised'
         rpt.reference_no = _compute_reference(ref_number, rpt.version_no)
-
     elif action == 'save_to_dropbox':
         pass
-
     elif action == 'send_to_insurer':
         rpt.status = 'Submitted'
-
     elif action == 'finalize':
         rpt.status = 'Final'
         rpt.reference_no = _compute_reference(ref_number, int(rpt.version_no or 0))
@@ -156,27 +178,27 @@ def finalize():
     })
 
 
+# ---------- Preview (header/footer via wkhtmltopdf) ----------
+
 @reports_ui_bp.route('/preview', methods=['POST'])
 def preview():
-    """
-    Real preview for:
-      - Insurer: 'מנורה'
-      - Claim type contains 'סיעוד'
-      - Report type: 'TRACKING'
-    """
-    payload = request.get_json(silent=True) or {}
-    insured_id = payload.get('insured_id')
+    payload     = request.get_json(silent=True) or {}
+    insured_id  = payload.get('insured_id')
     report_type = payload.get('report_type', 'TRACKING')
+
     insured = db.session.get(GilInsured, insured_id) if insured_id else None
     if not insured:
         return jsonify({'error': 'missing insured'}), 400
 
-    insurer = (insured.insurance or "").strip()
-    claim_type = (insured.claim_type or "").strip()
-    reference_no = payload.get('reference_no') or _get_first_nonempty(insured, 'ref_number', 'ref', default="00000")
-    report_date_text = _he_date(payload.get('report_date'))
-    activity_date = payload.get('activity_date') or ""
+    insurer     = (insured.insurance or "").strip()
+    claim_type  = (insured.claim_type or "").strip()
 
+    # refs & dates
+    reference_no     = payload.get('reference_no') or _get_first_nonempty(insured, 'ref_number','ref', default="00000")
+    report_date_text = _he_date(payload.get('report_date'))
+    activity_date_fmt= _ddmmyyyy(payload.get('activity_date'))
+
+    # body fields
     full_name    = f"{_get_first_nonempty(insured, 'last_name')} {_get_first_nonempty(insured, 'first_name')}".strip()
     address      = f"{_get_first_nonempty(insured, 'city')} {_get_first_nonempty(insured, 'address')}".strip()
     id_number    = _get_first_nonempty(insured, 'id_number')
@@ -191,36 +213,111 @@ def preview():
     except Exception:
         pass
 
-    # Absolute URLs for header/footer PNGs (you saved them in /static/)
+    # Static URLs
     base_url   = request.url_root
     header_url = urljoin(base_url, "static/report_header_gil.png")
     footer_url = urljoin(base_url, "static/report_footer_gil.png")
 
+    # Body (no header/footer inside)
     if insurer == "מנורה" and "סיעוד" in claim_type and report_type == "TRACKING":
-        html = render_template(
+        body_html = render_template(
             "reports/templates/menora_siudi_tracking.html",
-            report_date=report_date_text,
-            reference_no=reference_no,
-            insurer="מנורה – חברה לביטוח",
-            insurer_dept="מחלקת תביעות סיעודי",
-            full_name=full_name,
-            address=address,
-            id_number=id_number,
-            claim_number=claim_number,
-            injury_type=injury_type,
-            birth_year=birth_year,
-            activity_date=activity_date,
-            header_url=header_url,
-            footer_url=footer_url
+            full_name=full_name, address=address,
+            id_number=id_number, claim_number=claim_number,
+            injury_type=injury_type, birth_year=birth_year,
+            activity_date=activity_date_fmt,   # DD.MM.YYYY here
         )
     else:
-        html = f"""
-        <!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
-        <body style="font-family:Arial; padding:40px">
-          <h2>תצוגה מקדימה</h2>
-          <p>טרם קיימת תבנית לדגם זה.</p>
-          <p><b>חברה:</b> {insurer} &nbsp; <b>סוג תביעה:</b> {claim_type} &nbsp; <b>סוג דו"ח:</b> {report_type}</p>
-        </body></html>"""
+        body_html = f"""<!doctype html><meta charset="utf-8"><body dir="rtl" style="font-family:Arial;padding:40px">
+        <h3>תצוגה מקדימה</h3>
+        <p>טרם קיימת תבנית לדגם זה.</p>
+        <p><b>חברה:</b> {insurer} · <b>סוג תביעה:</b> {claim_type} · <b>סוג דו"ח:</b> {report_type}</p></body>"""
 
-    pdf_bytes = _wkhtmltopdf_bytes(html)
+    # Header HTML: top bar image + row with left (date/ref) & right (insurer block)
+    header_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
+    <style>
+      html,body{{margin:0;padding:0;font-family:'Assistant',Arial,sans-serif;color:#111;}}
+      .wrap{{position:relative;}}
+      .bar img{{width:100%;display:block;}}
+      /* compact info band under the bar */
+      .info{{position:relative;height:48px;}}
+      .left,.right{{position:absolute;top:6px;line-height:1.35;font-size:12pt;}}
+      .left{{left:20mm;font-weight:700; text-align:left;}}   /* DATE + REF pinned to the left */
+      .right{{right:12mm;text-align:right;}}                 /* "לכבוד..." pinned to the far right */
+      .right b{{font-weight:700}}
+    </style>
+    <body>
+      <div class="wrap">
+        <div class="bar"><img src="{header_url}" alt=""></div>
+        <div class="info">
+          <div class="left">
+            <div>{report_date_text}</div>
+            <div>מספרנו: {reference_no}</div>
+          </div>
+          <div class="right">
+            <div>לכבוד</div>
+            <div><b>מנורה – חברה לביטוח</b></div>
+            <div>מחלקת תביעות סיעודי</div>
+          </div>
+        </div>
+      </div>
+    </body></html>"""
+
+    # Footer HTML: contact bar image + small page number inside black square
+    footer_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
+    <style>
+      html,body{{margin:0;padding:0;font-family:'Assistant',Arial,sans-serif;}}
+      /* Footer row */
+      .foot{{
+        height:46px;                     /* slightly taller */
+        padding:0 12mm;                  /* left/right padding */
+        box-sizing:border-box;
+        display:flex;
+        align-items:flex-end;            /* anchor items to the bottom edge */
+        justify-content:space-between; 
+        direction:ltr;                   /* freeze visual order: left → right */
+      }}
+      /* Explicit order so RTL can't flip things */
+      .pageno{{ order:0; }}
+      .brand {{ order:1; }}
+
+      /* Page number square (BOTTOM-LEFT), perfectly centered text */
+      .pageno{{
+        width:11mm; height:11mm;        /* a touch bigger */
+        background:#333; color:#fff;
+        display:flex; align-items:center; justify-content:center; /* full centering */
+        text-align:center; line-height:1;                         /* no baseline shift */
+        font-size:10pt; font-weight:700; border-radius:3px;
+        letter-spacing:0;
+      }}
+
+      /* GIL strip (BOTTOM-RIGHT), slightly larger now */
+      .brand img{{height:36px; width:auto; display:block;}}
+    </style>
+    <body onload="subst()">
+      <div class="foot">
+        <div class="pageno"><span class="page"></span></div>
+        <div class="brand"><img src="{footer_url}" alt=""></div>
+      </div>
+
+      <!-- wkhtmltopdf page number injection -->
+      <script>
+      function subst(){{
+          var vars={{}}, qs=window.location.search.substring(1).split('&');
+          for (var i=0;i<qs.length;i++) {{
+              var p=qs[i].split('=',2);
+              vars[p[0]] = decodeURIComponent(p[1] || '');
+          }}
+          var pages=document.getElementsByClassName('page');
+          for (var j=0;j<pages.length;j++) pages[j].textContent = vars.page || '';
+      }}
+      </script>
+    </body></html>"""
+
+    pdf_bytes = _wkhtmltopdf_bytes(
+        body_html,
+        header_html,
+        footer_html
+    )
+
     return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf', as_attachment=False, download_name='preview.pdf')
