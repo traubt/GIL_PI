@@ -5,6 +5,18 @@
 
 <main id="main" class="main" dir="rtl">
 
+  <!-- Global photos loader -->
+<div id="thumbLoader"
+     class="position-fixed top-0 start-0 w-100 h-100 d-none"
+     style="background: rgba(255,255,255,.85); z-index: 1050;">
+  <div class="h-100 d-flex flex-column align-items-center justify-content-center text-center">
+    <div class="spinner-border text-secondary" role="status" aria-hidden="true" style="width:3rem;height:3rem;"></div>
+    <div class="mt-3 fw-semibold js-msg">טוען תמונות מדרופבוקס…</div>
+<!--    <div class="text-muted small">הפעולה תימשך מספר דקות…</div>-->
+  </div>
+</div>
+
+
   <style>
     /* small, local styles so the image grids look good */
     .thumb-grid{
@@ -474,6 +486,19 @@
 (function(){
   // simple per-editor local token
   const tokenInp = document.getElementById('localToken');
+
+    // loader helpers
+  const loaderEl = document.getElementById('thumbLoader');
+  function showThumbLoader(msg) {
+    const m = loaderEl.querySelector('.js-msg');
+    if (m && msg) m.textContent = msg;
+    loaderEl.classList.remove('d-none');
+  }
+  function hideThumbLoader() {
+    loaderEl.classList.add('d-none');
+  }
+
+
   if (!tokenInp.value) tokenInp.value = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
 
   // state
@@ -484,30 +509,36 @@
   const portraitGrid  = document.getElementById('group-portrait');
 
   // Build one thumbnail card (default UNCHECKED)
-  function renderThumb(container, imgObj){
+  function renderThumb(container, imgObj) {
     const wrap = document.createElement('label');
     wrap.className = 'thumb';
 
-    // Prefer Dropbox thumbnail (thumb_data_url) if present; fallback to full URL
-    const src = imgObj.thumb_data_url || imgObj.url;
-
+    const src = imgObj.thumb_data_url || imgObj.url || '';
     const id = 'chk_' + Math.random().toString(36).slice(2);
+
     wrap.innerHTML = `
       <img src="${src}" alt="">
       <div class="form-check mt-1">
         <input class="form-check-input" type="checkbox" id="${id}">
-        <span class="name" title="${imgObj.name || ''}">${imgObj.name || ''}</span>
+        <span class="name">${imgObj.name || ''}</span>
       </div>
     `;
 
     const chk = wrap.querySelector('input[type=checkbox]');
+    // store the (current) URL on the checkbox; updated later if server returns a canonical URL
+    chk.dataset.url = imgObj.url || '';
+
     chk.addEventListener('change', () => {
-      if (chk.checked) selectedImages.add(imgObj.url);
-      else selectedImages.delete(imgObj.url);
+      const finalUrl = chk.dataset.url || '';
+      if (!finalUrl) return;
+      if (chk.checked) selectedImages.add(finalUrl);
+      else selectedImages.delete(finalUrl);
     });
 
     container.appendChild(wrap);
+    return { wrap, chk };   // we return the checkbox so we can update its URL later
   }
+
 
   function clearGrids(){
     landscapeGrid.innerHTML = '';
@@ -517,20 +548,33 @@
 
   function classifyAndRender(images){
     clearGrids();
+
     if (!images || !images.length) {
       alert('לא נמצאו תמונות בתיקיית Dropbox');
+      hideThumbLoader();
       return;
     }
-    // detect orientation client-side
+
+    let remaining = images.length;
+
+    const doneOne = () => {
+      remaining -= 1;
+      if (remaining <= 0) hideThumbLoader();
+    };
+
     images.forEach(meta => {
       const tmp = new Image();
       tmp.onload = () => {
         const isLandscape = tmp.naturalWidth >= tmp.naturalHeight;
         renderThumb(isLandscape ? landscapeGrid : portraitGrid, meta);
+        doneOne();
       };
-      tmp.src = meta.url;
+      tmp.onerror = doneOne;
+      // Prefer the thumbnail link if present; fallback to full URL
+      tmp.src = meta.thumb_data_url || meta.url;
     });
   }
+
 
   async function postJSON(url, body){
     const r = await fetch(url, {
@@ -568,12 +612,21 @@
   async function loadFromDropboxForCurrentInsured(){
     const insuredId = getInsuredIdFromForm();
     if (!insuredId) return;
-    const data = await postJSON('/reports/photos/list', {
-      source: 'dropbox',
-      insured_id: insuredId
-    });
-    classifyAndRender(data.images || []);
+
+    showThumbLoader('טוען תמונות מדרופבוקס. הטעינה תימשך מספר דקות…');
+    try {
+      const data = await postJSON('/reports/photos/list', {
+        source: 'dropbox',
+        insured_id: insuredId
+      });
+      classifyAndRender(data.images || []);
+    } catch (e) {
+      console.error(e);
+      alert('שגיאה בטעינת התמונות מדרופבוקס');
+      hideThumbLoader();
+    }
   }
+
 
   // Dropbox import button
   document.getElementById('btn-import-dropbox').addEventListener('click', () => {
@@ -592,23 +645,81 @@
   document.getElementById('btn-upload-local').addEventListener('click', () => filepicker.click());
 
   filepicker.addEventListener('change', async (ev) => {
-    const fd = new FormData();
-    const token = tokenInp.value;
-    fd.append('local_token', token);
-    [...ev.target.files].forEach(f => fd.append('files[]', f));
-    const r = await fetch('/reports/photos/upload', { method: 'POST', body: fd });
-    const data = await r.json();
-    tokenInp.value = data.token || token;
+    const files = [...ev.target.files];
+    if (!files.length) return;
 
-    // Show all local images from this session
-    const list = await postJSON('/reports/photos/list', { source: 'local', local_token: tokenInp.value });
-    classifyAndRender(list.images || []);
+    showThumbLoader('מעלה תמונות ומכין תצוגה מקדימה…');
+
+    // 1) Immediate client-side preview + orientation classify
+    const previews = await Promise.all(
+      files.map(file => new Promise((resolve) => {
+        const fr = new FileReader();
+        fr.onload = () => {
+          const dataUrl = fr.result;         // local preview
+          const img = new Image();
+          img.onload = () => {
+            const isLandscape = img.naturalWidth >= img.naturalHeight;
+            const { chk } = renderThumb(
+              isLandscape ? landscapeGrid : portraitGrid,
+              { name: file.name, url: dataUrl } // temporary URL for display
+            );
+            resolve({ file, chk });
+          };
+          img.src = dataUrl;
+        };
+        fr.readAsDataURL(file);
+      }))
+    );
+
+    // 2) Upload to server in background
+    try {
+      const fd = new FormData();
+      const token = tokenInp.value;
+      fd.append('local_token', token);
+      files.forEach(f => fd.append('files[]', f));
+
+      const r = await fetch('/reports/photos/upload', { method: 'POST', body: fd });
+      const data = await r.json();
+      tokenInp.value = data.token || token;
+
+      // 3) Ask the server for canonical URLs of uploaded images
+      const list = await postJSON('/reports/photos/list', {
+        source: 'local',
+        local_token: tokenInp.value
+      });
+
+      // Map by filename (best-effort) and update each checkbox to the final URL
+      const urlByName = new Map((list.images || []).map(x => [x.name, x.url]));
+      previews.forEach(({ file, chk }) => {
+        const finalUrl = urlByName.get(file.name);
+        if (finalUrl) {
+          // If it was already selected (unlikely because default = unchecked),
+          // update the selection set with the canonical URL.
+          const wasChecked = chk.checked;
+          chk.dataset.url = finalUrl;
+          if (wasChecked) {
+            selectedImages.add(finalUrl);
+          }
+        }
+      });
+
+    } catch (e) {
+      console.error(e);
+      alert('שגיאה בהעלאת התמונות');
+    } finally {
+      hideThumbLoader();
+      // reset input so selecting the same files again works if needed
+      ev.target.value = '';
+    }
   });
+
 
   // Expose selected images to preview/generation step if needed
   window.getSelectedReportImages = function(){
     return Array.from(selectedImages);
   };
+
+
 })();
 </script>
 
