@@ -71,7 +71,7 @@ def _wkhtmltopdf_bytes(body_html: str, header_html: str, footer_html: str) -> by
             "--enable-local-file-access",
             "--quiet",
             "--margin-top", "46",
-            "--margin-bottom", "36",  # ↓ was 44 — tighter footer area
+            "--margin-bottom", "30",  # ↓ was 44 — tighter footer area
             "--header-html", head_path,
             "--header-spacing", "0",
             "--footer-html", foot_path,
@@ -267,49 +267,42 @@ def preview():
     footer_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
     <style>
       html,body{{margin:0;padding:0;font-family:'Assistant',Arial,sans-serif;}}
-      /* Footer row */
-      .foot{{
-        height:46px;                     /* slightly taller */
-        padding:0 12mm;                  /* left/right padding */
-        box-sizing:border-box;
-        display:flex;
-        align-items:flex-end;            /* anchor items to the bottom edge */
-        justify-content:space-between; 
-        direction:ltr;                   /* freeze visual order: left → right */
-      }}
-      /* Explicit order so RTL can't flip things */
-      .pageno{{ order:0; }}
-      .brand {{ order:1; }}
+      /* Footer canvas */
+      .foot{{position:relative; height:50px; box-sizing:border-box;}}
 
-      /* Page number square (BOTTOM-LEFT), perfectly centered text */
+      /* PAGE NUMBER — fixed to bottom-left, perfectly centered */
       .pageno{{
-        width:11mm; height:11mm;        /* a touch bigger */
-        background:#333; color:#fff;
-        display:flex; align-items:center; justify-content:center; /* full centering */
-        text-align:center; line-height:1;                         /* no baseline shift */
-        font-size:10pt; font-weight:700; border-radius:3px;
-        letter-spacing:0;
+        position:absolute; left:12mm; bottom:2px;
+        width:12mm; height:12mm;
+        background:#333; color:#fff; border-radius:3px;
+        /* no flex here */
+      }}
+      .pageno .page{{
+        position:absolute; left:50%; top:50%;
+        transform:translate(-50%, -50%);   /* dead-center */
+        font-size:10pt; font-weight:700; line-height:1; margin:0; padding:0;
       }}
 
-      /* GIL strip (BOTTOM-RIGHT), slightly larger now */
-      .brand img{{height:36px; width:auto; display:block;}}
+      /* GIL STRIP — fixed to bottom-right */
+      .brand{{ position:absolute; right:12mm; bottom:0; }}
+      .brand img{{ height:40px; width:auto; display:block; }}
     </style>
+
     <body onload="subst()">
       <div class="foot">
         <div class="pageno"><span class="page"></span></div>
         <div class="brand"><img src="{footer_url}" alt=""></div>
       </div>
 
-      <!-- wkhtmltopdf page number injection -->
       <script>
       function subst(){{
-          var vars={{}}, qs=window.location.search.substring(1).split('&');
-          for (var i=0;i<qs.length;i++) {{
-              var p=qs[i].split('=',2);
-              vars[p[0]] = decodeURIComponent(p[1] || '');
+          var vars={{}}, q=window.location.search.substring(1).split('&');
+          for (var i=0;i<q.length;i++) {{
+              var p=q[i].split('=',2);
+              vars[p[0]] = decodeURIComponent(p[1]||'');
           }}
-          var pages=document.getElementsByClassName('page');
-          for (var j=0;j<pages.length;j++) pages[j].textContent = vars.page || '';
+          var els=document.getElementsByClassName('page');
+          for (var j=0;j<els.length;j++) els[j].textContent = vars.page || '';
       }}
       </script>
     </body></html>"""
