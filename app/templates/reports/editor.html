@@ -164,6 +164,34 @@
                 </div>
                 <div id="photoChips" class="mt-1"></div>
                 <button id="addDummyPhoto" type="button" class="btn btn-sm btn-outline-secondary mt-2">הוסף תמונת דמה</button>
+
+<!-- Add near the “תמונות לדו"ח” area or create a new block -->
+<div class="card mt-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <strong>תמונות לדו"ח</strong>
+    <div>
+      <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button>
+      <button id="btn-upload-local" type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button>
+      <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
+    </div>
+  </div>
+  <div class="card-body">
+    <input type="hidden" id="localToken" value="">
+    <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
+
+    <div class="mb-3">
+      <div class="fw-bold mb-1">תמונות לרוחב (Landscape)</div>
+      <div id="grid-landscape" class="thumb-grid"></div>
+    </div>
+
+    <div>
+      <div class="fw-bold mb-1">תמונות לאורך (Portrait)</div>
+      <div id="grid-portrait" class="thumb-grid"></div>
+    </div>
+  </div>
+</div>
+
+
               </div>
             </div>
 
@@ -425,7 +453,139 @@
 
   applyTemplateSections();
   updateMetaBadges();
+
+
+
 </script>
+
+<script>
+(function(){
+  // simple per-editor local token
+  const tokenInp = document.getElementById('localToken');
+  if (!tokenInp.value) tokenInp.value = (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()));
+
+  // state
+  const selectedImages = new Set(); // store selected URLs
+
+  const landscapeGrid = document.getElementById('grid-landscape');
+  const portraitGrid  = document.getElementById('grid-portrait');
+
+  function renderThumb(container, imgObj){
+    const wrap = document.createElement('label');
+    wrap.className = 'thumb';
+    const id = 'chk_' + Math.random().toString(36).slice(2);
+    wrap.innerHTML = `
+      <img src="${imgObj.url}" alt="">
+      <div class="form-check mt-1">
+        <input class="form-check-input" type="checkbox" id="${id}" checked>
+        <span class="name">${imgObj.name || ''}</span>
+      </div>
+    `;
+    const chk = wrap.querySelector('input[type=checkbox]');
+    // Default: selected (checked) so they’ll be included unless deselected
+    selectedImages.add(imgObj.url);
+    chk.addEventListener('change', () => {
+      if (chk.checked) selectedImages.add(imgObj.url);
+      else selectedImages.delete(imgObj.url);
+    });
+    container.appendChild(wrap);
+  }
+
+  function clearGrids(){
+    landscapeGrid.innerHTML = '';
+    portraitGrid.innerHTML = '';
+    selectedImages.clear();
+  }
+
+  function classifyAndRender(images){
+    clearGrids();
+    if (!images || !images.length) {
+      alert('לא נמצאו תמונות בתיקיית Dropbox');
+      return;
+    }
+    // load each image to detect orientation in the browser
+    images.forEach(meta => {
+      const tmp = new Image();
+      tmp.onload = () => {
+        const isLandscape = tmp.naturalWidth >= tmp.naturalHeight;
+        renderThumb(isLandscape ? landscapeGrid : portraitGrid, meta);
+      };
+      tmp.src = meta.url;
+    });
+  }
+
+  async function postJSON(url, body){
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    return r.json();
+  }
+
+  function getInsuredIdFromForm(){
+    // Adjust these selectors to your actual insured selector if needed
+    const insuredSel = document.querySelector('#insuredSelect, select[name=insured_id], [data-insured-id]');
+    let insuredId = insuredSel?.value || document.querySelector('input[name=insured_id]')?.value;
+    return insuredId ? parseInt(insuredId,10) : null;
+  }
+
+  async function loadFromDropboxForCurrentInsured(){
+    const insuredId = getInsuredIdFromForm();
+    if (!insuredId) return; // silently ignore if not chosen yet
+    const data = await postJSON('/reports/photos/list', {
+      source: 'dropbox',
+      insured_id: insuredId
+    });
+    classifyAndRender(data.images || []);
+  }
+
+  // --- Dropbox import button simply loads EVERYTHING from the folder ---
+  document.getElementById('btn-import-dropbox').addEventListener('click', () => {
+    const insuredId = getInsuredIdFromForm();
+    if (!insuredId) {
+      alert('בחר/י מבוטח תחילה.');
+      return;
+    }
+    loadFromDropboxForCurrentInsured();
+  });
+
+  // --- Auto-load from Dropbox when insured changes (optional but nice) ---
+  const insuredSel = document.querySelector('#insuredSelect, select[name=insured_id], [data-insured-id]');
+  if (insuredSel) {
+    insuredSel.addEventListener('change', () => {
+      // When user chooses a different insured, try auto-load from Dropbox
+      loadFromDropboxForCurrentInsured();
+    });
+  }
+
+  // --- Local upload (stays the same) ---
+  const filepicker = document.getElementById('filepicker');
+  document.getElementById('btn-upload-local').addEventListener('click', () => filepicker.click());
+
+  filepicker.addEventListener('change', async (ev) => {
+    const fd = new FormData();
+    const token = tokenInp.value;
+    fd.append('local_token', token);
+    [...ev.target.files].forEach(f => fd.append('files[]', f));
+    const r = await fetch('/reports/photos/upload', { method: 'POST', body: fd });
+    const data = await r.json();
+    tokenInp.value = data.token || token;
+
+    // Show all local images from this session
+    const list = await postJSON('/reports/photos/list', { source: 'local', local_token: tokenInp.value });
+    classifyAndRender(list.images || []);
+  });
+
+  // Optional: expose selected images for the preview/generate step
+  window.getSelectedReportImages = function(){
+    return Array.from(selectedImages);
+  };
+})();
+</script>
+
+
+
 
 <script src="static/assets/js/main.js"></script>
 {% endblock %}

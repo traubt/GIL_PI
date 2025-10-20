@@ -314,3 +314,97 @@ def preview():
     )
 
     return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf', as_attachment=False, download_name='preview.pdf')
+
+
+# --- Add these imports at top of reports_ui.py ---
+import os, uuid
+from flask import current_app
+from werkzeug.utils import secure_filename
+from app.models import GilInsured
+from app.dropbox_util import dbx, build_dropbox_folder_path, list_case_images
+
+
+ALLOWED_EXTS = {"jpg", "jpeg", "png"}
+
+def _uploads_root():
+    root = os.path.join(current_app.root_path, "static", "uploads", "reports")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+def _public_url_for(rel_path: str) -> str:
+    # rel_path like 'uploads/reports/abcd/pic.jpg'
+    rel_norm = rel_path.replace("\\", "/")  # <- do the replace outside the f-string (Py 3.11 safe)
+    return f"/static/{rel_norm}"
+
+
+# app/reports_ui.py (only the dropbox branch inside list_photos)
+@reports_ui_bp.route('/photos/list', methods=['POST'])
+def list_photos():
+    data = request.get_json(silent=True) or {}
+    source = (data.get("source") or "").strip()
+    images = []
+
+    if source == "dropbox":
+        insured_id = data.get("insured_id")
+        if not insured_id:
+            return jsonify({"images": []})
+
+        insured = db.session.get(GilInsured, int(insured_id))
+        if not insured:
+            return jsonify({"images": []})
+
+        # Build the insured’s case root folder
+        case_root = build_dropbox_folder_path(
+            insured.insurance or "",
+            insured.claim_type or "",
+            insured.last_name or "",
+            insured.first_name or "",
+            insured.id_number or "",
+            insured.claim_number or "",
+        )
+
+        if case_root:
+            # -> this looks specifically in '<case_root>/תמונות'
+            images = list_case_images(dbx, case_root)
+
+        return jsonify({"images": images})
+
+    # ... your existing 'local' branch remains unchanged ...
+    # (returns local uploaded images for this editor session)
+
+    return jsonify({"images": []})
+
+
+@reports_ui_bp.route('/photos/upload', methods=['POST'])
+def upload_photos():
+    """
+    FormData: files[] (multiple), local_token
+    Saves under /static/uploads/reports/<token>/filename and returns URLs.
+    """
+    token = request.form.get("local_token") or str(uuid.uuid4())
+    files = request.files.getlist("files[]") or request.files.getlist("files")
+    saved = []
+
+    if not files:
+        return jsonify({"token": token, "images": []})
+
+    session_dir = os.path.join(_uploads_root(), token)
+    os.makedirs(session_dir, exist_ok=True)
+
+    for f in files:
+        if not f or not f.filename:
+            continue
+        ext = f.filename.rsplit(".", 1)[-1].lower()
+        if ext not in ALLOWED_EXTS:
+            continue
+        safe = secure_filename(f.filename)
+        # avoid collisions
+        base, extn = os.path.splitext(safe)
+        final = f"{base}_{uuid.uuid4().hex[:6]}{extn}"
+        out_path = os.path.join(session_dir, final)
+        f.save(out_path)
+        rel = os.path.join("uploads", "reports", token, final)
+        saved.append({"name": final, "url": _public_url_for(rel)})
+
+    return jsonify({"token": token, "images": saved})
+
