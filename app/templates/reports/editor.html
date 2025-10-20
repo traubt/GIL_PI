@@ -5,6 +5,40 @@
 
 <main id="main" class="main" dir="rtl">
 
+  <style>
+    /* small, local styles so the image grids look good */
+    .thumb-grid{
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: .75rem;
+    }
+    .thumb{
+      display: block;
+      border: 1px solid #e5e7eb;
+      border-radius: .5rem;
+      padding: .5rem;
+      background: #fff;
+    }
+    .thumb img{
+      width: 100%;
+      height: 110px;
+      object-fit: cover;
+      border-radius: .35rem;
+      display: block;
+    }
+    .thumb .name{
+      display: inline-block;
+      font-size: .75rem;
+      color: #6b7280;
+      margin-inline-start: .5rem;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      vertical-align: middle;
+    }
+  </style>
+
   <div class="pagetitle">
     <h1>דוחות חקירה — עורך</h1>
     <nav>
@@ -44,21 +78,19 @@
       </div>
     </div>
 
-
     <div class="row">
 
       <!-- LEFT: form -->
       <div class="col-lg-7">
         <div class="card">
           <div class="card-body">
-
             <h5 class="card-title">פרטי דו״ח</h5>
 
             <div class="row g-3">
               <!-- insured -->
               <div class="col-md-6">
                 <label for="insuredId" class="form-label">מבוטח</label>
-                <select id="insuredId" class="form-select">
+                <select id="insuredId" name="insured_id" class="form-select">
                   <option value="">בחר מבוטח…</option>
                   {% for ins in insureds %}
                     <option
@@ -76,6 +108,7 @@
                 </select>
               </div>
 
+              <!-- report type -->
               <div class="col-md-6">
                 <label for="reportType" class="form-label">סוג דו״ח</label>
                 <select id="reportType" class="form-select">
@@ -92,13 +125,13 @@
                 <input id="reportDate" type="date" class="form-control">
               </div>
 
-              <!-- NEW: activity date (only Menora · סיעוד · TRACKING) -->
+              <!-- activity date -->
               <div class="col-md-6 section-block" data-section="activity_date">
                 <label for="activityDate" class="form-label">תאריך פעילות</label>
                 <input id="activityDate" type="date" class="form-control">
               </div>
 
-              <!-- generic sections (unchanged) -->
+              <!-- generic sections -->
               <div class="col-12 section-block" data-section="title">
                 <label for="title" class="form-label">כותרת</label>
                 <input id="title" class="form-control" placeholder="למשל: דוח מעקב — שם מבוטח">
@@ -157,44 +190,32 @@
                 <textarea id="summary" class="form-control" rows="4" placeholder="מסקנות והמלצות…"></textarea>
               </div>
 
+              <!-- PHOTOS -->
               <div class="col-12 section-block" data-section="photos">
-                <div class="d-flex align-items-center justify-content-between">
-                  <label class="form-label m-0">תמונות לדו״ח</label>
-                  <small class="text-muted">בשלב הבא נוסיף בורר תמונות מ-Dropbox</small>
+                <div class="card mt-1">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>תמונות לדו"ח</strong>
+                    <div>
+                      <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button>
+                      <button id="btn-upload-local" type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button>
+                      <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <input type="hidden" id="localToken" value="">
+                    <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
+
+                    <div class="mb-2 fw-bold text-muted">(Landscape) תמונות לרוחב</div>
+                    <div id="group-landscape" class="thumb-grid"></div>
+
+                    <div class="mb-2 mt-4 fw-bold text-muted">(Portrait) תמונות לאורך</div>
+                    <div id="group-portrait" class="thumb-grid"></div>
+                  </div>
                 </div>
-                <div id="photoChips" class="mt-1"></div>
-                <button id="addDummyPhoto" type="button" class="btn btn-sm btn-outline-secondary mt-2">הוסף תמונת דמה</button>
-
-<!-- Add near the “תמונות לדו"ח” area or create a new block -->
-<div class="card mt-3">
-  <div class="card-header d-flex justify-content-between align-items-center">
-    <strong>תמונות לדו"ח</strong>
-    <div>
-      <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button>
-      <button id="btn-upload-local" type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button>
-      <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
-    </div>
-  </div>
-  <div class="card-body">
-    <input type="hidden" id="localToken" value="">
-    <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
-
-    <div class="mb-3">
-      <div class="fw-bold mb-1">תמונות לרוחב (Landscape)</div>
-      <div id="grid-landscape" class="thumb-grid"></div>
-    </div>
-
-    <div>
-      <div class="fw-bold mb-1">תמונות לאורך (Portrait)</div>
-      <div id="grid-portrait" class="thumb-grid"></div>
-    </div>
-  </div>
-</div>
-
-
               </div>
-            </div>
+              <!-- /PHOTOS -->
 
+            </div>
           </div>
         </div>
       </div>
@@ -223,7 +244,11 @@
   </section>
 </main>
 
+<!-- Hidden anchor (safe default) -->
+<a id="downloadDummy" style="display:none" rel="noopener" target="_blank"></a>
+
 <script>
+  // ---------------- State ----------------
   const state = {
     report_id: null,
     insured_id: "",
@@ -246,10 +271,11 @@
     web: "",
     summary: "",
     report_date: "",
-    activity_date: "",     // NEW
+    activity_date: "",
     photos: []
   };
 
+  // --------------- Template rules ---------------
   const TEMPLATE_RULES = {
     "הפניקס": {
       "TRACKING":  ["title","intro","tracking_dates","timeline","summary","photos"],
@@ -288,7 +314,7 @@
   function applyTemplateSections(){
     let set = (TEMPLATE_RULES[currentInsurer()] || {})[state.report_type] || ["title","intro","summary"];
 
-    // SPECIAL: Menora + סיעוד + TRACKING => show only dates (report + activity) + photos
+    // SPECIAL: Menora + סיעוד + TRACKING => only dates + photos
     if (currentInsurer()==="מנורה" &&
         state.report_type==="TRACKING" &&
         (state.insured_claim_type || "").includes("סיעוד")) {
@@ -316,6 +342,7 @@
     updateMetaBadges();
   }
 
+  // ------------ form bindings ------------
   $('#insuredId').addEventListener('change', e=>{
     const opt = e.target.selectedOptions[0];
     state.insured_id = e.target.value || "";
@@ -324,6 +351,8 @@
     state.ref_number = opt ? (opt.dataset.ref || "") : "";
     applyTemplateSections();
     recomputeReferenceNow();
+    // auto-load photos for this insured
+    loadFromDropboxForCurrentInsured();
   });
 
   $('#reportType').addEventListener('change', e=>{
@@ -343,27 +372,12 @@
   $('#web').addEventListener('input', e=> state.web = e.target.value);
   $('#summary').addEventListener('input', e=> state.summary = e.target.value);
   $('#reportDate').addEventListener('change', e=> state.report_date = e.target.value);
-  $('#activityDate').addEventListener('change', e=> state.activity_date = e.target.value);  // NEW
+  $('#activityDate').addEventListener('change', e=> state.activity_date = e.target.value);
 
+  // chips (kept for compatibility)
   function renderChips(){
-    const host = $('#photoChips');
-    host.innerHTML = '';
-    state.photos.forEach((p, idx)=>{
-      const chip = document.createElement('span');
-      chip.className = 'badge rounded-pill bg-light text-dark border me-1';
-      chip.innerHTML = `${p.name} <button type="button" data-i="${idx}" class="btn btn-sm btn-link p-0 ms-1">✕</button>`;
-      chip.querySelector('button').onclick = (ev)=>{
-        const i = +ev.currentTarget.dataset.i;
-        state.photos.splice(i,1);
-        renderChips();
-      };
-      host.appendChild(chip);
-    });
+    // no-op for now; you can re-enable if you want chip display
   }
-  $('#addDummyPhoto').onclick = ()=>{
-    state.photos.push({name: 'תמונה_' + (state.photos.length+1), path: '/dropbox/path/placeholder.jpg'});
-    renderChips();
-  };
 
   async function saveDraft(){
     const res = await fetch('/reports/save_draft', {
@@ -453,11 +467,9 @@
 
   applyTemplateSections();
   updateMetaBadges();
-
-
-
 </script>
 
+<!-- Photos logic (no jQuery) -->
 <script>
 (function(){
   // simple per-editor local token
@@ -467,27 +479,33 @@
   // state
   const selectedImages = new Set(); // store selected URLs
 
-  const landscapeGrid = document.getElementById('grid-landscape');
-  const portraitGrid  = document.getElementById('grid-portrait');
+  // IMPORTANT: use the correct IDs that exist in the HTML
+  const landscapeGrid = document.getElementById('group-landscape');
+  const portraitGrid  = document.getElementById('group-portrait');
 
+  // Build one thumbnail card (default UNCHECKED)
   function renderThumb(container, imgObj){
     const wrap = document.createElement('label');
     wrap.className = 'thumb';
+
+    // Prefer Dropbox thumbnail (thumb_data_url) if present; fallback to full URL
+    const src = imgObj.thumb_data_url || imgObj.url;
+
     const id = 'chk_' + Math.random().toString(36).slice(2);
     wrap.innerHTML = `
-      <img src="${imgObj.url}" alt="">
+      <img src="${src}" alt="">
       <div class="form-check mt-1">
-        <input class="form-check-input" type="checkbox" id="${id}" checked>
-        <span class="name">${imgObj.name || ''}</span>
+        <input class="form-check-input" type="checkbox" id="${id}">
+        <span class="name" title="${imgObj.name || ''}">${imgObj.name || ''}</span>
       </div>
     `;
+
     const chk = wrap.querySelector('input[type=checkbox]');
-    // Default: selected (checked) so they’ll be included unless deselected
-    selectedImages.add(imgObj.url);
     chk.addEventListener('change', () => {
       if (chk.checked) selectedImages.add(imgObj.url);
       else selectedImages.delete(imgObj.url);
     });
+
     container.appendChild(wrap);
   }
 
@@ -503,7 +521,7 @@
       alert('לא נמצאו תמונות בתיקיית Dropbox');
       return;
     }
-    // load each image to detect orientation in the browser
+    // detect orientation client-side
     images.forEach(meta => {
       const tmp = new Image();
       tmp.onload = () => {
@@ -523,16 +541,33 @@
     return r.json();
   }
 
-  function getInsuredIdFromForm(){
-    // Adjust these selectors to your actual insured selector if needed
-    const insuredSel = document.querySelector('#insuredSelect, select[name=insured_id], [data-insured-id]');
-    let insuredId = insuredSel?.value || document.querySelector('input[name=insured_id]')?.value;
-    return insuredId ? parseInt(insuredId,10) : null;
+  function getInsuredIdFromForm() {
+    const sel =
+      document.querySelector('#insuredId') ||
+      document.querySelector('#insured_id') ||
+      document.querySelector('#insured-select') ||
+      document.querySelector('select[name="insured_id"]') ||
+      document.querySelector('select[data-role="insured"]');
+
+    if (!sel) return null;
+
+    let raw = (sel.value || '').toString().trim();
+    if (!raw) {
+      const opt = sel.options && sel.selectedIndex >= 0 ? sel.options[sel.selectedIndex] : null;
+      raw = opt
+        ? (opt.value || opt.getAttribute('data-id') || opt.getAttribute('data-value') || '')
+        : '';
+      raw = raw.toString().trim();
+    }
+    if (!raw) return null;
+
+    const n = parseInt(raw, 10);
+    return Number.isFinite(n) ? n : raw;
   }
 
   async function loadFromDropboxForCurrentInsured(){
     const insuredId = getInsuredIdFromForm();
-    if (!insuredId) return; // silently ignore if not chosen yet
+    if (!insuredId) return;
     const data = await postJSON('/reports/photos/list', {
       source: 'dropbox',
       insured_id: insuredId
@@ -540,7 +575,7 @@
     classifyAndRender(data.images || []);
   }
 
-  // --- Dropbox import button simply loads EVERYTHING from the folder ---
+  // Dropbox import button
   document.getElementById('btn-import-dropbox').addEventListener('click', () => {
     const insuredId = getInsuredIdFromForm();
     if (!insuredId) {
@@ -550,16 +585,9 @@
     loadFromDropboxForCurrentInsured();
   });
 
-  // --- Auto-load from Dropbox when insured changes (optional but nice) ---
-  const insuredSel = document.querySelector('#insuredSelect, select[name=insured_id], [data-insured-id]');
-  if (insuredSel) {
-    insuredSel.addEventListener('change', () => {
-      // When user chooses a different insured, try auto-load from Dropbox
-      loadFromDropboxForCurrentInsured();
-    });
-  }
+  // auto-load on insured change handled in the main script (after recompute)
 
-  // --- Local upload (stays the same) ---
+  // Local upload
   const filepicker = document.getElementById('filepicker');
   document.getElementById('btn-upload-local').addEventListener('click', () => filepicker.click());
 
@@ -577,15 +605,12 @@
     classifyAndRender(list.images || []);
   });
 
-  // Optional: expose selected images for the preview/generate step
+  // Expose selected images to preview/generation step if needed
   window.getSelectedReportImages = function(){
     return Array.from(selectedImages);
   };
 })();
 </script>
-
-
-
 
 <script src="static/assets/js/main.js"></script>
 {% endblock %}

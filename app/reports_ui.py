@@ -324,6 +324,7 @@ from app.models import GilInsured
 from app.dropbox_util import dbx, build_dropbox_folder_path, list_case_images
 
 
+
 ALLOWED_EXTS = {"jpg", "jpeg", "png"}
 
 def _uploads_root():
@@ -341,7 +342,7 @@ def _public_url_for(rel_path: str) -> str:
 @reports_ui_bp.route('/photos/list', methods=['POST'])
 def list_photos():
     data = request.get_json(silent=True) or {}
-    source = (data.get("source") or "").strip()
+    source = (data.get('source') or '').strip()
     images = []
 
     if source == "dropbox":
@@ -353,8 +354,7 @@ def list_photos():
         if not insured:
             return jsonify({"images": []})
 
-        # Build the insured’s case root folder
-        case_root = build_dropbox_folder_path(
+        folder = build_dropbox_folder_path(
             insured.insurance or "",
             insured.claim_type or "",
             insured.last_name or "",
@@ -362,16 +362,16 @@ def list_photos():
             insured.id_number or "",
             insured.claim_number or "",
         )
+        if not folder:
+            return jsonify({"images": []})
 
-        if case_root:
-            # -> this looks specifically in '<case_root>/תמונות'
-            images = list_case_images(dbx, case_root)
+        images = list_case_images(dbx, folder)  # returns thumbnails (fast)
+        if not images:
+            return jsonify({"images": []})
 
         return jsonify({"images": images})
 
-    # ... your existing 'local' branch remains unchanged ...
-    # (returns local uploaded images for this editor session)
-
+    # … handle 'local' branch if you keep it …
     return jsonify({"images": []})
 
 
