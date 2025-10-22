@@ -408,6 +408,10 @@
   }
 
   async function saveDraft(){
+    // include current selections so draft remembers them
+    if (typeof window.getSelectedReportImages === 'function') {
+      state.photos = window.getSelectedReportImages();
+    }
     const res = await fetch('/reports/save_draft', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
@@ -429,6 +433,10 @@
   $('#btnSaveDraft').onclick = async ()=>{ if (await saveDraft()) alert('נשמר כטיוטה ✅'); };
 
   $('#btnFinalize').onclick = async ()=>{
+      // push photos into state before saving/finalize
+    if (typeof window.getSelectedReportImages === 'function') {
+      state.photos = window.getSelectedReportImages();
+    }
     const ok = await saveDraft(); if (!ok) return;
     const fd = new FormData();
     fd.append('action','finalize');
@@ -449,6 +457,11 @@
   $('#btnPreview').onclick = async ()=>{
     const holder = $('#previewHolder');
     holder.innerHTML = '<div class="text-muted">מייצר PDF…</div>';
+
+    // >>> add selected photos into state before sending
+    if (typeof window.getSelectedReportImages === 'function') {
+      state.photos = window.getSelectedReportImages();  // array of /reports/photos/serve?... URLs
+    }
 
     const resp = await fetch('/reports/preview', {
       method:'POST',

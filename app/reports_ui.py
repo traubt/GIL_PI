@@ -1,21 +1,81 @@
-# app/reports_ui.py
-from flask import Blueprint, render_template, request, jsonify, send_file, current_app
+import io, json, os, uuid, re, subprocess, tempfile
+from datetime import datetime, date
+from urllib.parse import urljoin, urlparse, parse_qs
+
+from flask import (
+    Blueprint, render_template, request, jsonify, send_file, current_app, url_for
+)
+from werkzeug.utils import secure_filename
+
 from app import db
 from app.models import GilInsured, GilReport
-import io, json
-from datetime import datetime, date
-import subprocess, tempfile, os
-from urllib.parse import urljoin
-import os
-import uuid
-from datetime import datetime
-from flask import request, jsonify, current_app
-from werkzeug.utils import secure_filename
+
+# (only needed if you later embed photos into DOCX, safe to keep)
+from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
 
 reports_ui_bp = Blueprint('reports_ui', __name__, url_prefix='/reports')
 
 
 # ---------- helpers ----------
+
+from urllib.parse import urlparse, parse_qs
+from docx.shared import Inches
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+def _resolve_local_media_path_from_serve_url(url: str) -> str | None:
+    """
+    Accepts a URL like /reports/photos/serve?case_id=123&report_id=456&name=pic.jpg
+    Returns the absolute path under REPORT_MEDIA_DIR, or None if invalid/missing.
+    """
+    try:
+        parsed = urlparse(url)
+        q = parse_qs(parsed.query or "")
+        case_id   = (q.get("case_id", [""])[0] or "").strip()
+        report_id = (q.get("report_id", ["no_report"])[0] or "no_report").strip()
+        name      = (q.get("name", [""])[0] or "").strip()
+        if not case_id or not name:
+            return None
+        base_dir = current_app.config.get(
+            "REPORT_MEDIA_DIR",
+            os.path.join(current_app.instance_path, "report_media")
+        )
+        p = os.path.abspath(os.path.join(base_dir, case_id, report_id, name))
+        # safety: keep inside base_dir
+        if not p.startswith(os.path.abspath(base_dir)):
+            return None
+        return p if os.path.isfile(p) else None
+    except Exception:
+        return None
+
+def _append_photos_section(document, photo_urls: list[str]):
+    """
+    Adds a 'תמונות' section with each selected image on its own line.
+    Uses width ~5.5 inches to fit A4 portrait margins.
+    """
+    if not photo_urls:
+        return
+
+    document.add_heading('תמונות', level=1)
+
+    for url in photo_urls:
+        path = _resolve_local_media_path_from_serve_url(url)
+        if not path:
+            continue
+        try:
+            # add picture
+            document.add_picture(path, width=Inches(5.5))
+            # center the image (applies to the paragraph that holds the picture)
+            p = document.paragraphs[-1]
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            # optional: caption (file name)
+            cap = document.add_paragraph(os.path.basename(path))
+            cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        except Exception as e:
+            current_app.logger.warning(f"Failed to add picture {path}: {e}")
+
+
 
 def _compute_reference(ref_number: str | None, version_no: int) -> str:
     base = (ref_number or "00000").strip()
@@ -53,6 +113,7 @@ def _get_first_nonempty(obj, *names, default=""):
             if v not in (None, "", "NULL"):
                 return v
     return default
+
 
 def _wkhtmltopdf_bytes(body_html: str, header_html: str, footer_html: str) -> bytes:
     """Render HTML string to PDF bytes using wkhtmltopdf with header/footer HTMLs."""
@@ -110,6 +171,7 @@ def save_draft():
     report_id  = payload.get('report_id')
     insured_id = payload.get('insured_id')
     report_type = payload.get('report_type', 'TRACKING')
+
 
     insured = db.session.get(GilInsured, insured_id) if insured_id else None
 
@@ -190,6 +252,7 @@ def preview():
     payload     = request.get_json(silent=True) or {}
     insured_id  = payload.get('insured_id')
     report_type = payload.get('report_type', 'TRACKING')
+    photos = payload.get('photos') or []
 
     insured = db.session.get(GilInsured, insured_id) if insured_id else None
     if not insured:
@@ -231,42 +294,58 @@ def preview():
             id_number=id_number, claim_number=claim_number,
             injury_type=injury_type, birth_year=birth_year,
             activity_date=activity_date_fmt,   # DD.MM.YYYY here
+            photos=photos,
         )
     else:
-        body_html = f"""<!doctype html><meta charset="utf-8"><body dir="rtl" style="font-family:Arial;padding:40px">
-        <h3>תצוגה מקדימה</h3>
-        <p>טרם קיימת תבנית לדגם זה.</p>
-        <p><b>חברה:</b> {insurer} · <b>סוג תביעה:</b> {claim_type} · <b>סוג דו"ח:</b> {report_type}</p></body>"""
+        # Build a simple photos section if any were selected
+        photos_css = """
+        <style>
+          .photos h3 { margin-top: 28px; }
+          .photo { page-break-inside: avoid; margin: 10px 0 20px; text-align:center; }
+          .photo img { max-width: 100%; width: 520px; height: auto; display:inline-block; }
+          .caption { font-size: 12px; color:#666; margin-top: 6px; }
+        </style>
+        """
 
-    # Header HTML: top bar image + row with left (date/ref) & right (insurer block)
+        photos_html = ""
+        if photos:
+            items = []
+            for u in photos:
+                # optional simple caption from file name
+                name = u.split("name=")[-1] if "name=" in u else ""
+                items.append(f"""
+                <div class="photo">
+                  <img src="{u}" alt="">
+                  <div class="caption">{name}</div>
+                </div>
+              """)
+            photos_html = f'<div class="photos"><h3>תמונות</h3>{"".join(items)}</div>'
+
+        body_html = f"""<!doctype html><meta charset="utf-8">
+        <body dir="rtl" style="font-family:Arial;padding:40px">
+          {photos_css}
+          <h3>תצוגה מקדימה</h3>
+          <p>טרם קיימת תבנית לדגם זה.</p>
+          <p><b>חברה:</b> {insurer} · <b>סוג תביעה:</b> {claim_type} · <b>סוג דו"ח:</b> {report_type}</p>
+          {photos_html}
+        </body>"""
+
+    # Header HTML: company strip (right/top) + small reference/date on the left
     header_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
     <style>
-      html,body{{margin:0;padding:0;font-family:'Assistant',Arial,sans-serif;color:#111;}}
-      .wrap{{position:relative;}}
-      .bar img{{width:100%;display:block;}}
-      /* compact info band under the bar */
-      .info{{position:relative;height:48px;}}
-      .left,.right{{position:absolute;top:6px;line-height:1.35;font-size:12pt;}}
-      .left{{left:20mm;font-weight:700; text-align:left;}}   /* DATE + REF pinned to the left */
-      .right{{right:12mm;text-align:right;}}                 /* "לכבוד..." pinned to the far right */
-      .right b{{font-weight:700}}
+      html,body{{margin:0;padding:0;font-family:'Assistant',Arial,sans-serif;}}
+      .head{{position:relative; height:60px; box-sizing:border-box;}}
+      .brand{{ position:absolute; right:12mm; top:6px; }}
+      .brand img{{ height:48px; width:auto; display:block; }}
+      .meta{{ position:absolute; left:12mm; bottom:6px; font-size:10pt; color:#444; }}
     </style>
     <body>
-      <div class="wrap">
-        <div class="bar"><img src="{header_url}" alt=""></div>
-        <div class="info">
-          <div class="left">
-            <div>{report_date_text}</div>
-            <div>מספרנו: {reference_no}</div>
-          </div>
-          <div class="right">
-            <div>לכבוד</div>
-            <div><b>מנורה – חברה לביטוח</b></div>
-            <div>מחלקת תביעות סיעודי</div>
-          </div>
-        </div>
+      <div class="head">
+        <div class="brand"><img src="{header_url}" alt=""></div>
+        <div class="meta">מס׳ רפרנס: {reference_no} · תאריך דו״ח: {report_date_text}</div>
       </div>
     </body></html>"""
+
 
     # Footer HTML: contact bar image + small page number inside black square
     footer_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
@@ -311,6 +390,26 @@ def preview():
       }}
       </script>
     </body></html>"""
+
+
+
+    def absolutize_urls(html: str) -> str:
+        if not html:
+            return html
+        # add <base> so relative links resolve too
+        if '<base ' not in html:
+            if '<head>' in html:
+                html = html.replace('<head>', f'<head><base href="{base_url}/">', 1)
+            else:
+                html = f'<!doctype html><head><base href="{base_url}/"></head>' + html
+        # turn src="/..."/href="/..." into absolute
+        html = re.sub(r'((?:src|href)=["\'])(/[^"\']*)', rf'\1{base_url}\2', html)
+        return html
+
+    body_html = absolutize_urls(body_html)
+    header_html = absolutize_urls(header_html)
+    footer_html = absolutize_urls(footer_html)
+    # -----------------------------------------------
 
     pdf_bytes = _wkhtmltopdf_bytes(
         body_html,
