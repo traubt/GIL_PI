@@ -2,6 +2,9 @@ import io, json, os, uuid, re, subprocess, tempfile
 from datetime import datetime, date
 from urllib.parse import urljoin, urlparse, parse_qs
 from PIL import Image, UnidentifiedImageError  # <— add
+from io import BytesIO
+from urllib.request import urlopen, Request
+
 
 
 from flask import (
@@ -30,6 +33,7 @@ def _pairs(lst):
     """yield successive pairs: [0:2], [2:4], ..."""
     for i in range(0, len(lst), 2):
         yield lst[i:i+2]
+
 
 def _classify_photos_by_orientation(urls, resolve_fn):
     """Return (landscape[], portrait[]) using Pillow to decide orientation."""
@@ -352,7 +356,7 @@ def preview():
     payload     = request.get_json(silent=True) or {}
     insured_id  = payload.get('insured_id')
     report_type = payload.get('report_type', 'TRACKING')
-    photos = payload.get('photos') or []
+    photos      = payload.get('photos') or []
 
     insured = db.session.get(GilInsured, insured_id) if insured_id else None
     if not insured:
@@ -386,18 +390,18 @@ def preview():
     header_url = urljoin(base_url, "static/report_header_gil.png")
     footer_url = urljoin(base_url, "static/report_footer_gil.png")
 
-    # Body (no header/footer inside)
+    # ----------------- Body HTML (your existing templates) -----------------
     if insurer == "מנורה" and "סיעוד" in claim_type and report_type == "TRACKING":
         body_html = render_template(
             "reports/templates/menora_siudi_tracking.html",
             full_name=full_name, address=address,
             id_number=id_number, claim_number=claim_number,
             injury_type=injury_type, birth_year=birth_year,
-            activity_date=activity_date_fmt,   # DD.MM.YYYY here
+            activity_date=activity_date_fmt,   # DD.MM.YYYY in body
             photos=photos,
         )
     else:
-        # Build a simple photos section if any were selected
+        # fallback demo page
         photos_css = """
         <style>
           .photos h3 { margin-top: 28px; }
@@ -406,19 +410,17 @@ def preview():
           .caption { font-size: 12px; color:#666; margin-top: 6px; }
         </style>
         """
-
         photos_html = ""
         if photos:
             items = []
             for u in photos:
-                # optional simple caption from file name
                 name = u.split("name=")[-1] if "name=" in u else ""
                 items.append(f"""
                 <div class="photo">
                   <img src="{u}" alt="">
                   <div class="caption">{name}</div>
                 </div>
-              """)
+                """)
             photos_html = f'<div class="photos"><h3>תמונות</h3>{"".join(items)}</div>'
 
         body_html = f"""<!doctype html><meta charset="utf-8">
@@ -430,14 +432,7 @@ def preview():
           {photos_html}
         </body>"""
 
-    # Header HTML: company strip (right/top) + small reference/date on the left
-    # --- Header HTML (logo strip + right/left blocks) ---
-    recipient_insurer = insurer or "מנורה – חברה לביטוח"
-    recipient_dept = "מחלקת תביעות סיעודי"
-    # If you still want the salutation in the header, set this True; to avoid doubling keep False:
-    SHOW_SALUTATION_IN_HEADER = True
-
-    # --- Header HTML: repeatable logo strip only ---
+    # ----------------- Header & Footer HTML (unchanged from your last good version) -----------------
     header_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
     <style>
       html,body{{margin:0;padding:0}}
@@ -447,107 +442,74 @@ def preview():
       <div class="strip"><img src="{header_url}" alt=""></div>
     </body></html>"""
 
-    # Footer HTML: contact bar image + small page number inside black square
     footer_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
     <style>
       html,body{{margin:0;padding:0;font-family:'Assistant',Arial,sans-serif;}}
-      /* Footer canvas */
       .foot{{position:relative; height:50px; box-sizing:border-box;}}
-
-      /* PAGE NUMBER — fixed to bottom-left, perfectly centered */
       .pageno{{
         position:absolute; left:12mm; bottom:2px;
-        width:12mm; height:12mm;
-        background:#333; color:#fff; border-radius:3px;
-        /* no flex here */
+        width:12mm; height:12mm; background:#333; color:#fff; border-radius:3px;
       }}
       .pageno .page{{
-        position:absolute; left:50%; top:50%;
-        transform:translate(-50%, -50%);   /* dead-center */
+        position:absolute; left:50%; top:50%; transform:translate(-50%,-50%);
         font-size:10pt; font-weight:700; line-height:1; margin:0; padding:0;
       }}
-
-      /* GIL STRIP — fixed to bottom-right */
       .brand{{ position:absolute; right:12mm; bottom:0; }}
       .brand img{{ height:40px; width:auto; display:block; }}
     </style>
-
     <body onload="subst()">
       <div class="foot">
         <div class="pageno"><span class="page"></span></div>
         <div class="brand"><img src="{footer_url}" alt=""></div>
       </div>
-
       <script>
       function subst(){{
-          var vars={{}}, q=window.location.search.substring(1).split('&');
-          for (var i=0;i<q.length;i++) {{
-              var p=q[i].split('=',2);
-              vars[p[0]] = decodeURIComponent(p[1]||'');
-          }}
-          var els=document.getElementsByClassName('page');
-          for (var j=0;j<els.length;j++) els[j].textContent = vars.page || '';
+        var vars={{}}, q=window.location.search.substring(1).split('&');
+        for (var i=0;i<q.length;i++) {{ var p=q[i].split('=',2); vars[p[0]]=decodeURIComponent(p[1]||''); }}
+        var els=document.getElementsByClassName('page');
+        for (var j=0;j<els.length;j++) els[j].textContent = vars.page || '';
       }}
       </script>
     </body></html>"""
 
-
-
+    # ----------------- Absolute URLs in all 3 fragments -----------------
     def absolutize_urls(html: str) -> str:
         if not html:
             return html
-        # add <base> so relative links resolve too
         if '<base ' not in html:
             if '<head>' in html:
                 html = html.replace('<head>', f'<head><base href="{base_url}/">', 1)
             else:
                 html = f'<!doctype html><head><base href="{base_url}/"></head>' + html
-        # turn src="/..."/href="/..." into absolute
         html = re.sub(r'((?:src|href)=["\'])(/[^"\']*)', rf'\1{base_url}\2', html)
         return html
 
-    body_html = absolutize_urls(body_html)
+    body_html   = absolutize_urls(body_html)
     header_html = absolutize_urls(header_html)
     footer_html = absolutize_urls(footer_html)
-    # -----------------------------------------------
 
-    # Center the meta/details table that follows the subject (הנדון)
+    # ----------------- Center the table after הנדון -----------------
     extra_css = """
     <style>
-      /* table immediately after the first h1 (or wrapped once) */
-      h1 + table, h1 + div > table {{
-        margin: 0 auto;           /* center it */
-      }}
-      h1 + table td, h1 + div > table td {{
-        padding: 0 12px;
-        font-size: 16pt;
-      }}
+      h1 + table, h1 + div > table { margin: 0 auto; }
+      h1 + table td, h1 + div > table td { padding: 0 12px; font-size: 16pt; }
     </style>
     """
     m = re.search(r"(?i)<body[^>]*>", body_html)
-    if m:
-        body_html = body_html[:m.end()] + extra_css + body_html[m.end():]
-    else:
-        body_html = extra_css + body_html
+    body_html = body_html[:m.end()] + extra_css + body_html[m.end():] if m else extra_css + body_html
 
-    # ---------- Inject "letter top" once (right: לכבוד…, left: date/ref) ----------
-    # Build the block (NO salutation here to avoid duplicates; keep it in your body if you already render it)
+    # ----------------- Letter top (right: לכבוד…, left: date/ref) — once -----------------
     recipient_insurer = insurer or "מנורה – חברה לביטוח"
-    recipient_dept = "מחלקת תביעות סיעודי"
-
+    recipient_dept    = "מחלקת תביעות סיעודי"
     letter_css = """
     <style>
-      .letter-top{
-        display:flex; justify-content:space-between; align-items:flex-start;
-        margin: 6px 0 12px 0;
-        font-family: 'Assistant', Arial, sans-serif;
-      }
+      .letter-top{ display:flex; justify-content:space-between; align-items:flex-start;
+                   margin: 6px 0 12px 0; font-family: 'Assistant', Arial, sans-serif; }
       .lt-right{ text-align:right; line-height:1.2; }
       .lt-right .line-2, .lt-right .line-3{ font-weight:800; }
       .lt-left{ text-align:left; font-weight:800; }
     </style>
     """
-
     letter_top_html = f"""
     {letter_css}
     <div class="letter-top" dir="rtl">
@@ -562,23 +524,116 @@ def preview():
       </div>
     </div>
     """
-
-    # Insert immediately AFTER the opening <body ...> tag, and only once.
-    if "class=\"letter-top\"" not in body_html:
+    if 'class="letter-top"' not in body_html:
         m = re.search(r"(?i)<body[^>]*>", body_html)
-        if m:
-            body_html = body_html[:m.end()] + letter_top_html + body_html[m.end():]
+        body_html = body_html[:m.end()] + letter_top_html + body_html[m.end():] if m else letter_top_html + body_html
+
+    # ----------------- (NEW) PHOTOS inside section 3 -----------------
+    # helpers scoped here so you don't have to edit the module elsewhere
+    def _pairs(seq):
+        for i in range(0, len(seq), 2):
+            yield seq[i:i+2]
+
+    def _classify(links):
+        """
+        Classify URLs into (landscape, portrait) by opening the image directly
+        from its URL. No filesystem path resolver is required.
+
+        If Pillow is missing or any step fails, we default that image to 'landscape'.
+        """
+        try:
+            from PIL import Image, UnidentifiedImageError  # optional
+        except Exception:
+            Image = None
+            UnidentifiedImageError = Exception
+
+        lands, ports = [], []
+
+        for u in links:
+            # If Pillow isn't available, keep it simple
+            if not Image:
+                lands.append(u)
+                continue
+
+            try:
+                # Fetch a small-ish amount; Pillow can parse headers without full file,
+                # but for safety we read all (wkhtmltopdf will load from the same URL anyway).
+                req = Request(u, headers={"User-Agent": "PreviewClassifier/1.0"})
+                with urlopen(req, timeout=5) as resp:
+                    data = resp.read()
+
+                with Image.open(BytesIO(data)) as im:
+                    w, h = im.size
+
+                if w >= h:
+                    lands.append(u)
+                else:
+                    ports.append(u)
+
+            except (UnidentifiedImageError, OSError, ValueError, TimeoutError, Exception):
+                # On any issue, prefer to treat as landscape so it still renders.
+                lands.append(u)
+
+        return lands, ports
+
+    def _photos_html(land_urls, port_urls):
+        css = """
+        <style>
+          .section-photos { margin-top: 6mm; }
+          .photo-page { page-break-after: always; }
+          .photo-page:last-child { page-break-after: auto; }
+          .photo-block { page-break-inside: avoid; margin: 0 0 8mm 0; }
+
+          /* Landscape — big, stacked, one per block */
+          .land img { width: 100%; height: auto; display:block; border:0; }
+
+          /* Portrait — two side-by-side */
+          .row { display:flex; gap: 6mm; }
+          .row .port { flex: 1 1 0; }
+          .row .port img { width:100%; height:auto; display:block; border:0; }
+        </style>
+        """
+        parts = [css, '<div class="section-photos">']
+
+        # landscape: two blocks per page
+        for pair in _pairs(land_urls):
+            parts.append('<div class="photo-page">')
+            for u in pair:
+                parts.append(f'<div class="photo-block land"><img src="{u}" alt=""></div>')
+            parts.append('</div>')
+
+        # portrait: two per page, side by side
+        for pair in _pairs(port_urls):
+            parts.append('<div class="photo-page">')
+            if len(pair) == 1:
+                parts.append(f'<div class="photo-block row"><div class="port"><img src="{pair[0]}" alt=""></div></div>')
+            else:
+                parts.append(f'''
+                  <div class="photo-block row">
+                    <div class="port"><img src="{pair[0]}" alt=""></div>
+                    <div class="port"><img src="{pair[1]}" alt=""></div>
+                  </div>
+                ''')
+            parts.append('</div>')
+
+        parts.append('</div>')
+        return "".join(parts)
+
+    if photos:
+        land, port = _classify(photos)
+        gallery = _photos_html(land, port)
+
+        # replace placeholder inside section 3
+        placeholder = "(יישום חלק התמונות יתווסף בהמשך)"
+        if placeholder in body_html:
+            body_html = body_html.replace(placeholder, gallery)
         else:
-            body_html = letter_top_html + body_html
-    # -------------------------------------------------------------------------------
+            body_html = re.sub(r"\(?יישום חלק התמונות יתווסף בהמשך\)?", gallery, body_html)
 
-    pdf_bytes = _wkhtmltopdf_bytes(
-        body_html,
-        header_html,
-        footer_html
-    )
-
+    # ----------------- Generate PDF -----------------
+    pdf_bytes = _wkhtmltopdf_bytes(body_html, header_html, footer_html)
     return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf', as_attachment=False, download_name='preview.pdf')
+
 
 
 # --- Add these imports at top of reports_ui.py ---
