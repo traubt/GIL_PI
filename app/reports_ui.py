@@ -1,6 +1,8 @@
 import io, json, os, uuid, re, subprocess, tempfile
 from datetime import datetime, date
 from urllib.parse import urljoin, urlparse, parse_qs
+from PIL import Image, UnidentifiedImageError  # <— add
+
 
 from flask import (
     Blueprint, render_template, request, jsonify, send_file, current_app, url_for
@@ -23,6 +25,104 @@ reports_ui_bp = Blueprint('reports_ui', __name__, url_prefix='/reports')
 from urllib.parse import urlparse, parse_qs
 from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+def _pairs(lst):
+    """yield successive pairs: [0:2], [2:4], ..."""
+    for i in range(0, len(lst), 2):
+        yield lst[i:i+2]
+
+def _classify_photos_by_orientation(urls, resolve_fn):
+    """Return (landscape[], portrait[]) using Pillow to decide orientation."""
+    lands, ports = [], []
+    for url in urls:
+        try:
+            p = resolve_fn(url)  # absolute local path or None
+            if not p:
+                # no local path; we’ll guess by file name suffix; fallback = landscape
+                (lands if url.lower().endswith(("_p.jpg", "_p.jpeg", "_p.png")) else lands).append(url)
+                continue
+            with Image.open(p) as im:
+                w, h = im.size
+            (lands if w >= h else ports).append(url)
+        except (UnidentifiedImageError, FileNotFoundError, OSError):
+            # If unreadable, default to landscape so it still prints
+            lands.append(url)
+    return lands, ports
+
+
+def _build_photos_html(land_urls, port_urls):
+    """
+    Layout rules:
+      • Landscape: max 2 per page, stacked vertically (bigger size).
+      • Portrait:  max 2 per page, side-by-side (smaller so both fit).
+    """
+    css = """
+    <style>
+      .photo-page { page-break-after: always; }
+      .photo-page:last-child { page-break-after: auto; }
+      /* keep items intact across pages */
+      .photo-block { page-break-inside: avoid; margin: 0 0 8mm 0; }
+
+      /* Landscape — fill width, big height so only 2 fit */
+      .land img {
+        width: 100%;
+        height: auto;
+        display: block;
+        border: 0;
+      }
+
+      /* Portrait — two in a row */
+      .row { display: flex; gap: 6mm; }
+      .row .port {
+        flex: 1 1 0;
+      }
+      .row .port img {
+        width: 100%;
+        height: auto;
+        display: block;
+        border: 0;
+      }
+
+      /* Top space to breathe inside section */
+      .section-photos { margin-top: 6mm; }
+    </style>
+    """
+
+    html_parts = [css, '<div class="section-photos">']
+
+    # --- Landscape: two per page, stacked ---
+    for pair in _pairs(land_urls):
+        html_parts.append('<div class="photo-page">')
+        for url in pair:
+            html_parts.append(f'''
+              <div class="photo-block land">
+                <img src="{url}" alt="">
+              </div>
+            ''')
+        html_parts.append('</div>')  # /photo-page
+
+    # --- Portrait: two per page, side-by-side ---
+    for pair in _pairs(port_urls):
+        html_parts.append('<div class="photo-page">')
+        # if single leftover, we still center it in the row
+        if len(pair) == 1:
+            html_parts.append(f'''
+              <div class="photo-block row">
+                <div class="port"><img src="{pair[0]}" alt=""></div>
+              </div>
+            ''')
+        else:
+            html_parts.append(f'''
+              <div class="photo-block row">
+                <div class="port"><img src="{pair[0]}" alt=""></div>
+                <div class="port"><img src="{pair[1]}" alt=""></div>
+              </div>
+            ''')
+        html_parts.append('</div>')  # /photo-page
+
+    html_parts.append('</div>')  # /section-photos
+    return "".join(html_parts)
+
 
 def _resolve_local_media_path_from_serve_url(url: str) -> str | None:
     """
