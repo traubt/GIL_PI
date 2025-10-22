@@ -136,8 +136,8 @@ def _wkhtmltopdf_bytes(body_html: str, header_html: str, footer_html: str) -> by
             wkhtml,
             "--enable-local-file-access",
             "--quiet",
-            "--margin-top", "46",
-            "--margin-bottom", "30",  # ↓ was 44 — tighter footer area
+            "--margin-top", "30",  # <-- was smaller; 50mm comfortably fits the 72px strip + blocks
+            "--margin-bottom", "30",
             "--header-html", head_path,
             "--header-spacing", "0",
             "--footer-html", foot_path,
@@ -331,21 +331,21 @@ def preview():
         </body>"""
 
     # Header HTML: company strip (right/top) + small reference/date on the left
+    # --- Header HTML (logo strip + right/left blocks) ---
+    recipient_insurer = insurer or "מנורה – חברה לביטוח"
+    recipient_dept = "מחלקת תביעות סיעודי"
+    # If you still want the salutation in the header, set this True; to avoid doubling keep False:
+    SHOW_SALUTATION_IN_HEADER = True
+
+    # --- Header HTML: repeatable logo strip only ---
     header_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
     <style>
-      html,body{{margin:0;padding:0;font-family:'Assistant',Arial,sans-serif;}}
-      .head{{position:relative; height:60px; box-sizing:border-box;}}
-      .brand{{ position:absolute; right:12mm; top:6px; }}
-      .brand img{{ height:48px; width:auto; display:block; }}
-      .meta{{ position:absolute; left:12mm; bottom:6px; font-size:10pt; color:#444; }}
+      html,body{{margin:0;padding:0}}
+      .strip img{{width:100%; height:72px; display:block; object-fit:cover}}
     </style>
     <body>
-      <div class="head">
-        <div class="brand"><img src="{header_url}" alt=""></div>
-        <div class="meta">מס׳ רפרנס: {reference_no} · תאריך דו״ח: {report_date_text}</div>
-      </div>
+      <div class="strip"><img src="{header_url}" alt=""></div>
     </body></html>"""
-
 
     # Footer HTML: contact bar image + small page number inside black square
     footer_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
@@ -410,6 +410,67 @@ def preview():
     header_html = absolutize_urls(header_html)
     footer_html = absolutize_urls(footer_html)
     # -----------------------------------------------
+
+    # Center the meta/details table that follows the subject (הנדון)
+    extra_css = """
+    <style>
+      /* table immediately after the first h1 (or wrapped once) */
+      h1 + table, h1 + div > table {{
+        margin: 0 auto;           /* center it */
+      }}
+      h1 + table td, h1 + div > table td {{
+        padding: 0 12px;
+        font-size: 16pt;
+      }}
+    </style>
+    """
+    m = re.search(r"(?i)<body[^>]*>", body_html)
+    if m:
+        body_html = body_html[:m.end()] + extra_css + body_html[m.end():]
+    else:
+        body_html = extra_css + body_html
+
+    # ---------- Inject "letter top" once (right: לכבוד…, left: date/ref) ----------
+    # Build the block (NO salutation here to avoid duplicates; keep it in your body if you already render it)
+    recipient_insurer = insurer or "מנורה – חברה לביטוח"
+    recipient_dept = "מחלקת תביעות סיעודי"
+
+    letter_css = """
+    <style>
+      .letter-top{
+        display:flex; justify-content:space-between; align-items:flex-start;
+        margin: 6px 0 12px 0;
+        font-family: 'Assistant', Arial, sans-serif;
+      }
+      .lt-right{ text-align:right; line-height:1.2; }
+      .lt-right .line-2, .lt-right .line-3{ font-weight:800; }
+      .lt-left{ text-align:left; font-weight:800; }
+    </style>
+    """
+
+    letter_top_html = f"""
+    {letter_css}
+    <div class="letter-top" dir="rtl">
+      <div class="lt-right">
+        <div>לכבוד</div>
+        <div class="line-2">{recipient_insurer}</div>
+        <div class="line-3">{recipient_dept}</div>
+      </div>
+      <div class="lt-left">
+        <div>{report_date_text}</div>
+        <div>מספרנו: {reference_no}</div>
+      </div>
+    </div>
+    """
+
+    # Insert immediately AFTER the opening <body ...> tag, and only once.
+    if "class=\"letter-top\"" not in body_html:
+        m = re.search(r"(?i)<body[^>]*>", body_html)
+        if m:
+            body_html = body_html[:m.end()] + letter_top_html + body_html[m.end():]
+        else:
+            body_html = letter_top_html + body_html
+    # -------------------------------------------------------------------------------
 
     pdf_bytes = _wkhtmltopdf_bytes(
         body_html,
