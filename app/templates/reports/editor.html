@@ -208,6 +208,22 @@
                   <div class="card-header d-flex justify-content-between align-items-center">
                     <strong>תמונות לדו"ח</strong>
                     <div>
+                      <!-- New: Import from local Dropbox (sync folder) -->
+
+<button id="btnImportLocalDropbox" type="button" class="btn btn-outline-primary btn-sm">
+  ייבוא מדרופבוקס מקומי
+</button>
+
+<input id="localDropboxPicker"
+       type="file"
+       accept="image/*,video/*"
+       multiple
+       style="display:none" />
+
+<div id="localImportStatus" class="mt-2 small text-muted" style="white-space:pre-line;"></div>
+
+
+
                       <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button>
                       <button id="btn-upload-local" type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button>
                       <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
@@ -719,9 +735,143 @@
     return Array.from(selectedImages);
   };
 
+  // add near the other helpers inside the IIFE
+  window.refreshThumbnails = async function refreshThumbnails(){
+    const insuredSel = document.getElementById('insuredId');
+    const caseId = (insuredSel?.value || '').trim();
+    const reportId = (window.state?.report_id || '').toString();
+
+    if (!caseId) return; // nothing to show
+
+    showThumbLoader('טוען תמונות שהועלו…');
+    try{
+      const data = await postJSON('/reports/photos/list_report', {
+        case_id: caseId,
+        report_id: reportId || 'no_report'
+      });
+      classifyAndRender(data.images || []);
+    }catch(e){
+      console.error(e);
+      alert('שגיאה בטעינת התמונות שהועלו');
+      hideThumbLoader();
+    }
+  };
+
+
 
 })();
 </script>
+
+<script>
+/* ==== Local Dropbox: pick FILES (not folder) and upload sequentially ==== */
+(function () {
+  const btn       = document.getElementById('btnImportLocalDropbox');
+  const picker    = document.getElementById('localDropboxPicker');
+  const statusBox = document.getElementById('localImportStatus');
+
+  if (!btn || !picker || !statusBox) return;
+
+  const REPORTS_BASE = window.REPORTS_BASE || '/reports';
+  const UPLOAD_URL   = REPORTS_BASE + '/import_local_dropbox';
+
+  const allowedExt = new Set(['jpg','jpeg','png','gif','webp','bmp','tif','tiff','mp4','mov','avi','mkv','webm']);
+
+  // IMPORTANT: get the selected insured (this is our case_id)
+  function getCaseId(){ return (document.getElementById('insuredId')?.value || '').trim(); }
+  function getReportId(){ return (window.state?.report_id || '').toString().trim(); }
+
+  const csrf = window.csrf_token || document.querySelector('meta[name="csrf-token"]')?.content || '';
+
+  function log(s){ statusBox.textContent += s + "\n"; statusBox.scrollTop = statusBox.scrollHeight; }
+  function isAllowed(name){ const ext=(name.split('.').pop()||'').toLowerCase(); return allowedExt.has(ext); }
+
+  btn.addEventListener('click', ()=>{
+    if (!getCaseId()){
+      alert('בחר/י מבוטח תחילה.');
+      return;
+    }
+    log('בחר/י את התמונות מתיקיית "תמונות"…');
+    picker.click();
+  });
+
+  picker.addEventListener('change', async ()=>{
+    const all = Array.from(picker.files || []);
+    const files = all.filter(f => isAllowed(f.name));
+    if (!files.length){ log('לא נבחרו קבצים נתמכים.'); picker.value=''; return; }
+
+    log(`נבחרו ${files.length} קבצים. מתחיל העלאה…\n`);
+
+    files.sort((a,b)=> a.name.localeCompare(b.name, undefined, {numeric:true}));
+
+    let ok = 0;
+    for (let i=0; i<files.length; i++) {
+      try {
+        await uploadSingle(files[i], i+1, files.length);
+        ok++;
+      } catch (e) {
+        console.error(e);
+        log(`❌ ${i+1}/${files.length} ${files[i].name} — ${e.message || e}`);
+        if (String(e).includes('HTTP 404')) {
+          log('⚠️ לא נמצא הנתיב: ' + UPLOAD_URL + ' — ודא/י שה־route קיים על ה־Blueprint');
+          break;
+        }
+      }
+    }
+
+    log(`\n✅ הסתיים: ${ok}/${files.length} הועלו בהצלחה.`);
+    picker.value = '';
+
+    // Show newly uploaded images in the grids
+    if (typeof window.refreshThumbnails === 'function') {
+      try { await window.refreshThumbnails(); } catch {}
+    }
+  });
+
+  function uploadSingle(file, idx, total){
+    return new Promise((resolve, reject)=>{
+      const form = new FormData();
+      form.append('case_id',   getCaseId());
+      form.append('report_id', getReportId() || 'no_report');  // ok before "save draft"
+      form.append('file',      file, file.name);
+
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', UPLOAD_URL, true);
+      if (csrf) xhr.setRequestHeader('X-CSRFToken', csrf);
+
+      xhr.upload.onprogress = (e)=>{
+        if (e.lengthComputable) {
+          const pct = Math.round((e.loaded/e.total)*100);
+          log(`⬆️ ${idx}/${total} ${file.name} — ${pct}%`);
+        } else {
+          log(`⬆️ ${idx}/${total} ${file.name} — מעלה…`);
+        }
+      };
+
+      xhr.onload = ()=>{
+        if (xhr.status === 413) { reject(new Error('הקובץ גדול מדי (413).')); return; }
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const res = JSON.parse(xhr.responseText || '{}');
+            if (res.status === 'ok') { log(`✔️ ${idx}/${total} ${file.name} — ${res.saved_as}`); resolve(); }
+            else reject(new Error(res.message || 'server error'));
+          } catch { reject(new Error('תשובת שרת לא תקינה')); }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = ()=> reject(new Error('Network error'));
+      xhr.send(form);
+    });
+  }
+})();
+</script>
+
+
+
+
+
+
 
 <script src="static/assets/js/main.js"></script>
 {% endblock %}

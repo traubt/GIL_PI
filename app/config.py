@@ -7,6 +7,8 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = 'static/uploads/insured_photos'
 
+    REPORT_MEDIA_DIR = "/var/app/uploads/reports"
+
     # Path to the clinics JSON file
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     CLINICS_FILE = os.path.join(BASE_DIR, "clinics.json")

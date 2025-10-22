@@ -6,6 +6,11 @@ import io, json
 from datetime import datetime, date
 import subprocess, tempfile, os
 from urllib.parse import urljoin
+import os
+import uuid
+from datetime import datetime
+from flask import request, jsonify, current_app
+from werkzeug.utils import secure_filename
 
 reports_ui_bp = Blueprint('reports_ui', __name__, url_prefix='/reports')
 
@@ -407,4 +412,101 @@ def upload_photos():
         saved.append({"name": final, "url": _public_url_for(rel)})
 
     return jsonify({"token": token, "images": saved})
+
+
+# Adjust to your structure
+ALLOWED_EXTENSIONS = {"jpg","jpeg","png","gif","webp","bmp","tif","tiff","mp4","mov","avi","mkv"}
+
+def allowed_file(fn: str) -> bool:
+    return "." in fn and fn.rsplit(".",1)[1].lower() in ALLOWED_EXTENSIONS
+
+def ensure_dir(path):
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+@reports_ui_bp.post("/import_local_dropbox")
+def import_local_dropbox():
+    f = request.files.get("file")
+    if not f or f.filename == "":
+        return jsonify({"status":"error","message":"no file"}), 400
+
+    allowed = {"jpg","jpeg","png","gif","webp","bmp","tif","tiff","mp4","mov","avi","mkv","webm"}
+    ext = f.filename.rsplit(".",1)[-1].lower()
+    if ext not in allowed:
+        return jsonify({"status":"error","message":"type not allowed"}), 400
+
+    base_dir = current_app.config.get("REPORT_MEDIA_DIR",
+                                      os.path.join(current_app.instance_path, "report_media"))
+    case_id   = (request.form.get("case_id") or "no_case").strip()
+    report_id = (request.form.get("report_id") or "no_report").strip()
+
+    target_dir = os.path.join(base_dir, case_id, report_id)
+    os.makedirs(target_dir, exist_ok=True)
+
+    safe = secure_filename(f.filename)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    rnd = uuid.uuid4().hex[:6]
+    name, ext2 = os.path.splitext(safe)
+    saved_as = f"{name}_{ts}_{rnd}{ext2.lower()}"
+    f.save(os.path.join(target_dir, saved_as))
+
+    return jsonify({"status":"ok","saved_as": saved_as})
+
+# ------- list uploaded photos for this report (from REPORT_MEDIA_DIR) -------
+@reports_ui_bp.post("/photos/list_report")
+def list_report_photos():
+    from mimetypes import guess_type
+    data = request.get_json(silent=True) or {}
+    case_id   = (data.get("case_id") or "").strip()
+    report_id = (data.get("report_id") or "").strip()
+    if not case_id:
+        return jsonify({"images": []})
+
+    base_dir = current_app.config.get(
+        "REPORT_MEDIA_DIR",
+        os.path.join(current_app.instance_path, "report_media")
+    )
+    # If report_id is empty, look under a default folder so we still show things
+    report_id = report_id or "no_report"
+    folder = os.path.join(base_dir, case_id, report_id)
+    if not os.path.isdir(folder):
+        return jsonify({"images": []})
+
+    allowed = {"jpg","jpeg","png","gif","webp","bmp","tif","tiff"}
+    images = []
+    for name in sorted(os.listdir(folder)):
+        ext = name.rsplit(".", 1)[-1].lower()
+        if ext not in allowed:
+            continue
+        url = (
+            f"/reports/photos/serve"
+            f"?case_id={case_id}&report_id={report_id}&name={name}"
+        )
+        images.append({"name": name, "url": url})  # your renderThumb will load it
+    return jsonify({"images": images})
+
+
+# ------- serve a single uploaded photo (send_file) -------
+@reports_ui_bp.get("/photos/serve")
+def serve_report_photo():
+    case_id   = (request.args.get("case_id") or "").strip()
+    report_id = (request.args.get("report_id") or "no_report").strip()
+    name      = (request.args.get("name") or "").strip()
+    if not case_id or not name:
+        return ("", 404)
+
+    base_dir = current_app.config.get(
+        "REPORT_MEDIA_DIR",
+        os.path.join(current_app.instance_path, "report_media")
+    )
+    path = os.path.join(base_dir, case_id, report_id, name)
+
+    # basic path safety
+    base_dir_abs = os.path.abspath(base_dir)
+    path_abs = os.path.abspath(path)
+    if not path_abs.startswith(base_dir_abs) or not os.path.isfile(path_abs):
+        return ("", 404)
+
+    return send_file(path_abs)
 
