@@ -401,6 +401,30 @@ def preview():
     header_url = (static_dir / "report_header_gil.png").as_uri()
     footer_url = (static_dir / "report_footer_gil.png").as_uri()
 
+    #----------------- Check if header/footer exists
+    # Show where Flask serves static files from
+    current_app.logger.info("STATIC folder: %s", current_app.static_folder)
+
+    # Check the files exist on disk
+    header_path = os.path.join(current_app.static_folder, 'report_header_gil.png')
+    footer_path = os.path.join(current_app.static_folder, 'report_footer_gil.png')
+    current_app.logger.info("Header file exists: %s", os.path.exists(header_path))
+    current_app.logger.info("Footer file exists: %s", os.path.exists(footer_path))
+
+    # Check the HTTP URLs wkhtmltopdf will fetch
+    current_app.logger.info("Header URL: %s", header_url)
+    current_app.logger.info("Footer URL: %s", footer_url)
+
+    # Optional: do a tiny HEAD/GET from the server itself
+    try:
+        import requests
+        r = requests.get(header_url, timeout=3)
+        current_app.logger.info("Header URL HTTP %s (bytes=%s)", r.status_code, len(r.content))
+        r = requests.get(footer_url, timeout=3)
+        current_app.logger.info("Footer URL HTTP %s (bytes=%s)", r.status_code, len(r.content))
+    except Exception as e:
+        current_app.logger.exception("Test fetch for header/footer URL failed")
+
     # ----------------- Body HTML (your existing templates) -----------------
     if insurer == "מנורה" and "סיעוד" in claim_type and report_type == "TRACKING":
         body_html = render_template(
