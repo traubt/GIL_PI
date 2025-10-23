@@ -222,43 +222,52 @@ def _get_first_nonempty(obj, *names, default=""):
 
 
 def _wkhtmltopdf_bytes(body_html: str, header_html: str, footer_html: str) -> bytes:
-    """Render HTML string to PDF bytes using wkhtmltopdf with header/footer HTMLs."""
-    wkhtml = current_app.config.get('WKHTMLTOPDF_CMD')
-    if not wkhtml or not os.path.exists(wkhtml):
+    """Render HTML -> PDF bytes with wkhtmltopdf (header/footer HTML enabled)."""
+    wkhtml = current_app.config.get("WKHTMLTOPDF_CMD", "/usr/bin/wkhtmltopdf")
+    if not os.path.exists(wkhtml):
         raise RuntimeError(f"wkhtmltopdf not found at: {wkhtml!r}")
 
-    # temp files: body, header, footer
+    # Write three temp HTML files
     with tempfile.NamedTemporaryFile(suffix=".html", delete=False) as fbody, \
          tempfile.NamedTemporaryFile(suffix=".html", delete=False) as fhead, \
          tempfile.NamedTemporaryFile(suffix=".html", delete=False) as ffoot:
-        fbody.write(body_html.encode('utf-8'));  fbody.flush()
-        fhead.write(header_html.encode('utf-8')); fhead.flush()
-        ffoot.write(footer_html.encode('utf-8')); ffoot.flush()
+        fbody.write(body_html.encode("utf-8"));  fbody.flush()
+        fhead.write(header_html.encode("utf-8")); fhead.flush()
+        ffoot.write(footer_html.encode("utf-8")); ffoot.flush()
         body_path, head_path, foot_path = fbody.name, fhead.name, ffoot.name
 
     try:
-        # margins sized for your header/footer PNGs
+        # Important:
+        # - Use units (e.g., 'mm') for margins
+        # - Give enough top/bottom margin so header/footer can render
+        # - Spacing controls the gap between the page edge margin and the header/footer content
         cmd = [
             wkhtml,
-            "--enable-local-file-access",
             "--quiet",
-            "--margin-top", "30",  # <-- was smaller; 50mm comfortably fits the 72px strip + blocks
-            "--margin-bottom", "30",
-            "--header-html", head_path,
-            "--header-spacing", "0",
-            "--footer-html", foot_path,
-            "--footer-spacing", "0",
-            body_path, "-"
+            "--enable-local-file-access",
+            "--dpi", "150",
+
+            "--margin-top",    "20mm",
+            "--header-html",    head_path,
+            "--header-spacing", "3",
+
+            "--margin-bottom", "16mm",
+            "--footer-html",    foot_path,
+            "--footer-spacing", "2",
+
+            body_path, "-"  # input and stdout
         ]
 
         proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         if proc.returncode != 0:
-            raise RuntimeError(proc.stderr.decode('utf-8', 'ignore'))
+            raise RuntimeError(proc.stderr.decode("utf-8", "ignore"))
         return proc.stdout
     finally:
         for p in (body_path, head_path, foot_path):
-            try: os.remove(p)
-            except Exception: pass
+            try:
+                os.remove(p)
+            except Exception:
+                pass
 
 
 # ---------- UI pages ----------
@@ -355,14 +364,6 @@ def finalize():
 
 @reports_ui_bp.route('/preview', methods=['POST'])
 def preview():
-    static_dir = Path(current_app.root_path) / "static"
-    header_img = static_dir / "report_header_gil.png"
-    footer_img = static_dir / "report_footer_gil.png"
-
-    # file:// URIs that wkhtmltopdf can open on BOTH Windows and Linux
-    header_url = header_img.as_uri()
-    footer_url = footer_img.as_uri()
-
     payload     = request.get_json(silent=True) or {}
     insured_id  = payload.get('insured_id')
     report_type = payload.get('report_type', 'TRACKING')
@@ -395,48 +396,47 @@ def preview():
     except Exception:
         pass
 
-    # Static URLs
-    base_url   = request.url_root
-    static_dir = Path(current_app.root_path) / "static"
-    header_url = (static_dir / "report_header_gil.png").as_uri()
-    footer_url = (static_dir / "report_footer_gil.png").as_uri()
+    # ---------- Static URLs (HTTP, not file://) ----------
+    base_url = request.url_root.rstrip('/')
+    header_url = url_for('static', filename='report_header_gil.png', _external=True)
+    footer_url = url_for('static', filename='report_footer_gil.png', _external=True)
 
-    #----------------- Check if header/footer exists
-    # Show where Flask serves static files from
+    # ---------- Debug: verify static folder & files ----------
     current_app.logger.info("STATIC folder: %s", current_app.static_folder)
-
-    # Check the files exist on disk
     header_path = os.path.join(current_app.static_folder, 'report_header_gil.png')
     footer_path = os.path.join(current_app.static_folder, 'report_footer_gil.png')
     current_app.logger.info("Header file exists: %s", os.path.exists(header_path))
     current_app.logger.info("Footer file exists: %s", os.path.exists(footer_path))
-
-    # Check the HTTP URLs wkhtmltopdf will fetch
     current_app.logger.info("Header URL: %s", header_url)
     current_app.logger.info("Footer URL: %s", footer_url)
 
-    # Optional: do a tiny HEAD/GET from the server itself
-    try:
-        import requests
-        r = requests.get(header_url, timeout=3)
-        current_app.logger.info("Header URL HTTP %s (bytes=%s)", r.status_code, len(r.content))
-        r = requests.get(footer_url, timeout=3)
-        current_app.logger.info("Footer URL HTTP %s (bytes=%s)", r.status_code, len(r.content))
-    except Exception as e:
-        current_app.logger.exception("Test fetch for header/footer URL failed")
+    # Optional: probe only for http(s) URLs (requests can’t fetch file://)
+    def _is_http(u: str) -> bool:
+        return u.startswith('http://') or u.startswith('https://')
 
-    # ----------------- Body HTML (your existing templates) -----------------
+    try:
+        if _is_http(header_url):
+            import requests
+            r = requests.get(header_url, timeout=3)
+            current_app.logger.info("Header URL HTTP %s (bytes=%s)", r.status_code, len(r.content))
+        if _is_http(footer_url):
+            import requests
+            r = requests.get(footer_url, timeout=3)
+            current_app.logger.info("Footer URL HTTP %s (bytes=%s)", r.status_code, len(r.content))
+    except Exception as e:
+        current_app.logger.warning("Static URL probe failed: %s", e)
+
+    # ----------------- Body HTML -----------------
     if insurer == "מנורה" and "סיעוד" in claim_type and report_type == "TRACKING":
         body_html = render_template(
             "reports/templates/menora_siudi_tracking.html",
             full_name=full_name, address=address,
             id_number=id_number, claim_number=claim_number,
             injury_type=injury_type, birth_year=birth_year,
-            activity_date=activity_date_fmt,   # DD.MM.YYYY in body
+            activity_date=activity_date_fmt,
             photos=photos,
         )
     else:
-        # fallback demo page
         photos_css = """
         <style>
           .photos h3 { margin-top: 28px; }
@@ -467,7 +467,7 @@ def preview():
           {photos_html}
         </body>"""
 
-    # ----------------- Header & Footer HTML (unchanged from your last good version) -----------------
+    # ----------------- Header & Footer HTML -----------------
     header_html = f"""<!doctype html><html lang="he" dir="rtl"><meta charset="utf-8">
     <style>
       html,body{{margin:0;padding:0}}
@@ -507,7 +507,7 @@ def preview():
       </script>
     </body></html>"""
 
-    # ----------------- Absolute URLs in all 3 fragments -----------------
+    # ----------------- Absolutize URLs -----------------
     def absolutize_urls(html: str) -> str:
         if not html:
             return html
@@ -533,7 +533,7 @@ def preview():
     m = re.search(r"(?i)<body[^>]*>", body_html)
     body_html = body_html[:m.end()] + extra_css + body_html[m.end():] if m else extra_css + body_html
 
-    # ----------------- Letter top (right: לכבוד…, left: date/ref) — once -----------------
+    # ----------------- Letter top (single injection) -----------------
     recipient_insurer = insurer or "מנורה – חברה לביטוח"
     recipient_dept    = "מחלקת תביעות סיעודי"
     letter_css = """
@@ -563,52 +563,31 @@ def preview():
         m = re.search(r"(?i)<body[^>]*>", body_html)
         body_html = body_html[:m.end()] + letter_top_html + body_html[m.end():] if m else letter_top_html + body_html
 
-    # ----------------- (NEW) PHOTOS inside section 3 -----------------
-    # helpers scoped here so you don't have to edit the module elsewhere
+    # ----------------- Photos layout (unchanged) -----------------
     def _pairs(seq):
         for i in range(0, len(seq), 2):
             yield seq[i:i+2]
 
     def _classify(links):
-        """
-        Classify URLs into (landscape, portrait) by opening the image directly
-        from its URL. No filesystem path resolver is required.
-
-        If Pillow is missing or any step fails, we default that image to 'landscape'.
-        """
         try:
-            from PIL import Image, UnidentifiedImageError  # optional
+            from PIL import Image, UnidentifiedImageError
         except Exception:
             Image = None
             UnidentifiedImageError = Exception
 
         lands, ports = [], []
-
         for u in links:
-            # If Pillow isn't available, keep it simple
             if not Image:
-                lands.append(u)
-                continue
-
+                lands.append(u); continue
             try:
-                # Fetch a small-ish amount; Pillow can parse headers without full file,
-                # but for safety we read all (wkhtmltopdf will load from the same URL anyway).
                 req = Request(u, headers={"User-Agent": "PreviewClassifier/1.0"})
                 with urlopen(req, timeout=5) as resp:
                     data = resp.read()
-
                 with Image.open(BytesIO(data)) as im:
                     w, h = im.size
-
-                if w >= h:
-                    lands.append(u)
-                else:
-                    ports.append(u)
-
+                (lands if w >= h else ports).append(u)
             except (UnidentifiedImageError, OSError, ValueError, TimeoutError, Exception):
-                # On any issue, prefer to treat as landscape so it still renders.
                 lands.append(u)
-
         return lands, ports
 
     def _photos_html(land_urls, port_urls):
@@ -618,26 +597,18 @@ def preview():
           .photo-page { page-break-after: always; }
           .photo-page:last-child { page-break-after: auto; }
           .photo-block { page-break-inside: avoid; margin: 0 0 8mm 0; }
-
-          /* Landscape — big, stacked, one per block */
           .land img { width: 100%; height: auto; display:block; border:0; }
-
-          /* Portrait — two side-by-side */
           .row { display:flex; gap: 6mm; }
           .row .port { flex: 1 1 0; }
           .row .port img { width:100%; height:auto; display:block; border:0; }
         </style>
         """
         parts = [css, '<div class="section-photos">']
-
-        # landscape: two blocks per page
         for pair in _pairs(land_urls):
             parts.append('<div class="photo-page">')
             for u in pair:
                 parts.append(f'<div class="photo-block land"><img src="{u}" alt=""></div>')
             parts.append('</div>')
-
-        # portrait: two per page, side by side
         for pair in _pairs(port_urls):
             parts.append('<div class="photo-page">')
             if len(pair) == 1:
@@ -650,24 +621,22 @@ def preview():
                   </div>
                 ''')
             parts.append('</div>')
-
         parts.append('</div>')
         return "".join(parts)
 
     if photos:
         land, port = _classify(photos)
         gallery = _photos_html(land, port)
-
-        # replace placeholder inside section 3
         placeholder = "(יישום חלק התמונות יתווסף בהמשך)"
         if placeholder in body_html:
             body_html = body_html.replace(placeholder, gallery)
         else:
             body_html = re.sub(r"\(?יישום חלק התמונות יתווסף בהמשך\)?", gallery, body_html)
 
-    # ----------------- Generate PDF -----------------
+    # ----------------- PDF -----------------
     pdf_bytes = _wkhtmltopdf_bytes(body_html, header_html, footer_html)
     return send_file(io.BytesIO(pdf_bytes), mimetype='application/pdf', as_attachment=False, download_name='preview.pdf')
+
 
 
 
