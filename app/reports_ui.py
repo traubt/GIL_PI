@@ -4,6 +4,8 @@ from urllib.parse import urljoin, urlparse, parse_qs
 from PIL import Image, UnidentifiedImageError  # <— add
 from io import BytesIO
 from urllib.request import urlopen, Request
+from pathlib import Path
+from flask import current_app
 
 
 
@@ -353,6 +355,14 @@ def finalize():
 
 @reports_ui_bp.route('/preview', methods=['POST'])
 def preview():
+    static_dir = Path(current_app.root_path) / "static"
+    header_img = static_dir / "report_header_gil.png"
+    footer_img = static_dir / "report_footer_gil.png"
+
+    # file:// URIs that wkhtmltopdf can open on BOTH Windows and Linux
+    header_url = header_img.as_uri()
+    footer_url = footer_img.as_uri()
+
     payload     = request.get_json(silent=True) or {}
     insured_id  = payload.get('insured_id')
     report_type = payload.get('report_type', 'TRACKING')
@@ -387,8 +397,9 @@ def preview():
 
     # Static URLs
     base_url   = request.url_root
-    header_url = urljoin(base_url, "static/report_header_gil.png")
-    footer_url = urljoin(base_url, "static/report_footer_gil.png")
+    static_dir = Path(current_app.root_path) / "static"
+    header_url = (static_dir / "report_header_gil.png").as_uri()
+    footer_url = (static_dir / "report_footer_gil.png").as_uri()
 
     # ----------------- Body HTML (your existing templates) -----------------
     if insurer == "מנורה" and "סיעוד" in claim_type and report_type == "TRACKING":
