@@ -6,6 +6,10 @@ from flask import Blueprint, request, send_file, abort, jsonify, render_template
 from docxtpl import DocxTemplate, InlineImage
 from docx.shared import Mm
 import mammoth
+import os, io, datetime
+import subprocess, tempfile, shutil, time, glob
+from pathlib import Path
+
 
 # ---- Use app config for paths ----
 from .config import Config
@@ -204,6 +208,138 @@ def download_docx(report_id: int, filename: str):
     if not os.path.exists(abs_path):
         abort(404)
     return send_file(abs_path, as_attachment=True, download_name=filename, mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+
+# --- add near other imports ---
+import subprocess, tempfile, shutil
+from flask import send_file
+
+def _resolve_soffice_path():
+    p = getattr(Config, "LIBREOFFICE_BIN", None)
+    if p and os.path.exists(p):
+        return p
+    p = shutil.which("soffice")
+    if p:
+        return p
+    # common Windows locations (fallbacks)
+    candidates = [
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+        os.path.expandvars(r"%LOCALAPPDATA%\Programs\LibreOffice\program\soffice.exe"),
+    ]
+    for c in candidates:
+        if os.path.exists(c):
+            return c
+    return "soffice"
+
+def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
+    """
+    Robust DOCX -> PDF using LibreOffice on Windows:
+    - prefer soffice.com
+    - longer wait and fallbacks for output discovery
+    - resilient cleanup with Windows file locks
+    """
+    soffice = _resolve_soffice_path()
+
+    # manual temp dir + best-effort cleanup (Windows file locks)
+    tmpdir = tempfile.mkdtemp(prefix="lo_")
+    tmp = Path(tmpdir)
+    try:
+        docx_path = tmp / "report.docx"
+        expected_pdf = tmp / "report.pdf"
+        docx_path.write_bytes(docx_bytes)
+
+        profile_url = tmp.as_uri() + "/lo_profile"
+
+        # Try generic filter first (some LO builds ignore writer_pdf_Export)
+        cmd = [
+            soffice,
+            "--headless", "--nologo", "--nodefault", "--nolockcheck",
+            "--norestore", "--invisible",
+            f"-env:UserInstallation={profile_url}",
+            "--convert-to", "pdf",
+            "--outdir", str(tmp),
+            str(docx_path),
+        ]
+
+        proc = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            cwd=str(tmp),
+        )
+
+        # Wait up to 15s for the output; scan for any *.pdf
+        deadline = time.time() + 15.0
+        pdf_path = None
+        while time.time() < deadline:
+            # preferred name
+            if expected_pdf.exists():
+                pdf_path = expected_pdf
+                break
+            # or any PDF in the folder (LO sometimes uses the original filename)
+            pdfs = sorted(glob.glob(str(tmp / "*.pdf")), key=lambda p: os.path.getmtime(p))
+            if pdfs:
+                pdf_path = Path(pdfs[-1])
+                break
+            time.sleep(0.2)
+
+        # one more tiny grace period for file flush on Windows
+        if pdf_path and not pdf_path.exists():
+            time.sleep(0.3)
+
+        if not pdf_path or not pdf_path.exists():
+            listing = ""
+            try:
+                listing = "\n".join(p.name for p in tmp.iterdir())
+            except Exception:
+                listing = "(dir listing failed)"
+            raise RuntimeError(
+                "LibreOffice convert returned rc="
+                f"{proc.returncode}, but no PDF found.\n"
+                f"STDOUT:\n{proc.stdout}\n\nSTDERR:\n{proc.stderr}\n\n"
+                f"CMD: {' '.join(cmd)}\nTEMP DIR: {tmp}\nFILES:\n{listing}\n"
+            )
+
+        # extra pause to let Windows finish writing before we open
+        time.sleep(0.2)
+        data = pdf_path.read_bytes()
+
+        # log a success line (optional)
+        try:
+            current_app.logger.info(f"[DOCX->PDF] {pdf_path.name} ({len(data)} bytes)")
+        except Exception:
+            pass
+
+        return data
+
+    finally:
+        # Best-effort cleanup with retries to overcome Windows locks
+        for _ in range(6):
+            try:
+                shutil.rmtree(tmpdir)
+                break
+            except Exception:
+                time.sleep(0.3)
+
+
+@reports_docx_bp.route("/<int:report_id>/preview-pdf", methods=["GET"])
+def preview_docx_as_pdf(report_id: int):
+    """Render DOCX using menora_siudi.docx, convert to PDF, return inline."""
+    activity_date = request.args.get("activity_date", "").strip()
+    context = get_report_context(report_id, overrides={"activity_date": activity_date} if activity_date else None)
+
+    template_path = load_template_docx("menora_siudi.docx")
+    docx_bytes = render_docx_bytes(template_path, context)
+
+    pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+    return send_file(
+        io.BytesIO(pdf_bytes),
+        mimetype="application/pdf",
+        as_attachment=False,
+        download_name=f"report_{report_id}_preview.pdf",
+    )
+
 
 
 

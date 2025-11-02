@@ -259,11 +259,11 @@
             </div>
           </div>
           <div class="card-body p-0" style="height: 520px;">
-            <!-- Use 0 for first load; JS will refresh with the real id after save -->
             <iframe id="wordPreviewFrame"
-                    src="/reports/0/preview"
+                    src="/reports/{{report_id}}/preview-pdf"
                     style="border:0;width:100%;height:100%;background:#fff;"></iframe>
           </div>
+
         </div>
       </div>
 
@@ -303,6 +303,8 @@
     activity_date: "",
     photos: []
   };
+
+  window.state = state;
 
   // --------------- Template rules ---------------
   const TEMPLATE_RULES = {
@@ -884,29 +886,28 @@
 <script>
 (function(){
   function currentReportId(){
-    // use the report id once it exists; fallback to 0 (ok for preview)
-    return (window.state && window.state.report_id) ? window.state.report_id : 0;
+    // use our local state; falls back to 0 (preview works without saving)
+    return (state && state.report_id) ? state.report_id : 0;
   }
 
   function activityDate(){
-    const el = document.getElementById('activityDate');
-    return el ? (el.value || '') : '';
+    return document.getElementById('activityDate')?.value || '';
   }
 
   const refreshBtn  = document.getElementById('refreshPreview');
   const downloadBtn = document.getElementById('downloadDocx');
   const frame       = document.getElementById('wordPreviewFrame');
 
-  // Refresh preview (inject activity_date as query param)
+  // Refresh preview (PDF)
   if (refreshBtn && frame) {
     refreshBtn.addEventListener('click', function(){
       const id = currentReportId();
       const ad = encodeURIComponent(activityDate());
-      frame.src = `/reports/${id}/preview?ts=${Date.now()}&activity_date=${ad}`;
+      frame.src = `/reports/${id}/preview-pdf?ts=${Date.now()}&activity_date=${ad}`;
     });
   }
 
-  // Download DOCX (send activity_date in JSON body)
+  // Download DOCX
   if (downloadBtn) {
     downloadBtn.addEventListener('click', async function(){
       const id = currentReportId();
@@ -916,31 +917,22 @@
         body: JSON.stringify({ activity_date: activityDate() })
       });
       const data = await resp.json();
-      if (!data.ok) {
-        alert(data.error || 'Docx generation failed');
-        return;
-      }
-      window.location.href = data.docx_url; // triggers download
+      if (!data.ok) { alert(data.error || 'Docx generation failed'); return; }
+      window.location.href = data.docx_url;
     });
   }
 
-  // Optional nicety: auto-refresh preview when the date changes
+  // Auto-refresh when date changes
   const actDate = document.getElementById('activityDate');
   if (actDate && frame) {
     actDate.addEventListener('change', () => {
       const id = currentReportId();
       const ad = encodeURIComponent(activityDate());
-      frame.src = `/reports/${id}/preview?ts=${Date.now()}&activity_date=${ad}`;
+      frame.src = `/reports/${id}/preview-pdf?ts=${Date.now()}&activity_date=${ad}`;
     });
   }
 })();
 </script>
-
-
-
-
-
-
 
 
 

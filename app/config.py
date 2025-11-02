@@ -7,6 +7,7 @@ class Config:
     SQLALCHEMY_DATABASE_URI = 'mysql+pymysql://dor_pi:T0m3r!970S@172.234.160.57/dor_pi'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = 'static/uploads/insured_photos'
+    LIBREOFFICE_BIN = r"C:\Program Files\LibreOffice\program\soffice.com"
 
     # Where report-related media (e.g., uploaded photos) is stored
     REPORT_MEDIA_DIR = "/var/app/uploads/reports"
