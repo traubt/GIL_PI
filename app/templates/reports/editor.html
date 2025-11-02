@@ -248,25 +248,26 @@
         </div>
       </div>
 
-      <!-- RIGHT: preview -->
+      <!-- RIGHT: Word preview -->
       <div class="col-lg-5">
-        <div class="card position-sticky" style="top: 12px;">
-          <div class="card-body">
-            <h5 class="card-title">תצוגה מקדימה</h5>
-            <p class="text-muted mb-2">לחץ על “תצוגה מקדימה (PDF)” כדי לרנדר את הדו״ח.</p>
-
-            <div id="previewHolder"
-                 class="border border-2 rounded d-flex align-items-center justify-content-center"
-                 style="min-height: 520px;">
-              <span class="text-muted">אין תצוגה כרגע</span>
+        <div class="card position-sticky h-100" style="top: 12px;">
+          <div class="card-header d-flex align-items-center justify-content-between">
+            <div style="font-weight:600">תצוגה מקדימה (Word)</div>
+            <div class="btn-group">
+              <button id="refreshPreview" class="btn btn-sm btn-outline-primary">רענן תצוגה</button>
+              <button id="downloadDocx" class="btn btn-sm btn-primary">הורד Word</button>
             </div>
-
-            <div class="small text-muted mt-2">
-              ה-PDF מוצג בתוך המסך; אפשר לפתוח בלשונית חדשה להורדה/הדפסה.
-            </div>
+          </div>
+          <div class="card-body p-0" style="height: 520px;">
+            <!-- Use 0 for first load; JS will refresh with the real id after save -->
+            <iframe id="wordPreviewFrame"
+                    src="/reports/0/preview"
+                    style="border:0;width:100%;height:100%;background:#fff;"></iframe>
           </div>
         </div>
       </div>
+
+
 
     </div>
   </section>
@@ -879,6 +880,63 @@
   }
 })();
 </script>
+
+<script>
+(function(){
+  function currentReportId(){
+    // use the report id once it exists; fallback to 0 (ok for preview)
+    return (window.state && window.state.report_id) ? window.state.report_id : 0;
+  }
+
+  function activityDate(){
+    const el = document.getElementById('activityDate');
+    return el ? (el.value || '') : '';
+  }
+
+  const refreshBtn  = document.getElementById('refreshPreview');
+  const downloadBtn = document.getElementById('downloadDocx');
+  const frame       = document.getElementById('wordPreviewFrame');
+
+  // Refresh preview (inject activity_date as query param)
+  if (refreshBtn && frame) {
+    refreshBtn.addEventListener('click', function(){
+      const id = currentReportId();
+      const ad = encodeURIComponent(activityDate());
+      frame.src = `/reports/${id}/preview?ts=${Date.now()}&activity_date=${ad}`;
+    });
+  }
+
+  // Download DOCX (send activity_date in JSON body)
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', async function(){
+      const id = currentReportId();
+      const resp = await fetch(`/reports/${id}/render-docx`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ activity_date: activityDate() })
+      });
+      const data = await resp.json();
+      if (!data.ok) {
+        alert(data.error || 'Docx generation failed');
+        return;
+      }
+      window.location.href = data.docx_url; // triggers download
+    });
+  }
+
+  // Optional nicety: auto-refresh preview when the date changes
+  const actDate = document.getElementById('activityDate');
+  if (actDate && frame) {
+    actDate.addEventListener('change', () => {
+      const id = currentReportId();
+      const ad = encodeURIComponent(activityDate());
+      frame.src = `/reports/${id}/preview?ts=${Date.now()}&activity_date=${ad}`;
+    });
+  }
+})();
+</script>
+
+
 
 
 

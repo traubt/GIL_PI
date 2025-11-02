@@ -1,0 +1,41 @@
+/* A4-ish preview container */
+body { background:#f3f5f9; }
+.a4 { display:flex; justify-content:center; padding:24px; }
+.page {
+  width: 794px;              /* ~A4 width at 96dpi */
+  min-height: 1123px;        /* ~A4 height at 96dpi */
+  background:#fff;
+  color:#000;
+  box-shadow: 0 1px 6px rgba(0,0,0,.12);
+  padding: 28mm 20mm;        /* mimic Word margins */
+  direction: rtl;
+  font-family: "Arial", "Noto Sans Hebrew", sans-serif;
+  line-height: 1.5;
+  font-size: 14px;
+}
+
+/* Headings mapped by style_map */
+.h1 { font-size: 22px; font-weight: 700; margin: 12px 0 8px; }
+.h2 { font-size: 18px; font-weight: 700; margin: 12px 0 6px; }
+.h3 { font-size: 16px; font-weight: 700; margin: 10px 0 6px; }
+
+.normal { margin: 6px 0; }
+.caption { font-size: 12px; color:#666; }
+
+p { margin: 6px 0; }
+ul, ol { margin: 6px 22px 6px 0; }
+b, strong { font-weight: 700; }
+
+/* Tables */
+table.word { border-collapse: collapse; width: 100%; margin: 10px 0; }
+table.word td, table.word th {
+  border: 1px solid #bbb;
+  padding: 6px 8px;
+  vertical-align: top;
+}
+
+/* Mimic underline fields */
+u { text-decoration: underline; text-underline-offset: 3px; }
+
+/* Make very long lines wrap properly */
+.page * { word-wrap: break-word; }
