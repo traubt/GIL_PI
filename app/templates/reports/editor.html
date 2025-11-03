@@ -51,6 +51,33 @@
     }
   </style>
 
+  <style>
+  #busyOverlay{
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(255,255,255,0.82);
+    display: none;              /* JS will switch to flex */
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    font-weight: 600;
+  }
+  #busyOverlay .panel{
+    padding: 18px 24px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 8px 30px rgba(0,0,0,.1);
+  }
+  #busyOverlay .spinner{
+    width: 36px; height: 36px; border-radius: 50%;
+    border: 4px solid #d9d9d9; border-top-color: #0d6efd;
+    animation: spin .9s linear infinite; margin: 0 auto 10px;
+  }
+  @keyframes spin{ to{ transform: rotate(360deg) } }
+</style>
+
+
   <div class="pagetitle">
     <h1>דוחות חקירה — עורך</h1>
     <nav>
@@ -90,6 +117,14 @@
       </div>
     </div>
 
+    <div id="busyOverlay" role="status" aria-live="polite">
+      <div class="panel">
+        <div class="spinner"></div>
+        <div id="busyText">מכין תצוגה...</div>
+      </div>
+    </div>
+
+
     <div class="row">
 
       <!-- LEFT: form -->
@@ -125,6 +160,7 @@
                 <label for="reportType" class="form-label">סוג דו״ח</label>
                 <select id="reportType" class="form-select">
                   <option value="TRACKING" selected>דוח מעקב</option>
+                  <option value="SIUDI">דוח חקירה סיעודי</option>
                   <option value="ID_PHOTOS">דוח תמונת זיהוי</option>
                   <option value="PERSONAL">דוח פרטים אישיים</option>
                   <option value="PHOTOSET">דוח תמונות</option>
@@ -202,6 +238,50 @@
                 <textarea id="summary" class="form-control" rows="4" placeholder="מסקנות והמלצות…"></textarea>
               </div>
 
+<!-- Report Fields (minimal) -->
+<div class="col-12">
+  <div class="card mt-1">
+    <div class="card-header" style="font-weight:600">שדות הדוח (מינימלי)</div>
+    <div class="card-body">
+      <div class="row g-2">
+        <div class="col-6">
+          <label class="form-label">תאריך פעילות</label>
+          <input id="activityDate" type="date" class="form-control" />
+        </div>
+        <div class="col-6">
+          <label class="form-label">מס' תביעה</label>
+          <input id="claimNumber" type="text" class="form-control" placeholder="MN-2025-12345" />
+        </div>
+        <div class="col-6">
+          <label class="form-label">שם מבוטח</label>
+          <input id="insuredName" type="text" class="form-control" placeholder="סודרי רפאל" />
+        </div>
+        <div class="col-6">
+          <label class="form-label">תעודת זהות</label>
+          <input id="insuredIdNumber" type="text" class="form-control" placeholder="123456789" />
+        </div>
+        <div class="col-6">
+          <label class="form-label">טלפון</label>
+          <input id="insuredPhone" type="text" class="form-control" placeholder="050-..." />
+        </div>
+        <div class="col-6">
+          <label class="form-label">מצב/סוג פגיעה</label>
+          <input id="injuryType" type="text" class="form-control" placeholder="" />
+        </div>
+        <div class="col-6">
+          <label class="form-label">מקום המעקב</label>
+          <input id="survPlace" type="text" class="form-control" placeholder="מרכז קניות" />
+        </div>
+        <div class="col-6">
+          <label class="form-label">עיר המעקב</label>
+          <input id="survCity" type="text" class="form-control" placeholder="תל אביב" />
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
               <!-- PHOTOS -->
               <div class="col-12 section-block" data-section="photos">
                 <div class="card mt-1">
@@ -260,8 +340,10 @@
           </div>
           <div class="card-body p-0" style="height: 520px;">
             <iframe id="wordPreviewFrame"
-                    src="/reports/{{report_id}}/preview-pdf"
-                    style="border:0;width:100%;height:100%;background:#fff;"></iframe>
+                src="about:blank"
+                srcdoc="<div style='height:100%;display:flex;align-items:center;justify-content:center;font-weight:600;color:#666'>מסך תצוגה (לחץ ״רענן תצוגה״)</div>"
+                style="border:0;width:100%;height:100%;background:#fff;"></iframe>
+
           </div>
 
         </div>
@@ -330,17 +412,42 @@
 
   const $ = (s)=>document.querySelector(s);
 
-  function currentInsurer(){ return state.insured_insurance || "הפניקס"; }
+  function currentInsurer(){
+    return document.getElementById('insurer')?.value?.trim() || 'מנורה';
+  }
 
   function computeTemplateName(){
-    const mapName = {
-      TRACKING:  "דוח מעקב",
-      ID_PHOTOS: "תמונת זיהוי",
-      PERSONAL:  "דוח פרטים אישיים",
-      PHOTOSET:  "תמונות"
-    }[state.report_type] || state.report_type;
-    return `${currentInsurer()} - ${mapName}.docx`;
+    const insurer = currentInsurer();                       // e.g. "מנורה"
+    const rtRaw   = (state.report_type || '').trim();       // e.g. "siudi"
+    const rt      = rtRaw.toUpperCase();                    // normalize
+
+    // Human-readable Hebrew labels for the badge
+    const labelByType = {
+      'TRACKING':  'דוח מעקב',
+      'ID_PHOTOS': 'תמונת זיהוי',
+      'PERSONAL':  'דוח פרטים אישיים',
+      'PHOTOSET':  'תמונות',
+      'SIUDI':     'דוח חקירה סיעודי'
+    };
+
+    // Filename rule (what template the system actually uses)
+    // You can expand per-insurer if needed later.
+    const fileByType = {
+      'TRACKING':  'דוח מעקב.docx',
+      'ID_PHOTOS': 'תמונת זיהוי.docx',
+      'PERSONAL':  'דוח פרטים אישיים.docx',
+      'PHOTOSET':  'תמונות.docx',
+      // for Menora we want the specific Word file name you created:
+      'SIUDI':     (insurer === 'מנורה') ? 'menora_siudi.docx' : 'דוח חקירה סיעודי.docx'
+    };
+
+    const label = labelByType[rt] || rtRaw;
+    const file  = fileByType[rt]  || (label + '.docx');
+
+    // what the badge shows:
+    return `${insurer} - ${file}`;
   }
+
 
   function applyTemplateSections(){
     let set = (TEMPLATE_RULES[currentInsurer()] || {})[state.report_type] || ["title","intro","summary"];
@@ -884,55 +991,143 @@
 </script>
 
 <script>
-(function(){
-  function currentReportId(){
-    // use our local state; falls back to 0 (preview works without saving)
-    return (state && state.report_id) ? state.report_id : 0;
+(function () {
+  // ------- spinner helpers -------
+  function showBusy(text){
+    const o = document.getElementById('busyOverlay');
+    const t = document.getElementById('busyText');
+    if (t && text) t.textContent = text;
+    if (o) o.style.display = 'flex';
+  }
+  function hideBusy(){
+    const o = document.getElementById('busyOverlay');
+    if (o) o.style.display = 'none';
   }
 
-  function activityDate(){
-    return document.getElementById('activityDate')?.value || '';
+  // ------- helpers -------
+  function val(id){ return document.getElementById(id)?.value?.trim() || ""; }
+
+  function currentReportId(){
+    if (window.state && Number(window.state.report_id) > 0) return Number(window.state.report_id);
+    const f = document.getElementById('wordPreviewFrame');
+    if (f && f.src) {
+      const m = f.src.match(/\/reports\/(\d+)\/preview-pdf/i);
+      if (m) return Number(m[1]);
+    }
+    return 1;
+  }
+
+  const TEMPLATE_MAP = {
+    tracking: 'מנורה - דוח מעקב.docx',
+    siudi:    'menora_siudi.docx'
+  };
+
+  function selectedTemplateKey(){
+    const rt = document.getElementById('reportType');
+    return rt ? (rt.value || 'tracking') : 'tracking';
+  }
+
+  function updateTemplateChip(){
+    const chip = document.getElementById('templateChip');
+    if (!chip) return;
+    const key = selectedTemplateKey();
+    chip.textContent = 'תבנית: ' + (TEMPLATE_MAP[key] || TEMPLATE_MAP.tracking);
+  }
+
+  function updateTemplateBadge(){
+    const chip = document.getElementById('templateBadge');
+    if (!chip) return;
+    const key = selectedTemplateKey();
+    // show insurer + filename
+    const name = (key === 'siudi' && currentInsurer() === 'מנורה')
+        ? 'menora_siudi.docx'
+        : TEMPLATE_MAP[key] || '—';
+    chip.textContent = 'תבנית: ' + name;
+  }
+
+  document.getElementById('reportType')?.addEventListener('change', updateTemplateBadge);
+  document.getElementById('insurer')?.addEventListener('change', updateTemplateBadge);
+  updateTemplateBadge();
+
+  function buildQuery(){
+    const q = new URLSearchParams();
+    // editor fields (kept as-is; server can ignore for now if you want)
+    if (val('activityDate'))  q.set('activity_date', val('activityDate'));
+    if (val('claimNumber'))   q.set('claim_number', val('claimNumber'));
+    if (val('insuredName'))   q.set('insured_name', val('insuredName'));
+    if (val('insuredIdNumber')) q.set('insured_id', val('insuredIdNumber'));
+    if (val('insuredPhone'))  q.set('insured_phone', val('insuredPhone'));
+    if (val('injuryType'))    q.set('injury_type', val('injuryType'));
+    if (val('survPlace'))     q.set('surv_place', val('survPlace'));
+    if (val('survCity'))      q.set('surv_city', val('survCity'));
+
+    // NEW: template choice
+    q.set('template', selectedTemplateKey());
+
+    q.set('ts', Date.now()); // cache-buster
+    return q.toString();
   }
 
   const refreshBtn  = document.getElementById('refreshPreview');
   const downloadBtn = document.getElementById('downloadDocx');
   const frame       = document.getElementById('wordPreviewFrame');
 
-  // Refresh preview (PDF)
+  // Initial chip text on load
+  updateTemplateChip();
+
+  // If user changes reportType, update chip (but DO NOT auto refresh)
+  const rptTypeSel = document.getElementById('reportType');
+  if (rptTypeSel) rptTypeSel.addEventListener('change', updateTemplateChip);
+
+  // ------- Refresh preview (PDF) - ONLY on button -------
   if (refreshBtn && frame) {
     refreshBtn.addEventListener('click', function(){
+      updateTemplateChip();
+      showBusy("מכין תצוגה...");
       const id = currentReportId();
-      const ad = encodeURIComponent(activityDate());
-      frame.src = `/reports/${id}/preview-pdf?ts=${Date.now()}&activity_date=${ad}`;
+      frame.addEventListener('load', hideBusy, { once: true });
+      frame.src = `/reports/${id}/preview-pdf?` + buildQuery();
     });
   }
 
-  // Download DOCX
+  // ------- Download DOCX -------
   if (downloadBtn) {
     downloadBtn.addEventListener('click', async function(){
-      const id = currentReportId();
-      const resp = await fetch(`/reports/${id}/render-docx`, {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ activity_date: activityDate() })
-      });
-      const data = await resp.json();
-      if (!data.ok) { alert(data.error || 'Docx generation failed'); return; }
-      window.location.href = data.docx_url;
-    });
-  }
-
-  // Auto-refresh when date changes
-  const actDate = document.getElementById('activityDate');
-  if (actDate && frame) {
-    actDate.addEventListener('change', () => {
-      const id = currentReportId();
-      const ad = encodeURIComponent(activityDate());
-      frame.src = `/reports/${id}/preview-pdf?ts=${Date.now()}&activity_date=${ad}`;
+      try {
+        updateTemplateChip();
+        showBusy("מכין קובץ Word...");
+        const id = currentReportId();
+        const payload = {
+          activity_date: val('activityDate'),
+          claim_number:  val('claimNumber'),
+          insured_name:  val('insuredName'),
+          insured_id:    val('insuredIdNumber'),
+          insured_phone: val('insuredPhone'),
+          injury_type:   val('injuryType'),
+          surv_place:    val('survPlace'),
+          surv_city:     val('survCity'),
+          template:      selectedTemplateKey(), // include template
+        };
+        const resp = await fetch(`/reports/${id}/render-docx`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!data.ok) throw new Error(data.error || 'Docx generation failed');
+        hideBusy();
+        window.location.href = data.docx_url;
+      } catch (e) {
+        hideBusy();
+        alert(e.message || e);
+      }
     });
   }
 })();
 </script>
+
+
+
 
 
 

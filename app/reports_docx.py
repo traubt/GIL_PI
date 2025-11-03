@@ -25,6 +25,75 @@ OUTPUT_DIR = getattr(
 
 reports_docx_bp = Blueprint("reports_docx", __name__, url_prefix="/reports")
 
+TEMPLATE_MAP = {
+    "tracking": "menora_report.docx",   # your old tracking template
+    "siudi":    "menora_siudi.docx",    # the new one
+}
+
+def map_template_key(key: str) -> str:
+    return TEMPLATE_MAP.get((key or "").lower(), TEMPLATE_MAP["tracking"])
+
+
+def _deep_set(d: dict, dotted: str, value):
+    """set nested dict value by dotted path (e.g., 'insured.name')."""
+    parts = dotted.split(".")
+    cur = d
+    for p in parts[:-1]:
+        if p not in cur or not isinstance(cur[p], dict):
+            cur[p] = {}
+        cur = cur[p]
+    cur[parts[-1]] = value
+    return d
+
+def pick_template_for_report(report_id: int) -> str:
+    # Phase-1: always use the Menora 'Siudi' template
+    return "menora_siudi.docx"
+
+
+def _collect_overrides_from_query(args) -> dict:
+    """
+    Read known inputs from request.args and build a nested overrides dict.
+    Empty values are ignored (keep defaults).
+    """
+    mapping = {
+        "activity_date": "case.activity_date",
+        "claim_number": "case.claim_number",
+        "insured_name": "insured.name",
+        "insured_id": "insured.id",
+        "insured_phone": "insured.phone",
+        "injury_type": "insured.injury_type",
+        "surv_place": "surveillance.place",
+        "surv_city": "surveillance.city",
+    }
+    out = {}
+    for qkey, path in mapping.items():
+        val = (args.get(qkey) or "").strip()
+        if val:
+            _deep_set(out, path, val)
+    return out
+
+def _collect_overrides_from_json(json_body: dict | None) -> dict:
+    """Same as query, but from a JSON body for the download route."""
+    if not json_body:
+        return {}
+    fields = {
+        "activity_date": "case.activity_date",
+        "claim_number": "case.claim_number",
+        "insured_name": "insured.name",
+        "insured_id": "insured.id",
+        "insured_phone": "insured.phone",
+        "injury_type": "insured.injury_type",
+        "surv_place": "surveillance.place",
+        "surv_city": "surveillance.city",
+    }
+    out = {}
+    for k, dotted in fields.items():
+        val = (json_body.get(k) or "").strip()
+        if val:
+            _deep_set(out, dotted, val)
+    return out
+
+
 def ensure_output_dir():
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     # helpful once at boot to confirm where files go
@@ -325,20 +394,43 @@ def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
 
 @reports_docx_bp.route("/<int:report_id>/preview-pdf", methods=["GET"])
 def preview_docx_as_pdf(report_id: int):
-    """Render DOCX using menora_siudi.docx, convert to PDF, return inline."""
-    activity_date = request.args.get("activity_date", "").strip()
-    context = get_report_context(report_id, overrides={"activity_date": activity_date} if activity_date else None)
+    # Phase: keep hard-coded context if you want
+    context = get_report_context(report_id, overrides=None)
 
-    template_path = load_template_docx("menora_siudi.docx")
+    # NEW: pick template by query param
+    tmpl_key = request.args.get("template", "tracking")
+    template_path = load_template_docx(map_template_key(tmpl_key))
+    current_app.logger.info(f"[DOCX] Using template: {template_path}")
+
     docx_bytes = render_docx_bytes(template_path, context)
-
     pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
-    return send_file(
-        io.BytesIO(pdf_bytes),
-        mimetype="application/pdf",
-        as_attachment=False,
-        download_name=f"report_{report_id}_preview.pdf",
-    )
+    return send_file(io.BytesIO(pdf_bytes),
+                     mimetype="application/pdf",
+                     as_attachment=False,
+                     download_name=f"report_{report_id}_preview.pdf")
+
+
+@reports_docx_bp.route("/<int:report_id>/render-docx", methods=["POST"])
+def render_docx_endpoint(report_id: int):
+    try:
+        # still using hard-coded context for now
+        context = get_report_context(report_id, overrides=None)
+
+        data = request.get_json(silent=True) or {}
+        tmpl_key = data.get("template") or request.args.get("template") or "tracking"
+        template_path = load_template_docx(map_template_key(tmpl_key))
+        current_app.logger.info(f"[DOCX] Using template: {template_path}")
+
+        docx_bytes = render_docx_bytes(template_path, context)
+        ensure_output_dir()
+        fname = f"report_{report_id}.docx"
+        disk_path = os.path.join(OUTPUT_DIR, fname)
+        with open(disk_path, "wb") as f:
+            f.write(docx_bytes)
+        return jsonify({"ok": True, "docx_url": f"/reports/download/{fname}"})
+    except Exception as e:
+        return jsonify({"ok": False, "error": str(e)}), 500
+
 
 
 
