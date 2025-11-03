@@ -282,34 +282,39 @@ def download_docx(report_id: int, filename: str):
 import subprocess, tempfile, shutil
 from flask import send_file
 
-def _resolve_soffice_path():
-    p = getattr(Config, "LIBREOFFICE_BIN", None)
-    if p and os.path.exists(p):
-        return p
-    p = shutil.which("soffice")
-    if p:
-        return p
-    # common Windows locations (fallbacks)
-    candidates = [
+def _resolve_soffice_path() -> str:
+    """
+    Prefer soffice.exe on Windows; fall back to PATH.
+    """
+    # If you have Config.LIBREOFFICE_BIN set, use it.
+    from .config import Config
+    cand = getattr(Config, "LIBREOFFICE_BIN", None)
+    if cand and os.path.exists(cand):
+        return cand
+
+    # Common Windows installs
+    for c in [
         r"C:\Program Files\LibreOffice\program\soffice.exe",
         r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
         os.path.expandvars(r"%LOCALAPPDATA%\Programs\LibreOffice\program\soffice.exe"),
-    ]
-    for c in candidates:
-        if os.path.exists(c):
+        shutil.which("soffice"),
+    ]:
+        if c and os.path.exists(c):
             return c
+
+    # Last resort – let subprocess resolve from PATH
     return "soffice"
 
 def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
     """
-    Robust DOCX -> PDF using LibreOffice on Windows:
-    - prefer soffice.com
-    - longer wait and fallbacks for output discovery
-    - resilient cleanup with Windows file locks
+    Robust DOCX -> PDF on Windows/LibreOffice:
+    - uses a temp user profile (avoids locks)
+    - runs in the temp dir as CWD
+    - scans for any *.pdf (LO sometimes renames)
+    - waits for the file to actually appear
     """
     soffice = _resolve_soffice_path()
 
-    # manual temp dir + best-effort cleanup (Windows file locks)
     tmpdir = tempfile.mkdtemp(prefix="lo_")
     tmp = Path(tmpdir)
     try:
@@ -317,15 +322,17 @@ def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
         expected_pdf = tmp / "report.pdf"
         docx_path.write_bytes(docx_bytes)
 
+        # LO user profile inside the same temp dir
         profile_url = tmp.as_uri() + "/lo_profile"
 
-        # Try generic filter first (some LO builds ignore writer_pdf_Export)
+        # Note: use soffice.exe and keep CWD=tmp
         cmd = [
             soffice,
             "--headless", "--nologo", "--nodefault", "--nolockcheck",
             "--norestore", "--invisible",
             f"-env:UserInstallation={profile_url}",
-            "--convert-to", "pdf:writer_pdf_Export",
+            # generic filter sometimes works better than writer_pdf_Export
+            "--convert-to", "pdf",
             "--outdir", str(tmp),
             str(docx_path),
         ]
@@ -338,24 +345,18 @@ def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
             cwd=str(tmp),
         )
 
-        # Wait up to 15s for the output; scan for any *.pdf
+        # wait up to 15s for *any* PDF to appear
         deadline = time.time() + 15.0
         pdf_path = None
         while time.time() < deadline:
-            # preferred name
             if expected_pdf.exists():
                 pdf_path = expected_pdf
                 break
-            # or any PDF in the folder (LO sometimes uses the original filename)
             pdfs = sorted(glob.glob(str(tmp / "*.pdf")), key=lambda p: os.path.getmtime(p))
             if pdfs:
                 pdf_path = Path(pdfs[-1])
                 break
             time.sleep(0.2)
-
-        # one more tiny grace period for file flush on Windows
-        if pdf_path and not pdf_path.exists():
-            time.sleep(0.3)
 
         if not pdf_path or not pdf_path.exists():
             listing = ""
@@ -370,20 +371,12 @@ def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
                 f"CMD: {' '.join(cmd)}\nTEMP DIR: {tmp}\nFILES:\n{listing}\n"
             )
 
-        # extra pause to let Windows finish writing before we open
+        # small grace for file flush on Windows
         time.sleep(0.2)
-        data = pdf_path.read_bytes()
-
-        # log a success line (optional)
-        try:
-            current_app.logger.info(f"[DOCX->PDF] {pdf_path.name} ({len(data)} bytes)")
-        except Exception:
-            pass
-
-        return data
+        return pdf_path.read_bytes()
 
     finally:
-        # Best-effort cleanup with retries to overcome Windows locks
+        # retry cleanup to bypass transient locks
         for _ in range(6):
             try:
                 shutil.rmtree(tmpdir)
