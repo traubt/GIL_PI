@@ -325,7 +325,7 @@ def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
             "--headless", "--nologo", "--nodefault", "--nolockcheck",
             "--norestore", "--invisible",
             f"-env:UserInstallation={profile_url}",
-            "--convert-to", "pdf",
+            "--convert-to", "pdf:writer_pdf_Export",
             "--outdir", str(tmp),
             str(docx_path),
         ]

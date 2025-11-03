@@ -127,206 +127,125 @@
 
     <div class="row">
 
-      <!-- LEFT: form -->
-      <div class="col-lg-7">
-        <div class="card">
-          <div class="card-body">
-            <h5 class="card-title">פרטי דו״ח</h5>
+<!-- LEFT: form -->
+<div class="col-lg-7">
+  <div class="card">
+    <div class="card-body">
+      <h5 class="card-title">פרטי דו״ח</h5>
 
-            <div class="row g-3">
-              <!-- insured -->
-              <div class="col-md-6">
-                <label for="insuredId" class="form-label">מבוטח</label>
-                <select id="insuredId" name="insured_id" class="form-select">
-                  <option value="">בחר מבוטח…</option>
-                  {% for ins in insureds %}
-                    <option
-                      value="{{ ins.id }}"
-                      data-insurance="{{ ins.insurance or '' }}"
-                      data-claim-type="{{ ins.claim_type or '' }}"
-                      data-ref="{{ ins.ref_number or ins.ref or '' }}"
-                    >
-                      {{ (ins.last_name ~ ' ' ~ ins.first_name)|trim }}
-                      · רפרנס {{ ins.ref_number or ins.ref or '—' }}
-                      · {{ ins.insurance or '—' }}
-                      · {{ ins.claim_type or '—' }}
-                    </option>
-                  {% endfor %}
-                </select>
-              </div>
+      <div class="row g-3">
+        <!-- insured -->
+        <div class="col-md-6">
+          <label for="insuredId" class="form-label">מבוטח</label>
+          <select id="insuredId" name="insured_id" class="form-select">
+            <option value="">בחר מבוטח…</option>
+            {% for ins in insureds %}
+              <option
+                value="{{ ins.id }}"
+                data-insurance="{{ ins.insurance or '' }}"
+                data-claim-type="{{ ins.claim_type or '' }}"
+                data-ref="{{ ins.ref_number or ins.ref or '' }}"
+              >
+                {{ (ins.last_name ~ ' ' ~ ins.first_name)|trim }}
+                · רפרנס {{ ins.ref_number or ins.ref or '—' }}
+                · {{ ins.insurance or '—' }}
+                · {{ ins.claim_type or '—' }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
 
-              <!-- report type -->
-              <div class="col-md-6">
-                <label for="reportType" class="form-label">סוג דו״ח</label>
-                <select id="reportType" class="form-select">
-                  <option value="TRACKING" selected>דוח מעקב</option>
-                  <option value="SIUDI">דוח חקירה סיעודי</option>
-                  <option value="ID_PHOTOS">דוח תמונת זיהוי</option>
-                  <option value="PERSONAL">דוח פרטים אישיים</option>
-                  <option value="PHOTOSET">דוח תמונות</option>
-                </select>
-              </div>
+        <!-- report type -->
+        <div class="col-md-6">
+          <label for="reportType" class="form-label">סוג דו״ח</label>
+          <select id="reportType" class="form-select">
+            <option value="TRACKING" selected>דוח מעקב</option>
+            <option value="SIUDI">דוח חקירה סיעודי</option>
+            <option value="ID_PHOTOS">דוח תמונת זיהוי</option>
+            <option value="PERSONAL">דוח פרטים אישיים</option>
+            <option value="PHOTOSET">דוח תמונות</option>
+          </select>
+        </div>
 
-              <!-- report date -->
-              <div class="col-md-6 section-block" data-section="report_date">
-                <label for="reportDate" class="form-label">תאריך הדו״ח</label>
-                <input id="reportDate" type="date" class="form-control">
-              </div>
-
-              <!-- activity date -->
-              <div class="col-md-6 section-block" data-section="activity_date">
-                <label for="activityDate" class="form-label">תאריך פעילות</label>
-                <input id="activityDate" type="date" class="form-control">
-              </div>
-
-              <!-- generic sections -->
-              <div class="col-12 section-block" data-section="title">
-                <label for="title" class="form-label">כותרת</label>
-                <input id="title" class="form-control" placeholder="למשל: דוח מעקב — שם מבוטח">
-              </div>
-
-              <div class="col-12 section-block" data-section="intro">
-                <label for="intro" class="form-label">מבוא</label>
-                <textarea id="intro" class="form-control" rows="4" placeholder="תקציר: מטרת הדו״ח, רקע קצר…"></textarea>
-              </div>
-
-              <div class="col-12 section-block" data-section="tracking_dates">
-                <div class="row g-2">
-                  <div class="col-md-6">
-                    <label class="form-label">תחילת פעילות</label>
-                    <input id="trackStart" type="datetime-local" class="form-control">
-                  </div>
-                  <div class="col-md-6">
-                    <label class="form-label">סיום פעילות</label>
-                    <input id="trackEnd" type="datetime-local" class="form-control">
-                  </div>
+        <!-- ===== Report Fields (minimal) ===== -->
+        <div class="col-12">
+          <div class="card mt-1">
+            <div class="card-header" style="font-weight:600">שדות הדוח (מינימלי)</div>
+            <div class="card-body">
+              <div class="row g-2">
+                <div class="col-6">
+                  <label class="form-label">תאריך פעילות</label>
+                  <input id="activityDate" type="date" class="form-control" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label">מס' תביעה</label>
+                  <input id="claimNumber" type="text" class="form-control" placeholder="MN-2025-12345" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label">שם מבוטח</label>
+                  <input id="insuredName" type="text" class="form-control" placeholder="סודרי רפאל" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label">תעודת זהות</label>
+                  <input id="insuredIdNumber" type="text" class="form-control" placeholder="123456789" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label">טלפון</label>
+                  <input id="insuredPhone" type="text" class="form-control" placeholder="050-..." />
+                </div>
+                <div class="col-6">
+                  <label class="form-label">מצב/סוג פגיעה</label>
+                  <input id="injuryType" type="text" class="form-control" placeholder="" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label">מקום המעקב</label>
+                  <input id="survPlace" type="text" class="form-control" placeholder="מרכז קניות" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label">עיר המעקב</label>
+                  <input id="survCity" type="text" class="form-control" placeholder="תל אביב" />
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+        <!-- ===== /Report Fields (minimal) ===== -->
 
-              <div class="col-12 section-block" data-section="timeline">
-                <label for="timeline" class="form-label">מהלך המעקב</label>
-                <textarea id="timeline" class="form-control" rows="8" placeholder="למשל: 08:15 הגעה לכתובת..."></textarea>
+        <!-- PHOTOS -->
+        <div class="col-12 section-block" data-section="photos">
+          <div class="card mt-1">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <strong>תמונות לדו"ח</strong>
+              <div>
+                <button id="btnImportLocalDropbox" type="button" class="btn btn-outline-primary btn-sm">
+                  ייבוא מדרופבוקס מקומי
+                </button>
+                <input id="localDropboxPicker" type="file" accept="image/*,video/*" multiple style="display:none" />
+                <div id="localImportStatus" class="mt-2 small text-muted" style="white-space:pre-line;"></div>
+
+                <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button>
+                <button id="btn-upload-local"  type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button>
+                <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
               </div>
+            </div>
+            <div class="card-body">
+              <input type="hidden" id="localToken" value="">
+              <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
 
-              <div class="col-12 section-block" data-section="background">
-                <label for="background" class="form-label">רקע</label>
-                <textarea id="background" class="form-control" rows="4" placeholder="המבוטח יליד..., פרטים כלליים..."></textarea>
-              </div>
+              <div class="mb-2 fw-bold text-muted">(Landscape) תמונות לרוחב</div>
+              <div id="group-landscape" class="thumb-grid"></div>
 
-              <div class="col-12 section-block" data-section="occupation">
-                <label for="occupation" class="form-label">עיסוק</label>
-                <textarea id="occupation" class="form-control" rows="3" placeholder="המקצוע/עבודה..."></textarea>
-              </div>
-
-              <div class="col-12 section-block" data-section="authorities">
-                <label for="authorities" class="form-label">חקירת רשויות</label>
-                <textarea id="authorities" class="form-control" rows="3" placeholder="מע״מ, מס הכנסה, ניכוי מס..."></textarea>
-              </div>
-
-              <div class="col-12 section-block" data-section="dnb">
-                <label for="dnb" class="form-label">דן אנד ברדסטריט</label>
-                <textarea id="dnb" class="form-control" rows="3" placeholder="בדיקת מניות בחברות..."></textarea>
-              </div>
-
-              <div class="col-12 section-block" data-section="web_investigation">
-                <label for="web" class="form-label">חקירה במאגרי מידע</label>
-                <textarea id="web" class="form-control" rows="3" placeholder="סריקה ברשת ובמדיה החברתית..."></textarea>
-              </div>
-
-              <div class="col-12 section-block" data-section="summary">
-                <label for="summary" class="form-label">סיכום</label>
-                <textarea id="summary" class="form-control" rows="4" placeholder="מסקנות והמלצות…"></textarea>
-              </div>
-
-<!-- Report Fields (minimal) -->
-<div class="col-12">
-  <div class="card mt-1">
-    <div class="card-header" style="font-weight:600">שדות הדוח (מינימלי)</div>
-    <div class="card-body">
-      <div class="row g-2">
-        <div class="col-6">
-          <label class="form-label">תאריך פעילות</label>
-          <input id="activityDate" type="date" class="form-control" />
+              <div class="mb-2 mt-4 fw-bold text-muted">(Portrait) תמונות לאורך</div>
+              <div id="group-portrait" class="thumb-grid"></div>
+            </div>
+          </div>
         </div>
-        <div class="col-6">
-          <label class="form-label">מס' תביעה</label>
-          <input id="claimNumber" type="text" class="form-control" placeholder="MN-2025-12345" />
-        </div>
-        <div class="col-6">
-          <label class="form-label">שם מבוטח</label>
-          <input id="insuredName" type="text" class="form-control" placeholder="סודרי רפאל" />
-        </div>
-        <div class="col-6">
-          <label class="form-label">תעודת זהות</label>
-          <input id="insuredIdNumber" type="text" class="form-control" placeholder="123456789" />
-        </div>
-        <div class="col-6">
-          <label class="form-label">טלפון</label>
-          <input id="insuredPhone" type="text" class="form-control" placeholder="050-..." />
-        </div>
-        <div class="col-6">
-          <label class="form-label">מצב/סוג פגיעה</label>
-          <input id="injuryType" type="text" class="form-control" placeholder="" />
-        </div>
-        <div class="col-6">
-          <label class="form-label">מקום המעקב</label>
-          <input id="survPlace" type="text" class="form-control" placeholder="מרכז קניות" />
-        </div>
-        <div class="col-6">
-          <label class="form-label">עיר המעקב</label>
-          <input id="survCity" type="text" class="form-control" placeholder="תל אביב" />
-        </div>
+        <!-- /PHOTOS -->
       </div>
     </div>
   </div>
 </div>
 
-
-              <!-- PHOTOS -->
-              <div class="col-12 section-block" data-section="photos">
-                <div class="card mt-1">
-                  <div class="card-header d-flex justify-content-between align-items-center">
-                    <strong>תמונות לדו"ח</strong>
-                    <div>
-                      <!-- New: Import from local Dropbox (sync folder) -->
-
-<button id="btnImportLocalDropbox" type="button" class="btn btn-outline-primary btn-sm">
-  ייבוא מדרופבוקס מקומי
-</button>
-
-<input id="localDropboxPicker"
-       type="file"
-       accept="image/*,video/*"
-       multiple
-       style="display:none" />
-
-<div id="localImportStatus" class="mt-2 small text-muted" style="white-space:pre-line;"></div>
-
-
-
-                      <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button>
-                      <button id="btn-upload-local" type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button>
-                      <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
-                    </div>
-                  </div>
-                  <div class="card-body">
-                    <input type="hidden" id="localToken" value="">
-                    <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
-
-                    <div class="mb-2 fw-bold text-muted">(Landscape) תמונות לרוחב</div>
-                    <div id="group-landscape" class="thumb-grid"></div>
-
-                    <div class="mb-2 mt-4 fw-bold text-muted">(Portrait) תמונות לאורך</div>
-                    <div id="group-portrait" class="thumb-grid"></div>
-                  </div>
-                </div>
-              </div>
-              <!-- /PHOTOS -->
-
-            </div>
-          </div>
-        </div>
-      </div>
 
       <!-- RIGHT: Word preview -->
       <div class="col-lg-5">
@@ -1017,21 +936,10 @@
     return 1;
   }
 
-  const TEMPLATE_MAP = {
-    tracking: 'מנורה - דוח מעקב.docx',
-    siudi:    'menora_siudi.docx'
-  };
-
+  // Make sure the key we pass to the backend is lowercase (expected by server)
   function selectedTemplateKey(){
     const rt = document.getElementById('reportType');
-    return rt ? (rt.value || 'tracking') : 'tracking';
-  }
-
-  function updateTemplateChip(){
-    const chip = document.getElementById('templateChip');
-    if (!chip) return;
-    const key = selectedTemplateKey();
-    chip.textContent = 'תבנית: ' + (TEMPLATE_MAP[key] || TEMPLATE_MAP.tracking);
+    return (rt ? (rt.value || 'tracking') : 'tracking').toLowerCase();
   }
 
   function updateTemplateBadge(){
@@ -1039,19 +947,14 @@
     if (!chip) return;
     const key = selectedTemplateKey();
     // show insurer + filename
-    const name = (key === 'siudi' && currentInsurer() === 'מנורה')
-        ? 'menora_siudi.docx'
-        : TEMPLATE_MAP[key] || '—';
+    const name = (key === 'siudi' && (document.getElementById('insurer')?.value || 'מנורה') === 'מנורה')
+      ? 'menora_siudi.docx'
+      : (key === 'tracking' ? 'מנורה - דוח מעקב.docx' : '—');
     chip.textContent = 'תבנית: ' + name;
   }
 
-  document.getElementById('reportType')?.addEventListener('change', updateTemplateBadge);
-  document.getElementById('insurer')?.addEventListener('change', updateTemplateBadge);
-  updateTemplateBadge();
-
   function buildQuery(){
     const q = new URLSearchParams();
-    // editor fields (kept as-is; server can ignore for now if you want)
     if (val('activityDate'))  q.set('activity_date', val('activityDate'));
     if (val('claimNumber'))   q.set('claim_number', val('claimNumber'));
     if (val('insuredName'))   q.set('insured_name', val('insuredName'));
@@ -1060,11 +963,8 @@
     if (val('injuryType'))    q.set('injury_type', val('injuryType'));
     if (val('survPlace'))     q.set('surv_place', val('survPlace'));
     if (val('survCity'))      q.set('surv_city', val('survCity'));
-
-    // NEW: template choice
-    q.set('template', selectedTemplateKey());
-
-    q.set('ts', Date.now()); // cache-buster
+    q.set('template', selectedTemplateKey());   // <-- lowercase now
+    q.set('ts', Date.now());
     return q.toString();
   }
 
@@ -1072,29 +972,39 @@
   const downloadBtn = document.getElementById('downloadDocx');
   const frame       = document.getElementById('wordPreviewFrame');
 
-  // Initial chip text on load
-  updateTemplateChip();
-
-  // If user changes reportType, update chip (but DO NOT auto refresh)
-  const rptTypeSel = document.getElementById('reportType');
-  if (rptTypeSel) rptTypeSel.addEventListener('change', updateTemplateChip);
+  document.getElementById('reportType')?.addEventListener('change', updateTemplateBadge);
+  document.getElementById('insurer')?.addEventListener('change', updateTemplateBadge);
+  updateTemplateBadge();
 
   // ------- Refresh preview (PDF) - ONLY on button -------
+
   if (refreshBtn && frame) {
-    refreshBtn.addEventListener('click', function(){
-      updateTemplateChip();
+    refreshBtn.addEventListener('click', function () {
+      updateTemplateBadge();
       showBusy("מכין תצוגה...");
+
+      const tidy = () => { frame.removeEventListener('load', tidy); frame.removeEventListener('error', tidy); hideBusy(); };
+      frame.addEventListener('load', tidy,  { once:true });
+      frame.addEventListener('error', tidy, { once:true });
+      setTimeout(hideBusy, 15000); // safety net
+
       const id = currentReportId();
-      frame.addEventListener('load', hideBusy, { once: true });
+
+      // NEW: clear any previous inline preview and src
+      frame.removeAttribute('srcdoc');
+      frame.src = 'about:blank';
+
+      // set the real preview URL
       frame.src = `/reports/${id}/preview-pdf?` + buildQuery();
     });
   }
+
 
   // ------- Download DOCX -------
   if (downloadBtn) {
     downloadBtn.addEventListener('click', async function(){
       try {
-        updateTemplateChip();
+        updateTemplateBadge();
         showBusy("מכין קובץ Word...");
         const id = currentReportId();
         const payload = {
@@ -1106,7 +1016,7 @@
           injury_type:   val('injuryType'),
           surv_place:    val('survPlace'),
           surv_city:     val('survCity'),
-          template:      selectedTemplateKey(), // include template
+          template:      selectedTemplateKey(),   // <-- lowercase now
         };
         const resp = await fetch(`/reports/${id}/render-docx`, {
           method: 'POST',
@@ -1127,9 +1037,58 @@
 </script>
 
 
+<script>
+(function () {
+  // --- helpers ---
+  const $ = (sel) => document.querySelector(sel);
+
+  function showSection(sectionKey, show) {
+    const el = document.querySelector(`[data-section="${sectionKey}"]`);
+    if (el) el.style.display = show ? "" : "none";
+  }
+
+  function computeTemplateFile() {
+    // later this can branch by insurer/claim-type
+    const rt = $("#reportType")?.value || "TRACKING";
+    if (rt === "SIUDI") return "menora_siudi.docx";
+    return "menora_report.docx"; // default tracking template
+  }
+
+  function updateTemplateBadge() {
+    const badge = $("#templateBadge");
+    if (badge) badge.textContent = "תבנית: " + computeTemplateFile();
+  }
+
+  function applyTemplateVisibility() {
+    const rt = $("#reportType")?.value || "TRACKING";
+
+    // First section is just selectors now; nothing to toggle there.
+
+    // Photos: keep ON for ALL report types (incl. סיעודי)
+    showSection("photos", true);
+
+    // If you later want template-specific field cards, toggle them here.
+    // For now we leave the “minimal fields” card as-is (or hidden if removed).
+  }
+
+  // --- wire events ---
+  const rtEl = $("#reportType");
+  if (rtEl) {
+    rtEl.addEventListener("change", () => {
+      applyTemplateVisibility();
+      updateTemplateBadge();
+    });
+  }
+
+  // --- initial state on page load ---
+  applyTemplateVisibility();
+  updateTemplateBadge();
+})();
+</script>
 
 
 
 
-<script src="static/assets/js/main.js"></script>
+
+<script src="/static/assets/js/main.js"></script>
 {% endblock %}
