@@ -129,6 +129,29 @@ def _iso_to_dots(iso: str | None) -> str:
     d = str(int(d))             # no leading zero for day
     return f"{d}.{m}.{y}"
 
+# put near other helpers
+def _gender_lex(gender_raw: str | None) -> dict:
+    """
+    Returns Hebrew words that change by gender.
+    Accepts values like 'זכר'/'נקבה' or 'male'/'female'/'M'/'F'.
+    """
+    g = (gender_raw or "").strip().lower()
+    is_female = g in {"נקבה", "female", "f", "נשים", "אשה", "אישה"}
+    return {
+        "is_female": is_female,
+        "insured_label": "מבוטחת" if is_female else "מבוטח",
+        "born_word":     "ילידת"   if is_female else "יליד",
+        "claims_verb":   "טוענת"   if is_female else "טוען",
+        "obj_suffix":    "ה"        if is_female else "ו",  # לתעדה / לתעדו
+        "house_poss":    "ה"        if is_female else "ו",  # ביתה / ביתו
+        "state_poss":    "ה"        if is_female else "ו",  # מצבה / מצבו
+        "func_poss":     "ה"        if is_female else "ו",  # תפקודה / תפקודו
+        "photos_poss":   "תמונותיה" if is_female else "תמונותיו",
+        "pronoun_subj":  "היא"      if is_female else "הוא",
+        "pronoun_obj":   "אותה"     if is_female else "אותו",
+    }
+
+
 
 def _fetch_insured_row(insured_id: int) -> dict:
     ins = GilInsured.query.get(insured_id) if insured_id else None
@@ -152,16 +175,25 @@ def get_report_context(report_id: int, *, insured_id: int | None = None, overrid
     overrides = overrides or {}
     db_fields  = _fetch_insured_row(insured_id) if insured_id else {}
     raw_date   = overrides.get("activity_date", "")
-    act_iso    = _to_iso(raw_date) or raw_date  # tolerate either ISO or DD/MM/YYYY
+    act_iso    = _to_iso(raw_date) or raw_date
 
     ctx_fields = {
-        "activity_date":       act_iso,                 # keep ISO if we could parse it
-        "activity_date_dots":  _iso_to_dots(act_iso),   # D.MM.YYYY
+        "activity_date":       act_iso,
+        "activity_date_dots":  _iso_to_dots(act_iso),
         "surv_place":          overrides.get("surv_place", ""),
         "surv_city":           overrides.get("surv_city",  ""),
         "injury_type":         overrides.get("injury_type", ""),
     }
-    return {"db": db_fields, "ctx": ctx_fields, "now": _now_hebrew(),}
+
+    lex = _gender_lex(db_fields.get("gender"))
+
+    return {
+        "db": db_fields,
+        "ctx": ctx_fields,
+        "lex": lex,           # <— NEW
+        "now": _now_hebrew(),
+    }
+
 
 
 
