@@ -167,12 +167,17 @@
                       </div>
                       <div class="col-md-4">
                         <label class="form-label">מקום המעקב</label>
-                        <input id="ctx_surv_place" type="text" class="form-control" placeholder="מרכז קניות">
+                        <input id="ctx_surv_place" type="text" class="form-control" >
                       </div>
                       <div class="col-md-4">
                         <label class="form-label">עיר המעקב</label>
-                        <input id="ctx_surv_city" type="text" class="form-control" placeholder="תל אביב">
+                        <input id="ctx_surv_city" type="text" class="form-control" >
                       </div>
+                      <div class="col-md-4">
+                        <label class="form-label">סוג פגיעה</label>
+                        <input id="ctx_injury_type" type="text" class="form-control" >
+                      </div>
+
                     </div>
                   </div>
                 </div>
@@ -365,9 +370,11 @@
   const ctxActivity = $('#ctx_activity_date');
   const ctxPlace    = $('#ctx_surv_place');
   const ctxCity     = $('#ctx_surv_city');
+  const ctxInjury   = $('#ctx_injury_type');
   if (ctxActivity) ctxActivity.addEventListener('change', e=> state.ctx.activity_date = e.target.value);
   if (ctxPlace)    ctxPlace.addEventListener('input', e=> state.ctx.surv_place = e.target.value);
   if (ctxCity)     ctxCity.addEventListener('input', e=> state.ctx.surv_city  = e.target.value);
+  if (ctxInjury) ctxInjury.addEventListener('input', e=> state.ctx.injury_type = e.target.value);
 
   // chips noop
   function renderChips(){}
@@ -525,6 +532,8 @@
     if (val('ctx_activity_date')) q.set('activity_date', val('ctx_activity_date'));
     if (val('ctx_surv_place'))    q.set('surv_place', val('ctx_surv_place'));
     if (val('ctx_surv_city'))     q.set('surv_city',  val('ctx_surv_city'));
+    if (val('ctx_injury_type'))   q.set('injury_type', val('ctx_injury_type'));
+
     q.set('template', selectedTemplateKey());
     q.set('ts', Date.now());
     return q.toString();
@@ -566,6 +575,7 @@
           surv_place:    val('ctx_surv_place'),
           surv_city:     val('ctx_surv_city'),
           template:      selectedTemplateKey(),
+          injury_type:  val('ctx_injury_type'),
         };
 
         const resp = await fetch(`/reports/${id}/render-docx`, {

@@ -95,6 +95,7 @@ def get_report_context(report_id: int, *, insured_id: int | None = None, overrid
         "activity_date": overrides.get("activity_date", ""),
         "surv_place":    overrides.get("surv_place", ""),
         "surv_city":     overrides.get("surv_city",  ""),
+        "injury_type": overrides.get("injury_type", ""),
     }
     return {"db": db_fields, "ctx": ctx_fields, "now": datetime.now().strftime("%d/%m/%Y")}
 
@@ -402,6 +403,7 @@ def preview_docx_as_pdf(report_id: int):
         "activity_date": request.args.get("activity_date", ""),
         "surv_place":    request.args.get("surv_place", ""),
         "surv_city":     request.args.get("surv_city",  ""),
+        "injury_type": request.args.get("injury_type", ""),
     }
     context = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
     tmpl_key = request.args.get("template", "tracking")
@@ -445,6 +447,7 @@ def render_docx_download(report_id: int):
         "activity_date": data.get("activity_date", ""),
         "surv_place":    data.get("surv_place", ""),
         "surv_city":     data.get("surv_city",  ""),
+        "injury_type": data.get("injury_type", ""),
     }
     context = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
     tmpl_key = data.get("template", "tracking")
