@@ -83,6 +83,17 @@ def _iso_to_dots(iso: str | None) -> str:
     d = str(int(d))
     return f"{d}.{m}.{y}"
 
+from datetime import datetime
+
+def _now_hebrew() -> str:
+    """Return date like: '2025 בנובמבר 4' (Hebrew month with ב- prefix, no leading zero)."""
+    months = ["ינואר","פברואר","מרץ","אפריל","מאי","יוני",
+              "יולי","אוגוסט","ספטמבר","אוקטובר","נובמבר","דצמבר"]
+    dt = datetime.now()
+    month_he = f"ב{months[dt.month - 1]}"
+    return f"{dt.day} {month_he} {dt.year}"
+
+
 import re
 
 def _to_iso(date_str: str | None) -> str:
@@ -150,7 +161,7 @@ def get_report_context(report_id: int, *, insured_id: int | None = None, overrid
         "surv_city":           overrides.get("surv_city",  ""),
         "injury_type":         overrides.get("injury_type", ""),
     }
-    return {"db": db_fields, "ctx": ctx_fields, "now": datetime.now().strftime("%d/%m/%Y")}
+    return {"db": db_fields, "ctx": ctx_fields, "now": _now_hebrew(),}
 
 
 
