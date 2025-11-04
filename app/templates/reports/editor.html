@@ -320,32 +320,54 @@
     updateMetaBadges();
   }
 
-  function fillInsuredCardFromOption(opt){
-    const get = (k)=> (opt?.dataset?.[k] ?? '').trim();
-    const full = get('fullName') || ((get('lastName') + ' ' + get('firstName')).trim());
-    const birthIso = get('birthDate');
-    const map = {
-      db_ref_number: get('ref'),
-      db_full_name:  full,
-      db_birth_date: birthIso ? isoToDmy(birthIso) : "",
-      db_gender:     get('gender'),
-      db_id_number:  get('idNumber'),
-      db_claim_number: get('claimNumber'),
-    };
-    for (const [id,val] of Object.entries(map)){
-      const el = document.getElementById(id);
-      if (el) el.value = val || '';
-    }
-    // keep in state for later milestones
-    state.db = {
-      ref_number: map.db_ref_number || "",
-      full_name:  map.db_full_name || "",
-      birth_date: birthIso || "",
-      gender:     map.db_gender || "",
-      id_number:  map.db_id_number || "",
-      claim_number: map.db_claim_number || ""
-    };
+  function isoToYear(iso){
+    if(!iso) return "";
+    return iso.split("-")[0]; // "YYYY"
   }
+
+function fillInsuredCardFromOption(opt){
+  const get = (k)=> (opt?.dataset?.[k] ?? '').trim();
+  const full = get('fullName') || ((get('lastName') + ' ' + get('firstName')).trim());
+
+  const birthIso = get('birthDate');           // "YYYY-MM-DD" from dataset
+  const birthYear = isoToYear(birthIso);       // "YYYY"
+
+  const gender = get('gender');                // "זכר"/"נקבה" or similar
+
+  const map = {
+    db_ref_number:   get('ref'),
+    db_full_name:    full,
+    db_birth_date:   birthYear,                // show year only
+    db_gender:       gender,
+    db_id_number:    get('idNumber'),
+    db_claim_number: get('claimNumber'),
+  };
+
+  for (const [id,val] of Object.entries(map)){
+    const el = document.getElementById(id);
+    if (el) el.value = val || '';
+  }
+
+  // save raw ISO + gender in state
+  state.db = {
+    ref_number:   map.db_ref_number || "",
+    full_name:    map.db_full_name  || "",
+    birth_date:   birthIso || "",      // keep ISO for backend
+    gender:       gender || "",
+    id_number:    map.db_id_number || "",
+    claim_number: map.db_claim_number || ""
+  };
+
+  // Optional "nice touch": adjust the label by gender now
+  const labelEl = document.querySelector('label[for="db_birth_date"]') || document.querySelector('#db_birth_date')?.closest('.col-md-4')?.querySelector('.form-label');
+  if (labelEl){
+    if ((gender || '').includes('נקבה')) {
+      labelEl.textContent = 'שנת לידה';
+    } else {
+      labelEl.textContent = 'שנת לידה';
+    }
+  }
+}
 
   // ------------ form bindings ------------
   const insuredSel = $('#insuredId');

@@ -72,32 +72,86 @@ def _calc_age(birth: date | None, on: date | None = None) -> int | str:
     years = on.year - birth.year - ((on.month, on.day) < (birth.month, birth.day))
     return years
 
+def _iso_to_dots(iso: str | None) -> str:
+    """
+    'YYYY-MM-DD' -> 'D.MM.YYYY'  (no leading zero on day; month stays 2-digit)
+    """
+    if not iso or len(iso) < 10:
+        return ""
+    y, m, d = iso[:10].split("-")
+    # remove leading zero from day
+    d = str(int(d))
+    return f"{d}.{m}.{y}"
+
+import re
+
+def _to_iso(date_str: str | None) -> str:
+    """
+    Accept 'YYYY-MM-DD' or 'DD/MM/YYYY' (also D/M/YYYY) and return ISO 'YYYY-MM-DD'.
+    Returns '' if parsing fails.
+    """
+    if not date_str:
+        return ""
+    s = date_str.strip()
+    # Already ISO?
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+        return s
+    # DD/MM/YYYY or D/M/YYYY
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})/(\d{4})", s)
+    if m:
+        d, mth, y = m.groups()
+        return f"{y}-{int(mth):02d}-{int(d):02d}"
+    return ""  # unknown format
+
+def _iso_to_dots(iso: str | None) -> str:
+    """
+    Accept ISO 'YYYY-MM-DD' (or DD/MM/YYYY defensively) and return 'D.MM.YYYY'.
+    """
+    if not iso:
+        return ""
+    # normalize if got DD/MM/YYYY by mistake
+    if "/" in iso:
+        iso = _to_iso(iso)
+    if not iso or len(iso) < 10 or "-" not in iso:
+        return ""
+    y, m, d = iso[:10].split("-")
+    d = str(int(d))             # no leading zero for day
+    return f"{d}.{m}.{y}"
+
+
 def _fetch_insured_row(insured_id: int) -> dict:
     ins = GilInsured.query.get(insured_id) if insured_id else None
     if not ins:
         return {}
     full_name = (" ".join(filter(None, [ins.last_name, ins.first_name]))).strip()
-    db_fields = {
+    birth_year = ins.birth_date.year if getattr(ins, "birth_date", None) else ""
+    return {
         "ref_number":   ins.ref_number or getattr(ins, "ref", "") or "",
         "full_name":    full_name,
-        "birth_date":   _fmt_d(ins.birth_date),
+        "birth_date":   _fmt_d(ins.birth_date),       # keep if some templates still use it
+        "birth_year":   str(birth_year),
         "gender":       ins.gender or "",
         "id_number":    ins.id_number or "",
         "claim_number": ins.claim_number or "",
         "age":          _calc_age(ins.birth_date),
+        "injury_type":  getattr(ins, "injury_type", "") or "",
     }
-    return db_fields
 
 def get_report_context(report_id: int, *, insured_id: int | None = None, overrides: dict | None = None) -> dict:
     overrides = overrides or {}
     db_fields  = _fetch_insured_row(insured_id) if insured_id else {}
+    raw_date   = overrides.get("activity_date", "")
+    act_iso    = _to_iso(raw_date) or raw_date  # tolerate either ISO or DD/MM/YYYY
+
     ctx_fields = {
-        "activity_date": overrides.get("activity_date", ""),
-        "surv_place":    overrides.get("surv_place", ""),
-        "surv_city":     overrides.get("surv_city",  ""),
-        "injury_type": overrides.get("injury_type", ""),
+        "activity_date":       act_iso,                 # keep ISO if we could parse it
+        "activity_date_dots":  _iso_to_dots(act_iso),   # D.MM.YYYY
+        "surv_place":          overrides.get("surv_place", ""),
+        "surv_city":           overrides.get("surv_city",  ""),
+        "injury_type":         overrides.get("injury_type", ""),
     }
     return {"db": db_fields, "ctx": ctx_fields, "now": datetime.now().strftime("%d/%m/%Y")}
+
 
 
 def _collect_overrides_from_query(args) -> dict:
@@ -226,37 +280,6 @@ def preview_docx_as_html(report_id: int):
   </body>
 </html>"""
     return render_template_string(base)
-
-
-
-@reports_docx_bp.route("/<int:report_id>/render-docx", methods=["POST"])
-def generate_docx(report_id: int):
-    """
-    Generate and persist a DOCX. Accepts JSON body with {"activity_date": "..."}.
-    """
-    ensure_output_dir()
-    template_path = load_template_docx("menora_siudi.docx")
-
-    activity_date = ""
-    if request.is_json:
-        body = request.get_json(silent=True) or {}
-        activity_date = (body.get("activity_date") or "").strip()
-
-    context = get_report_context(report_id, overrides={"activity_date": activity_date} if activity_date else None)
-
-    try:
-        data = render_docx_bytes(template_path, context)
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 400
-
-    version_stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    filename = f"report_{report_id}_{version_stamp}.docx"
-    abs_path = os.path.join(OUTPUT_DIR, filename)
-    with open(abs_path, "wb") as f:
-        f.write(data)
-
-    return jsonify({"ok": True, "docx_url": f"/reports/{report_id}/download/{filename}", "filename": filename})
-
 
 
 @reports_docx_bp.route("/<int:report_id>/download/<path:filename>", methods=["GET"])
@@ -411,31 +434,6 @@ def preview_docx_as_pdf(report_id: int):
     docx_bytes = render_docx_bytes(template_path, context)
     pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
-
-
-
-
-
-@reports_docx_bp.route("/<int:report_id>/render-docx", methods=["POST"])
-def render_docx_endpoint(report_id: int):
-    try:
-        # still using hard-coded context for now
-        context = get_report_context(report_id, overrides=None)
-
-        data = request.get_json(silent=True) or {}
-        tmpl_key = data.get("template") or request.args.get("template") or "tracking"
-        template_path = load_template_docx(map_template_key(tmpl_key))
-        current_app.logger.info(f"[DOCX] Using template: {template_path}")
-
-        docx_bytes = render_docx_bytes(template_path, context)
-        ensure_output_dir()
-        fname = f"report_{report_id}.docx"
-        disk_path = os.path.join(OUTPUT_DIR, fname)
-        with open(disk_path, "wb") as f:
-            f.write(docx_bytes)
-        return jsonify({"ok": True, "docx_url": f"/reports/download/{fname}"})
-    except Exception as e:
-        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 # ---- download DOCX (KEEP) ----
