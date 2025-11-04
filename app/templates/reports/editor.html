@@ -189,34 +189,79 @@
               </div>
 
               <!-- Section 4: תמונות -->
-              <div class="col-12 section-block" data-section="photos">
-                <div class="card mt-1">
-                  <div class="card-header d-flex justify-content-between align-items-center">
-                    <strong>תמונות לדו"ח</strong>
-                    <div>
-                      <button id="btnImportLocalDropbox" type="button" class="btn btn-outline-primary btn-sm">
-                        ייבוא מדרופבוקס מקומי
-                      </button>
-                      <input id="localDropboxPicker" type="file" accept="image/*,video/*" multiple style="display:none" />
-                      <div id="localImportStatus" class="mt-2 small text-muted" style="white-space:pre-line;"></div>
+<!-- Section 4: תמונות -->
+<div class="col-12 section-block" data-section="photos">
+  <div class="card mt-1">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <strong>תמונות לדו"ח</strong>
+      <div>
+        <button id="btnImportLocalDropbox" type="button" class="btn btn-outline-primary btn-sm">
+          ייבוא מדרופבוקס מקומי
+        </button>
 
-                      <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button>
-                      <button id="btn-upload-local"  type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button>
-                      <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
-                    </div>
-                  </div>
-                  <div class="card-body">
-                    <input type="hidden" id="localToken" value="">
-                    <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
+        <!-- hidden multi-file picker (local Dropbox folder on your machine) -->
+        <input id="localDropboxPicker"
+               type="file"
+               name="files[]"
+               accept="image/*,video/*"
+               multiple
+               style="display:none;">
 
-                    <div class="mb-2 fw-bold text-muted">(Landscape) תמונות לרוחב</div>
-                    <div id="group-landscape" class="thumb-grid"></div>
+        <div id="localImportStatus" class="mt-2 small text-muted" style="white-space:pre-line;"></div>
 
-                    <div class="mb-2 mt-4 fw-bold text-muted">(Portrait) תמונות לאורך</div>
-                    <div id="group-portrait" class="thumb-grid"></div>
-                  </div>
-                </div>
-              </div>
+        <!-- keep these for possible future use -->
+        <!-- <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button> -->
+        <!-- <button id="btn-upload-local"  type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button> -->
+
+        <!-- legacy filepicker (kept but unused) -->
+        <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
+      </div>
+    </div>
+
+    <div class="card-body">
+      <input type="hidden" id="localToken" value="">
+      <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
+
+      <div class="mb-2 fw-bold text-muted">(Landscape) תמונות לרוחב</div>
+      <div id="group-landscape" class="thumb-grid"></div>
+
+      <div class="mb-2 mt-4 fw-bold text-muted">(Portrait) תמונות לאורך</div>
+      <div id="group-portrait" class="thumb-grid"></div>
+    </div>
+  </div>
+</div>
+<!-- /PHOTOS -->
+
+<!-- Minimal CSS (once per page) -->
+<style>
+  .thumb-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill, minmax(130px,1fr));
+    gap:10px;
+  }
+  .thumb{
+    display:block;
+    border:1px solid #e5e7eb;
+    border-radius:10px;
+    padding:8px;
+    background:#fff;
+  }
+  .thumb img{
+    width:100%;
+    height:110px;
+    object-fit:cover;
+    border-radius:6px;
+  }
+  .thumb .name{
+    display:block;
+    font-size:12px;
+    color:#374151;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+</style>
+
               <!-- /PHOTOS -->
 
             </div>
@@ -702,6 +747,188 @@ function fillInsuredCardFromOption(opt){
     });
   });
 </script>
+
+<script>
+(function(){
+  // ===== DOM =====
+  const btn      = document.getElementById('btnImportLocalDropbox');
+  const input    = document.getElementById('localDropboxPicker');
+  const gridL    = document.getElementById('group-landscape');
+  const gridP    = document.getElementById('group-portrait');
+  const statusEl = document.getElementById('localImportStatus');
+
+  // These should exist on your form; adjust IDs if different
+  const caseInput   = document.getElementById('insured_id'); // case_id
+  const reportInput = document.getElementById('report_id');  // report_id
+
+  // ===== Config =====
+  const UPLOAD_URL = '/reports/import_local_dropbox'; // matches your Flask route
+
+  // in-memory picks
+  const picked = []; // {id,name,type,url,serverUrl?,width,height,orientation,selected}
+
+  // Expose for other buttons (save/preview)
+  window.getSelectedReportImages = function(){
+    return picked.filter(x => x.selected).map(x => ({
+      name: x.name,
+      url:  x.serverUrl || x.url, // prefer server URL
+      orientation: x.orientation,
+      width: x.width, height: x.height, type: x.type
+    }));
+  };
+
+  // ===== Helpers =====
+  function setStatus(msg){ if(statusEl) statusEl.textContent = msg || ''; }
+  function clearGrids(){ gridL && (gridL.innerHTML=''); gridP && (gridP.innerHTML=''); }
+
+  function makeThumbCard(item){
+    const wrap = document.createElement('label');
+    wrap.className = 'thumb';
+    wrap.style.cursor = 'pointer';
+
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = item.selected;
+    box.style.marginInlineEnd = '.35rem';
+    box.addEventListener('change', () => { item.selected = box.checked; });
+
+    if (item.type.startsWith('image/')){
+      const img = document.createElement('img');
+      img.src = item.serverUrl || item.url;
+      img.alt = item.name;
+      wrap.appendChild(img);
+    } else {
+      const div = document.createElement('div');
+      div.style.height='110px';
+      div.style.display='flex';
+      div.style.alignItems='center';
+      div.style.justifyContent='center';
+      div.style.borderRadius='6px';
+      div.style.background='#f3f4f6';
+      div.textContent = 'וידאו';
+      wrap.appendChild(div);
+    }
+
+    const meta = document.createElement('div');
+    meta.style.marginTop='.35rem';
+    meta.innerHTML = `<span class="name" title="${item.name}">${item.name}</span>`;
+
+    wrap.appendChild(meta);
+    wrap.insertBefore(box, wrap.firstChild);
+    return wrap;
+  }
+
+  function addItemToGrid(item){
+    const card = makeThumbCard(item);
+    (item.orientation === 'portrait' ? gridP : gridL)?.appendChild(card);
+  }
+
+  async function handleFiles(fileList){
+    if (!fileList || !fileList.length) return;
+
+    clearGrids();
+    picked.splice(0, picked.length);
+    setStatus('טוען קבצים מקומיים…');
+
+    let done = 0;
+    for (const file of fileList){
+      if (!/^image\/|^video\//.test(file.type)) { continue; }
+
+      const url = URL.createObjectURL(file);
+      let width=0, height=0, orientation='landscape';
+
+      if (file.type.startsWith('image/')){
+        const dims = await new Promise((resolve)=>{
+          const img = new Image();
+          img.onload = ()=> resolve({w:img.naturalWidth, h:img.naturalHeight});
+          img.onerror = ()=> resolve({w:0,h:0});
+          img.src = url;
+        });
+        width = dims.w; height = dims.h;
+        orientation = (width && height && height > width) ? 'portrait' : 'landscape';
+      }
+
+      const item = {
+        id: crypto.randomUUID(),
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        url, width, height, orientation,
+        selected: true
+      };
+      picked.push(item);
+      addItemToGrid(item);
+
+      done++;
+      setStatus(`נבחרו ${fileList.length} קבצים • נטענו ${done}/${fileList.length}`);
+    }
+
+    setStatus(`ייבוא הושלם: ${picked.length} קבצים (מסומנים כברירת מחדל).`);
+  }
+
+  async function uploadAll(files){
+    const fd = new FormData();
+    for (const f of files) fd.append('files[]', f, f.name); // multi
+    fd.append('case_id',   (caseInput?.value || 'no_case').trim());
+    fd.append('report_id', (reportInput?.value || 'no_report').trim());
+
+    const res = await fetch(UPLOAD_URL, { method:'POST', body: fd });
+    if (!res.ok) throw new Error('Upload failed');
+    return res.json(); // {status:"ok", saved:[{name,url},...]}
+  }
+
+  function mergeServerResults(result){
+    if (!result || result.status !== 'ok' || !Array.isArray(result.saved)) return;
+
+    // try map by filename; if mismatch (server renames), attach sequentially
+    let i = 0;
+    for (const s of result.saved){
+      // attempt exact filename match
+      let item = picked.find(p => p.name === s.name)
+             ||  picked.find(p => (p.name||'').toLowerCase() === (s.name||'').toLowerCase());
+
+      if (!item){
+        // fallback: next item without a serverUrl
+        item = picked.find(p => !p.serverUrl) || picked[i];
+      }
+      if (item){
+        item.serverUrl = s.url; // use server serve URL for display & saving
+      }
+      i++;
+    }
+
+    // re-render so thumbnails prefer server URLs
+    clearGrids();
+    picked.forEach(addItemToGrid);
+  }
+
+  // ===== Events =====
+  btn?.addEventListener('click', () => input?.click());
+
+  input?.addEventListener('change', async (e) => {
+    const files = e.target.files;
+    if (!files || !files.length) return;
+
+    // 1) Preview immediately
+    await handleFiles(files);
+
+    // 2) Upload to server
+    try {
+      setStatus(`מעלה ${files.length} קבצים…`);
+      const result = await uploadAll(files);
+      setStatus(`הועלו ${files.length} קבצים בהצלחה.`);
+      mergeServerResults(result);
+    } catch (err){
+      console.error(err);
+      setStatus('שגיאה בהעלאה. בדוק את השרת/נתיב והרשאות כתיבה.');
+    } finally {
+      // allow re-selecting the same files later
+      e.target.value = '';
+    }
+  });
+})();
+</script>
+
+
 
 
 <script src="/static/assets/js/main.js"></script>

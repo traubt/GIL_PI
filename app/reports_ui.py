@@ -746,31 +746,59 @@ def ensure_dir(path):
 
 @reports_ui_bp.post("/import_local_dropbox")
 def import_local_dropbox():
-    f = request.files.get("file")
-    if not f or f.filename == "":
-        return jsonify({"status":"error","message":"no file"}), 400
+    """
+    Accept both:
+      - single file under form key 'file'
+      - multiple files under 'files[]' or 'files'
+    Saves into REPORT_MEDIA_DIR/<case_id>/<report_id>/ and returns list of saved items.
+    """
+    from werkzeug.utils import secure_filename
+
+    # collect files (multi or single)
+    files = (
+        request.files.getlist("files[]")
+        or request.files.getlist("files")
+        or ([request.files.get("file")] if request.files.get("file") else [])
+    )
+    if not files:
+        return jsonify({"status": "error", "message": "no files"}), 400
 
     allowed = {"jpg","jpeg","png","gif","webp","bmp","tif","tiff","mp4","mov","avi","mkv","webm"}
-    ext = f.filename.rsplit(".",1)[-1].lower()
-    if ext not in allowed:
-        return jsonify({"status":"error","message":"type not allowed"}), 400
-
-    base_dir = current_app.config.get("REPORT_MEDIA_DIR",
-                                      os.path.join(current_app.instance_path, "report_media"))
+    base_dir = current_app.config.get(
+        "REPORT_MEDIA_DIR",
+        os.path.join(current_app.instance_path, "report_media")
+    )
     case_id   = (request.form.get("case_id") or "no_case").strip()
     report_id = (request.form.get("report_id") or "no_report").strip()
 
     target_dir = os.path.join(base_dir, case_id, report_id)
     os.makedirs(target_dir, exist_ok=True)
 
-    safe = secure_filename(f.filename)
+    saved = []
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    rnd = uuid.uuid4().hex[:6]
-    name, ext2 = os.path.splitext(safe)
-    saved_as = f"{name}_{ts}_{rnd}{ext2.lower()}"
-    f.save(os.path.join(target_dir, saved_as))
 
-    return jsonify({"status":"ok","saved_as": saved_as})
+    for f in files:
+        if not f or not f.filename:
+            continue
+        ext = f.filename.rsplit(".", 1)[-1].lower()
+        if ext not in allowed:
+            continue
+
+        safe = secure_filename(f.filename)
+        name, ext2 = os.path.splitext(safe)
+        final = f"{name}_{ts}_{uuid.uuid4().hex[:6]}{ext2.lower()}"
+        path = os.path.join(target_dir, final)
+        f.save(path)
+
+        # URL to serve later via /reports/photos/serve
+        serve_url = (
+            f"/reports/photos/serve?case_id={case_id}"
+            f"&report_id={report_id}&name={final}"
+        )
+        saved.append({"name": final, "url": serve_url})
+
+    return jsonify({"status": "ok", "saved": saved})
+
 
 # ------- list uploaded photos for this report (from REPORT_MEDIA_DIR) -------
 @reports_ui_bp.post("/photos/list_report")
