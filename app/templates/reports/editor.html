@@ -3,6 +3,11 @@
   {% include 'header-bar.html' %}
   {% include 'side-bar.html' %}
 
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+
+
 <main id="main" class="main" dir="rtl">
 
   <!-- Global photos loader -->
@@ -163,7 +168,7 @@
                     <div class="row g-2">
                       <div class="col-md-4">
                         <label class="form-label">תאריך פעילות</label>
-                        <input id="ctx_activity_date" type="date" class="form-control">
+                        <input id="ctx_activity_date" type="text" class="form-control js-date" >
                       </div>
                       <div class="col-md-4">
                         <label class="form-label">מקום המעקב</label>
@@ -318,10 +323,11 @@
   function fillInsuredCardFromOption(opt){
     const get = (k)=> (opt?.dataset?.[k] ?? '').trim();
     const full = get('fullName') || ((get('lastName') + ' ' + get('firstName')).trim());
+    const birthIso = get('birthDate');
     const map = {
       db_ref_number: get('ref'),
       db_full_name:  full,
-      db_birth_date: get('birthDate'),
+      db_birth_date: birthIso ? isoToDmy(birthIso) : "",
       db_gender:     get('gender'),
       db_id_number:  get('idNumber'),
       db_claim_number: get('claimNumber'),
@@ -334,7 +340,7 @@
     state.db = {
       ref_number: map.db_ref_number || "",
       full_name:  map.db_full_name || "",
-      birth_date: map.db_birth_date || "",
+      birth_date: birthIso || "",
       gender:     map.db_gender || "",
       id_number:  map.db_id_number || "",
       claim_number: map.db_claim_number || ""
@@ -529,7 +535,8 @@
   function buildQuery(){
     const q = new URLSearchParams();
     if (state.insured_id) q.set('insured_id', state.insured_id);
-    if (val('ctx_activity_date')) q.set('activity_date', val('ctx_activity_date'));
+    // if (val('ctx_activity_date')) q.set('activity_date', val('ctx_activity_date'));
+    if (state.ctx.activity_date) q.set('activity_date', state.ctx.activity_date);
     if (val('ctx_surv_place'))    q.set('surv_place', val('ctx_surv_place'));
     if (val('ctx_surv_city'))     q.set('surv_city',  val('ctx_surv_city'));
     if (val('ctx_injury_type'))   q.set('injury_type', val('ctx_injury_type'));
@@ -571,7 +578,7 @@
         const id = currentReportId();
         const payload = {
           insured_id:    state.insured_id || null,
-          activity_date: val('ctx_activity_date'),
+          activity_date: state.ctx.activity_date || "",
           surv_place:    val('ctx_surv_place'),
           surv_city:     val('ctx_surv_city'),
           template:      selectedTemplateKey(),
@@ -625,6 +632,55 @@
   updateTemplateBadge();
 })();
 </script>
+
+<script>
+  // Helpers (only if not already defined elsewhere)
+  function isoToDmy(iso){
+    if(!iso) return "";
+    const [y,m,d] = iso.split("-");
+    return `${d.padStart(2,"0")}/${m.padStart(2,"0")}/${y}`;
+  }
+  function dmyToIso(dmy){
+    if(!dmy) return "";
+    const [d,m,y] = dmy.split(/[./-]/);
+    if(!y||!m||!d) return "";
+    return `${y.padStart(4,"0")}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+  }
+
+  document.addEventListener('DOMContentLoaded', function(){
+    const el = document.getElementById('ctx_activity_date');
+    if(!el) return;
+
+    // reflect current ISO (if any) in the visible input
+    if (window.state?.ctx?.activity_date){
+      el.value = isoToDmy(state.ctx.activity_date);
+    }
+
+    flatpickr(el, {
+      dateFormat: "d/m/Y",
+      allowInput: true,
+      defaultDate: el.value || null,
+      onChange(selectedDates, dateStr){
+        let iso = "";
+        if (selectedDates?.[0]){
+          const d = selectedDates[0];
+          const pad = n => `${n}`.padStart(2,"0");
+          iso = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+        } else {
+          iso = dmyToIso(dateStr);
+        }
+        if (window.state) state.ctx.activity_date = iso; // keep ISO in state
+        el.value = iso ? isoToDmy(iso) : "";             // show DD/MM/YYYY
+      },
+      onClose(selectedDates, dateStr){
+        const iso = dmyToIso(dateStr);
+        if (window.state) state.ctx.activity_date = iso;
+        el.value = iso ? isoToDmy(iso) : "";
+      }
+    });
+  });
+</script>
+
 
 <script src="/static/assets/js/main.js"></script>
 {% endblock %}
