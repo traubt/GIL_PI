@@ -646,7 +646,8 @@
     q.set('template', selectedTemplateKey());
 
     const names = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
-    if (names.length) q.append('selected_photos[]', names[0]); // Step 1: first only
+for (const n of names) q.append('selected_photos[]', n);
+
 
     q.set('ts', Date.now());
     return q.toString();

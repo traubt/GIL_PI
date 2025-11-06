@@ -473,58 +473,62 @@ def preview_docx_as_pdf(report_id: int):
     }
     context = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
-    # resolve template
+    # template
     tmpl_key = request.args.get("template", "tracking")
     template_path = load_template_docx(map_template_key(tmpl_key))
+    tpl = DocxTemplate(template_path)
 
-    # --- Step 1: pick ONE selected photo name from query and resolve to disk
-    def _first_selected_from_args(args, case_id: str, rep_id: str) -> str | None:
-        names = args.getlist("selected_photos[]")
-        if not names:
-            sp = args.get("selected_photo", "")
-            if sp:
-                names = [sp]
-        first = os.path.basename(names[0]) if names else None
-        if not first:
-            current_app.logger.info("[PHOTOS] no selected photo in query")
-            return None
+    # collect selected list (handles both selected_photos[] and selected_photos)
+    selected = request.args.getlist("selected_photos[]")
+    if not selected:
+        selected = request.args.getlist("selected_photos")
+    selected = [os.path.basename(n) for n in selected if n]
 
-        media_root = current_app.config.get(
-            "REPORT_MEDIA_DIR",
-            os.path.join(current_app.instance_path, "report_media")
-        )
-        exact = os.path.join(media_root, str(case_id), str(rep_id), first)
-        if os.path.isfile(exact):
-            current_app.logger.info(f"[PHOTOS] using exact path: {exact}")
-            return exact
-
-        # fallback: search anywhere under this case_id
-        for root, _dirs, files in os.walk(os.path.join(media_root, str(case_id))):
-            if first in files:
-                candidate = os.path.join(root, first)
-                current_app.logger.info(f"[PHOTOS] fallback hit: {candidate}")
-                return candidate
-
-        current_app.logger.warning(f"[PHOTOS] not found: case={case_id} rep={rep_id} name={first}")
-        return None
-
-    case_id_str  = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
+    case_id_str   = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
     report_id_str = str(report_id)
 
-    # Build with DocxTemplate directly so we can inject InlineImage before render()
-    tpl = DocxTemplate(template_path)
-    img_path = _first_selected_from_args(request.args, case_id_str, report_id_str)
-    context["photo_s3"] = InlineImage(tpl, img_path, width=Mm(140)) if img_path else ""
+    media_root = current_app.config.get(
+        "REPORT_MEDIA_DIR",
+        os.path.join(current_app.instance_path, "report_media")
+    )
 
-    # Render to DOCX bytes
+    # resolve to absolute paths (with fallback search in the case folder)
+    def resolve_one(name: str) -> str | None:
+        exact = os.path.join(media_root, case_id_str, report_id_str, name)
+        if os.path.isfile(exact):
+            return exact
+        case_root = os.path.join(media_root, case_id_str)
+        if os.path.isdir(case_root):
+            for root, _dirs, files in os.walk(case_root):
+                if name in files:
+                    return os.path.join(root, name)
+        current_app.logger.warning("[PHOTOS] not found: %s", name)
+        return None
+
+    paths = [p for n in selected if (p := resolve_one(n))]
+    # fallback: if nothing selected/resolved, include all images in the report folder
+    if not paths:
+        folder = os.path.join(media_root, case_id_str, report_id_str)
+        if os.path.isdir(folder):
+            for fn in sorted(os.listdir(folder)):
+                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
+                    paths.append(os.path.join(folder, fn))
+
+    # build InlineImage list
+    images = [InlineImage(tpl, p, width=Mm(140)) for p in paths]
+    context["photo_s3"]  = images[0] if images else ""
+    context["photos_s3"] = images
+
+    # DOCX -> bytes
     buf = io.BytesIO()
     tpl.render(context)
     tpl.save(buf)
     docx_bytes = buf.getvalue()
 
-    # Convert to PDF using your existing LibreOffice helper
-    pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
+    # bytes -> PDF bytes
+    pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
+
 
 
 # ---- download DOCX (REPLACE with photo-aware) ----
