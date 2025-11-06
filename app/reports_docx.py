@@ -470,7 +470,9 @@ def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
 # from PIL import Image, ImageOps   # if Pillow not installed, pip install pillow
 
 # ====== small helpers (drop in once) =========================================
+# ---- helpers: tmpdir, orientation, resize, preprocess (with logging) ----
 from contextlib import contextmanager
+from PIL import Image, ImageOps  # make sure Pillow is installed
 
 @contextmanager
 def _tmpdir(prefix="report_img_"):
@@ -481,45 +483,62 @@ def _tmpdir(prefix="report_img_"):
         td.cleanup()
 
 def _detect_orientation(path: str) -> str:
-    """
-    Return 'portrait' if the visual height is meaningfully larger than width,
-    after correcting EXIF rotation; otherwise 'landscape'.
-    Uses a tolerance so near-square shots don’t get misclassified.
-    """
+    """Return 'portrait' if height >= width*1.10 after EXIF rotate, else 'landscape'."""
     try:
         with Image.open(path) as im:
             im = ImageOps.exif_transpose(im)
             w, h = im.size
-            # treat as portrait if height is at least 10% greater than width
             return "portrait" if (h / max(1, w)) >= 1.10 else "landscape"
     except Exception:
         return "landscape"
 
-
-def _resize_copy(src: str, dst: str, max_w: int, max_h: int, quality: int = 82):
-    """Resize into dst (JPEG) with EXIF rotation, keep aspect."""
+def _resize_copy(src: str, dst: str, max_w: int, max_h: int, quality: int = 82) -> tuple[int,int,int,int]:
+    """
+    Resize into dst (JPEG) with EXIF rotation, keep aspect.
+    Returns (orig_w, orig_h, new_w, new_h).
+    """
     with Image.open(src) as im:
         im = ImageOps.exif_transpose(im)
+        ow, oh = im.size
         im.thumbnail((max_w, max_h), Image.LANCZOS)
+        nw, nh = im.size
         if im.mode not in ("RGB", "L"):
             im = im.convert("RGB")
         im.save(dst, format="JPEG",
                 quality=quality, optimize=True, progressive=True, subsampling="4:2:0")
+        return ow, oh, nw, nh
 
-def _preprocess_for_docx(tmpdir: str, paths: list[str]) -> list[tuple[str, str]]:
-    out: list[tuple[str, str]] = []
+def _preprocess_for_docx(tmpdir: str, paths: list[str]) -> list[dict]:
+    """
+    For each path, produce a dict:
+      { "path": <processed_path>, "guess": "portrait"/"landscape",
+        "ow": <orig_w>, "oh": <orig_h>, "w": <new_w>, "h": <new_h> }
+    """
+    out: list[dict] = []
     for idx, p in enumerate(paths):
-        orient = _detect_orientation(p)
-        # ↓ smaller caps = smaller files
-        max_w, max_h = ((700, 1100) if orient == "portrait" else (1400, 900))
+        guess = _detect_orientation(p)
+        # caps: keep files small but clear
+        max_w, max_h = ((700, 1100) if guess == "portrait" else (1400, 900))
         dst = os.path.join(tmpdir, f"img_{idx:03d}.jpg")
         try:
-            _resize_copy(p, dst, max_w, max_h, quality=80)
-            out.append((dst, orient))
+            ow, oh, nw, nh = _resize_copy(p, dst, max_w, max_h, quality=80)
+            current_app.logger.info(
+                "[PREPROC] %s -> %s | guess=%s | orig=%dx%d -> proc=%dx%d",
+                os.path.basename(p), os.path.basename(dst), guess, ow, oh, nw, nh
+            )
+            out.append({"path": dst, "guess": guess, "ow": ow, "oh": oh, "w": nw, "h": nh})
         except Exception as e:
             current_app.logger.warning("[PREPROC] failed %s: %s; using original", p, e)
-            out.append((p, orient))
+            # fall back to original (we don’t know processed size, so re-open to get it)
+            try:
+                with Image.open(p) as im:
+                    im = ImageOps.exif_transpose(im)
+                    nw, nh = im.size
+            except Exception:
+                nw = nh = 0
+            out.append({"path": p, "guess": guess, "ow": 0, "oh": 0, "w": nw, "h": nh})
     return out
+
 
 
 def _report_media_root() -> str:
@@ -578,13 +597,28 @@ def preview_docx_as_pdf(report_id: int):
     # preprocess (rotate/resize -> temp JPEGs) and build InlineImages with fixed widths
     with _tmpdir() as td:
         proc_items = _preprocess_for_docx(td, paths)
-        LAND_W, PORT_W = Mm(120), Mm(42)  # fixed visual sizes in the DOCX
+
+        # fixed visual sizes we want in the DOCX
+        LAND_W, PORT_W = Mm(120), Mm(42)
+
         images = []
-        for p, orient in proc_items:
-            width = PORT_W if orient == "portrait" else LAND_W
+        for item in proc_items:
+            p, w, h = item["path"], item["w"], item["h"]
+
+            # safety net: use the processed dimensions to decide portrait/landscape
+            is_portrait = (h or 0) >= (w or 0)
+            width = PORT_W if is_portrait else LAND_W
+
+            current_app.logger.info(
+                "[EMBED] file=%s | proc=%dx%d | chosen=%s width=%s mm",
+                os.path.basename(p), w, h,
+                "portrait" if is_portrait else "landscape",
+                "PORT_W(42)" if is_portrait else "LAND_W(120)"
+            )
+
             images.append(InlineImage(tpl, p, width=width))
 
-        context["photo_s3"]  = images[0] if images else ""
+        context["photo_s3"] = images[0] if images else ""
         context["photos_s3"] = images
 
         # render to DOCX bytes while temp files still exist
@@ -666,17 +700,27 @@ def render_docx_download(report_id: int):
         with _tmpdir() as td:
             proc_items = _preprocess_for_docx(td, paths)
 
-            # keep same page presence as preview
-            LAND_W = Mm(120)
-            PORT_W = Mm(42)  # smaller so portraits don’t eat a whole page
+            # fixed visual sizes we want in the DOCX
+            LAND_W, PORT_W = Mm(120), Mm(42)
 
             images = []
-            for p, orient in proc_items:
-                width = PORT_W if orient == "portrait" else LAND_W
+            for item in proc_items:
+                p, w, h = item["path"], item["w"], item["h"]
+
+                # safety net: use the processed dimensions to decide portrait/landscape
+                is_portrait = (h or 0) >= (w or 0)
+                width = PORT_W if is_portrait else LAND_W
+
+                current_app.logger.info(
+                    "[EMBED] file=%s | proc=%dx%d | chosen=%s width=%s mm",
+                    os.path.basename(p), w, h,
+                    "portrait" if is_portrait else "landscape",
+                    "PORT_W(42)" if is_portrait else "LAND_W(120)"
+                )
+
                 images.append(InlineImage(tpl, p, width=width))
 
-            # section 3 – one or many
-            context["photo_s3"]  = images[0] if images else ""
+            context["photo_s3"] = images[0] if images else ""
             context["photos_s3"] = images
 
             # render DOCX to bytes while temp files exist
