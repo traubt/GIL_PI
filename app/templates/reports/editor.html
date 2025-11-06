@@ -683,6 +683,14 @@ for (const n of names) q.append('selected_photos[]', n);
       try {
         showBusy("מכין קובץ Word...");
         const id = currentReportId();
+        const names  = (typeof window.selectedPhotoNames === 'function')
+          ? window.selectedPhotoNames() : [];
+        const photos = (typeof window.getSelectedReportImages === 'function')
+          ? window.getSelectedReportImages() : [];
+
+          console.log('selected_photos:', names);
+          console.log('photos:', photos);
+
         const payload = {
           insured_id:    state.insured_id || null,
           activity_date: state.ctx.activity_date || "",
@@ -690,9 +698,12 @@ for (const n of names) q.append('selected_photos[]', n);
           surv_city:     val('ctx_surv_city'),
           template:      selectedTemplateKey(),
           injury_type:   val('ctx_injury_type'),
-          // Step 1: single photo (optional to include in DOCX save if your route expects it)
-          selected_photos: (typeof window.selectedPhotoNames === 'function') ? [window.selectedPhotoNames()[0] || ""] : []
+          // send ALL selected photos
+          selected_photos: names,
+          // optional: also send detailed objects (the server route already supports this)
+          photos: photos
         };
+
         const resp = await fetch(`/reports/${id}/render-docx`, {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
