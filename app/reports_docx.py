@@ -461,7 +461,7 @@ def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
                 time.sleep(0.3)
 
 
-# ---- preview PDF (KEEP) ----
+# ---- preview PDF (REPLACE with photo-aware) ----
 @reports_docx_bp.route("/<int:report_id>/preview-pdf", methods=["GET"])
 def preview_docx_as_pdf(report_id: int):
     insured_id = request.args.get("insured_id", type=int)
@@ -469,17 +469,65 @@ def preview_docx_as_pdf(report_id: int):
         "activity_date": request.args.get("activity_date", ""),
         "surv_place":    request.args.get("surv_place", ""),
         "surv_city":     request.args.get("surv_city",  ""),
-        "injury_type": request.args.get("injury_type", ""),
+        "injury_type":   request.args.get("injury_type", ""),
     }
     context = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
+
+    # resolve template
     tmpl_key = request.args.get("template", "tracking")
     template_path = load_template_docx(map_template_key(tmpl_key))
-    docx_bytes = render_docx_bytes(template_path, context)
+
+    # --- Step 1: pick ONE selected photo name from query and resolve to disk
+    def _first_selected_from_args(args, case_id: str, rep_id: str) -> str | None:
+        names = args.getlist("selected_photos[]")
+        if not names:
+            sp = args.get("selected_photo", "")
+            if sp:
+                names = [sp]
+        first = os.path.basename(names[0]) if names else None
+        if not first:
+            current_app.logger.info("[PHOTOS] no selected photo in query")
+            return None
+
+        media_root = current_app.config.get(
+            "REPORT_MEDIA_DIR",
+            os.path.join(current_app.instance_path, "report_media")
+        )
+        exact = os.path.join(media_root, str(case_id), str(rep_id), first)
+        if os.path.isfile(exact):
+            current_app.logger.info(f"[PHOTOS] using exact path: {exact}")
+            return exact
+
+        # fallback: search anywhere under this case_id
+        for root, _dirs, files in os.walk(os.path.join(media_root, str(case_id))):
+            if first in files:
+                candidate = os.path.join(root, first)
+                current_app.logger.info(f"[PHOTOS] fallback hit: {candidate}")
+                return candidate
+
+        current_app.logger.warning(f"[PHOTOS] not found: case={case_id} rep={rep_id} name={first}")
+        return None
+
+    case_id_str  = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
+    report_id_str = str(report_id)
+
+    # Build with DocxTemplate directly so we can inject InlineImage before render()
+    tpl = DocxTemplate(template_path)
+    img_path = _first_selected_from_args(request.args, case_id_str, report_id_str)
+    context["photo_s3"] = InlineImage(tpl, img_path, width=Mm(140)) if img_path else ""
+
+    # Render to DOCX bytes
+    buf = io.BytesIO()
+    tpl.render(context)
+    tpl.save(buf)
+    docx_bytes = buf.getvalue()
+
+    # Convert to PDF using your existing LibreOffice helper
     pdf_bytes  = _docx_to_pdf_bytes(docx_bytes)
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
 
 
-# ---- download DOCX (KEEP) ----
+# ---- download DOCX (REPLACE with photo-aware) ----
 @reports_docx_bp.route("/<int:report_id>/render-docx", methods=["POST"])
 def render_docx_download(report_id: int):
     data = request.get_json(silent=True) or {}
@@ -488,12 +536,39 @@ def render_docx_download(report_id: int):
         "activity_date": data.get("activity_date", ""),
         "surv_place":    data.get("surv_place", ""),
         "surv_city":     data.get("surv_city",  ""),
-        "injury_type": data.get("injury_type", ""),
+        "injury_type":   data.get("injury_type", ""),
     }
     context = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
+
     tmpl_key = data.get("template", "tracking")
     template_path = load_template_docx(map_template_key(tmpl_key))
-    docx_bytes = render_docx_bytes(template_path, context)
+
+    # --- Step 1: pick ONE selected photo from JSON and resolve to disk
+    def _first_selected_from_json(body: dict, case_id: str, rep_id: str) -> str | None:
+        arr = body.get("selected_photos") or []
+        first = os.path.basename(arr[0]) if isinstance(arr, list) and arr else None
+        if not first:
+            return None
+        media_root = current_app.config.get(
+            "REPORT_MEDIA_DIR",
+            os.path.join(current_app.instance_path, "report_media")
+        )
+        p = os.path.join(media_root, str(case_id), str(rep_id), first)
+        return p if os.path.isfile(p) else None
+
+    case_id_str   = str(data.get("insured_id") or data.get("case_id") or "").strip()
+    report_id_str = str(report_id)
+
+    # Render with DocxTemplate so we can inject InlineImage before render()
+    tpl = DocxTemplate(template_path)
+    img_path = _first_selected_from_json(data, case_id_str, report_id_str)
+    context["photo_s3"] = InlineImage(tpl, img_path, width=Mm(140)) if img_path else ""
+
+    buf = io.BytesIO()
+    tpl.render(context)
+    tpl.save(buf)
+    docx_bytes = buf.getvalue()
+
     ensure_output_dir()
     version_stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     fname = f"report_{report_id}_{version_stamp}.docx"

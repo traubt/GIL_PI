@@ -6,8 +6,6 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
-
-
 <main id="main" class="main" dir="rtl">
 
   <!-- Global photos loader -->
@@ -168,100 +166,57 @@
                     <div class="row g-2">
                       <div class="col-md-4">
                         <label class="form-label">תאריך פעילות</label>
-                        <input id="ctx_activity_date" type="text" class="form-control js-date" >
+                        <input id="ctx_activity_date" type="text" class="form-control js-date">
                       </div>
                       <div class="col-md-4">
                         <label class="form-label">מקום המעקב</label>
-                        <input id="ctx_surv_place" type="text" class="form-control" >
+                        <input id="ctx_surv_place" type="text" class="form-control">
                       </div>
                       <div class="col-md-4">
                         <label class="form-label">עיר המעקב</label>
-                        <input id="ctx_surv_city" type="text" class="form-control" >
+                        <input id="ctx_surv_city" type="text" class="form-control">
                       </div>
                       <div class="col-md-4">
                         <label class="form-label">סוג פגיעה</label>
-                        <input id="ctx_injury_type" type="text" class="form-control" >
+                        <input id="ctx_injury_type" type="text" class="form-control">
                       </div>
-
                     </div>
                   </div>
                 </div>
               </div>
 
               <!-- Section 4: תמונות -->
-<!-- Section 4: תמונות -->
-<div class="col-12 section-block" data-section="photos">
-  <div class="card mt-1">
-    <div class="card-header d-flex justify-content-between align-items-center">
-      <strong>תמונות לדו"ח</strong>
-      <div>
-        <button id="btnImportLocalDropbox" type="button" class="btn btn-outline-primary btn-sm">
-          ייבוא מדרופבוקס מקומי
-        </button>
-
-        <!-- hidden multi-file picker (local Dropbox folder on your machine) -->
-        <input id="localDropboxPicker"
-               type="file"
-               name="files[]"
-               accept="image/*,video/*"
-               multiple
-               style="display:none;">
-
-        <div id="localImportStatus" class="mt-2 small text-muted" style="white-space:pre-line;"></div>
-
-        <!-- keep these for possible future use -->
-        <!-- <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button> -->
-        <!-- <button id="btn-upload-local"  type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button> -->
-
-        <!-- legacy filepicker (kept but unused) -->
-        <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
-      </div>
-    </div>
-
-    <div class="card-body">
-      <input type="hidden" id="localToken" value="">
-      <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
-
-      <div class="mb-2 fw-bold text-muted">(Landscape) תמונות לרוחב</div>
-      <div id="group-landscape" class="thumb-grid"></div>
-
-      <div class="mb-2 mt-4 fw-bold text-muted">(Portrait) תמונות לאורך</div>
-      <div id="group-portrait" class="thumb-grid"></div>
-    </div>
-  </div>
-</div>
-<!-- /PHOTOS -->
-
-<!-- Minimal CSS (once per page) -->
-<style>
-  .thumb-grid{
-    display:grid;
-    grid-template-columns:repeat(auto-fill, minmax(130px,1fr));
-    gap:10px;
-  }
-  .thumb{
-    display:block;
-    border:1px solid #e5e7eb;
-    border-radius:10px;
-    padding:8px;
-    background:#fff;
-  }
-  .thumb img{
-    width:100%;
-    height:110px;
-    object-fit:cover;
-    border-radius:6px;
-  }
-  .thumb .name{
-    display:block;
-    font-size:12px;
-    color:#374151;
-    white-space:nowrap;
-    overflow:hidden;
-    text-overflow:ellipsis;
-  }
-</style>
-
+              <div class="col-12 section-block" data-section="photos">
+                <div class="card mt-1">
+                  <div class="card-header d-flex justify-content-between align-items-center">
+                    <strong>תמונות לדו"ח</strong>
+                    <div>
+                      <button id="btnImportLocalDropbox" type="button" class="btn btn-outline-primary btn-sm">
+                        ייבוא מדרופבוקס מקומי
+                      </button>
+                      <input id="localDropboxPicker"
+                             type="file"
+                             name="files[]"
+                             accept="image/*,video/*"
+                             multiple
+                             style="display:none;">
+                      <div id="localImportStatus" class="mt-2 small text-muted" style="white-space:pre-line;"></div>
+                      <!-- future options kept commented -->
+                      <!-- <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button> -->
+                      <!-- <button id="btn-upload-local"  type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button> -->
+                      <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
+                    </div>
+                  </div>
+                  <div class="card-body">
+                    <input type="hidden" id="localToken" value="">
+                    <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
+                    <div class="mb-2 fw-bold text-muted">(Landscape) תמונות לרוחב</div>
+                    <div id="group-landscape" class="thumb-grid"></div>
+                    <div class="mb-2 mt-4 fw-bold text-muted">(Portrait) תמונות לאורך</div>
+                    <div id="group-portrait" class="thumb-grid"></div>
+                  </div>
+                </div>
+              </div>
               <!-- /PHOTOS -->
 
             </div>
@@ -307,20 +262,14 @@
     version_no: 0,
     status_str: "Draft",
     reference_no: "—",
-    // DB-sourced (display only) - kept here for future steps
-    db: {
-      ref_number: "", full_name: "", birth_date: "", gender: "",
-      id_number: "", claim_number: ""
-    },
-    // Context (template) params
-    ctx: {
-      activity_date: "", surv_place: "", surv_city: ""
-    },
+    db: { ref_number: "", full_name: "", birth_date: "", gender: "", id_number: "", claim_number: "" },
+    ctx: { activity_date: "", surv_place: "", surv_city: "", injury_type: "" },
     photos: []
   };
   window.state = state;
 
-  const $ = (s)=>document.querySelector(s);
+  // IMPORTANT: don't shadow jQuery's `$`
+  const E = (sel)=>document.querySelector(sel);
 
   function currentInsurer(){
     return document.getElementById('insurer')?.value?.trim() || 'מנורה';
@@ -330,10 +279,8 @@
     const insurer = currentInsurer();
     const rtRaw   = (state.report_type || '').trim();
     const rt      = rtRaw.toUpperCase();
-
     const labelByType = {
-      'TRACKING':'דוח מעקב','ID_PHOTOS':'תמונת זיהוי','PERSONAL':'דוח פרטים אישיים',
-      'PHOTOSET':'תמונות','SIUDI':'דוח חקירה סיעודי'
+      'TRACKING':'דוח מעקב','ID_PHOTOS':'תמונת זיהוי','PERSONAL':'דוח פרטים אישיים','PHOTOSET':'תמונות','SIUDI':'דוח חקירה סיעודי'
     };
     const fileByType = {
       'TRACKING':'דוח מעקב.docx',
@@ -349,13 +296,13 @@
 
   function applyTemplateSections(){
     document.querySelectorAll('.section-block').forEach(b=>b.style.display = '');
-    $('#templateBadge').innerText = 'תבנית: ' + computeTemplateName();
+    E('#templateBadge').innerText = 'תבנית: ' + computeTemplateName();
   }
 
   function updateMetaBadges(){
-    $('#refBadge').innerText     = 'מספרנו: ' + (state.reference_no || '—');
-    $('#versionBadge').innerText = 'גרסה: ' + (state.version_no ?? 0);
-    $('#statusBadge').innerText  = 'סטטוס: ' + (state.status_str || 'Draft');
+    E('#refBadge').innerText     = 'מספרנו: ' + (state.reference_no || '—');
+    E('#versionBadge').innerText = 'גרסה: ' + (state.version_no ?? 0);
+    E('#statusBadge').innerText  = 'סטטוס: ' + (state.status_str || 'Draft');
   }
 
   function recomputeReferenceNow(){
@@ -365,57 +312,35 @@
     updateMetaBadges();
   }
 
-  function isoToYear(iso){
-    if(!iso) return "";
-    return iso.split("-")[0]; // "YYYY"
-  }
+  function isoToYear(iso){ return iso ? iso.split("-")[0] : ""; }
 
-function fillInsuredCardFromOption(opt){
-  const get = (k)=> (opt?.dataset?.[k] ?? '').trim();
-  const full = get('fullName') || ((get('lastName') + ' ' + get('firstName')).trim());
+  function fillInsuredCardFromOption(opt){
+    const get = (k)=> (opt?.dataset?.[k] ?? '').trim();
+    const full = get('fullName') || ((get('lastName') + ' ' + get('firstName')).trim());
+    const birthIso = get('birthDate');
+    const birthYear = isoToYear(birthIso);
+    const gender = get('gender');
 
-  const birthIso = get('birthDate');           // "YYYY-MM-DD" from dataset
-  const birthYear = isoToYear(birthIso);       // "YYYY"
-
-  const gender = get('gender');                // "זכר"/"נקבה" or similar
-
-  const map = {
-    db_ref_number:   get('ref'),
-    db_full_name:    full,
-    db_birth_date:   birthYear,                // show year only
-    db_gender:       gender,
-    db_id_number:    get('idNumber'),
-    db_claim_number: get('claimNumber'),
-  };
-
-  for (const [id,val] of Object.entries(map)){
-    const el = document.getElementById(id);
-    if (el) el.value = val || '';
-  }
-
-  // save raw ISO + gender in state
-  state.db = {
-    ref_number:   map.db_ref_number || "",
-    full_name:    map.db_full_name  || "",
-    birth_date:   birthIso || "",      // keep ISO for backend
-    gender:       gender || "",
-    id_number:    map.db_id_number || "",
-    claim_number: map.db_claim_number || ""
-  };
-
-  // Optional "nice touch": adjust the label by gender now
-  const labelEl = document.querySelector('label[for="db_birth_date"]') || document.querySelector('#db_birth_date')?.closest('.col-md-4')?.querySelector('.form-label');
-  if (labelEl){
-    if ((gender || '').includes('נקבה')) {
-      labelEl.textContent = 'שנת לידה';
-    } else {
-      labelEl.textContent = 'שנת לידה';
+    const map = {
+      db_ref_number:   get('ref'),
+      db_full_name:    full,
+      db_birth_date:   birthYear,
+      db_gender:       gender,
+      db_id_number:    get('idNumber'),
+      db_claim_number: get('claimNumber'),
+    };
+    for (const [id,val] of Object.entries(map)){
+      const el = document.getElementById(id);
+      if (el) el.value = val || '';
     }
+    state.db = {
+      ref_number: map.db_ref_number || "", full_name: map.db_full_name || "", birth_date: birthIso || "",
+      gender: gender || "", id_number: map.db_id_number || "", claim_number: map.db_claim_number || ""
+    };
   }
-}
 
   // ------------ form bindings ------------
-  const insuredSel = $('#insuredId');
+  const insuredSel = E('#insuredId');
   if (insuredSel){
     insuredSel.addEventListener('change', e=>{
       const opt = e.target.selectedOptions[0];
@@ -426,12 +351,10 @@ function fillInsuredCardFromOption(opt){
       fillInsuredCardFromOption(opt);
       applyTemplateSections();
       recomputeReferenceNow();
-      // auto-load photos for this insured
-      if (typeof loadFromDropboxForCurrentInsured === 'function') loadFromDropboxForCurrentInsured();
     });
   }
 
-  const reportTypeSel = $('#reportType');
+  const reportTypeSel = E('#reportType');
   if (reportTypeSel){
     reportTypeSel.addEventListener('change', e=>{
       state.report_type = e.target.value;
@@ -440,17 +363,10 @@ function fillInsuredCardFromOption(opt){
   }
 
   // Context inputs
-  const ctxActivity = $('#ctx_activity_date');
-  const ctxPlace    = $('#ctx_surv_place');
-  const ctxCity     = $('#ctx_surv_city');
-  const ctxInjury   = $('#ctx_injury_type');
-  if (ctxActivity) ctxActivity.addEventListener('change', e=> state.ctx.activity_date = e.target.value);
-  if (ctxPlace)    ctxPlace.addEventListener('input', e=> state.ctx.surv_place = e.target.value);
-  if (ctxCity)     ctxCity.addEventListener('input', e=> state.ctx.surv_city  = e.target.value);
-  if (ctxInjury) ctxInjury.addEventListener('input', e=> state.ctx.injury_type = e.target.value);
-
-  // chips noop
-  function renderChips(){}
+  E('#ctx_activity_date')?.addEventListener('change', e=> state.ctx.activity_date = e.target.value);
+  E('#ctx_surv_place')?.addEventListener('input',  e=> state.ctx.surv_place = e.target.value);
+  E('#ctx_surv_city')?.addEventListener('input',   e=> state.ctx.surv_city  = e.target.value);
+  E('#ctx_injury_type')?.addEventListener('input', e=> state.ctx.injury_type = e.target.value);
 
   async function saveDraft(){
     if (typeof window.getSelectedReportImages === 'function') {
@@ -474,9 +390,9 @@ function fillInsuredCardFromOption(opt){
     return false;
   }
 
-  $('#btnSaveDraft')?.addEventListener('click', async ()=>{ if (await saveDraft()) alert('נשמר כטיוטה ✅'); });
+  E('#btnSaveDraft')?.addEventListener('click', async ()=>{ if (await saveDraft()) alert('נשמר כטיוטה ✅'); });
 
-  $('#btnFinalize')?.addEventListener('click', async ()=>{
+  E('#btnFinalize')?.addEventListener('click', async ()=>{
     if (typeof window.getSelectedReportImages === 'function') {
       state.photos = window.getSelectedReportImages();
     }
@@ -497,22 +413,18 @@ function fillInsuredCardFromOption(opt){
     }
   });
 
-  $('#btnPreview')?.addEventListener('click', async ()=>{
+  // Green preview button (loads iframe with GET, includes first photo name)
+  document.getElementById('btnPreview')?.addEventListener('click', () => {
     const holder = document.getElementById('previewHolder');
     if (holder) holder.innerHTML = '<div class="text-muted">מייצר PDF…</div>';
 
-    if (typeof window.getSelectedReportImages === 'function') {
-      state.photos = window.getSelectedReportImages();
-    }
+    const names = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
+    console.log('preview selected name:', names[0] || '(none)');
 
-    const resp = await fetch('/reports/preview', {
-      method:'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(state)
-    });
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    if (holder){
+    const reportId = (window.state && Number(window.state.report_id)) ? Number(window.state.report_id) : 1;
+    const url = `/reports/${reportId}/preview-pdf?` + buildQuery();
+
+    if (holder) {
       holder.innerHTML = '';
       const iframe = document.createElement('iframe');
       iframe.src = url;
@@ -523,263 +435,48 @@ function fillInsuredCardFromOption(opt){
     }
   });
 
-  document.querySelectorAll('.dropdown-item[data-action]')?.forEach(a=>{
-    a.addEventListener('click', async (e)=>{
-      e.preventDefault();
-      const ok = await saveDraft(); if (!ok) return;
-      const action = e.currentTarget.dataset.action;
-      const fd = new FormData();
-      fd.append('action', action);
-      fd.append('report_id', state.report_id);
-      const res = await fetch('/reports/finalize', { method:'POST', body: fd });
-      const j = await res.json();
-      if (j.status === 'ok') {
-        if (j.reference_no) state.reference_no = j.reference_no;
-        if (j.version_no !== undefined) state.version_no = j.version_no;
-        if (j.status_str) state.status_str = j.status_str;
-        updateMetaBadges();
-        const map = {
-          version: 'נוצרה גרסה חדשה',
-          save_to_dropbox: 'נשמר ל-Dropbox (דמה)',
-          send_to_insurer: 'נשלח לחברת הביטוח (דמה)'
-        };
-        alert((map[action] || 'בוצע') + ' ✅');
-      } else {
-        alert('פעולה נכשלה');
-      }
-    });
-  });
-
   applyTemplateSections();
   updateMetaBadges();
 </script>
 
-<!-- Photos logic (unchanged) -->
-{{ super() }}
+<!-- PHOTOS logic -->
 <script>
 (function(){
-  // keep ALL your existing photos code from your previous file here unchanged
-})();
-</script>
-
-<script>
-(function () {
-  function showBusy(text){
-    const o = document.getElementById('busyOverlay');
-    const t = document.getElementById('busyText');
-    if (t && text) t.textContent = text;
-    if (o) o.style.display = 'flex';
-  }
-  function hideBusy(){ const o = document.getElementById('busyOverlay'); if (o) o.style.display = 'none'; }
-  function val(id){ return document.getElementById(id)?.value?.trim() || ""; }
-
-  function currentReportId(){
-    if (window.state && Number(window.state.report_id) > 0) return Number(window.state.report_id);
-    const f = document.getElementById('wordPreviewFrame');
-    if (f && f.src) {
-      const m = f.src.match(/\/reports\/(\d+)\/preview-pdf/i);
-      if (m) return Number(m[1]);
-    }
-    return 1;
-  }
-
-  function selectedTemplateKey(){
-    const rt = document.getElementById('reportType');
-    return (rt ? (rt.value || 'tracking') : 'tracking').toLowerCase();
-  }
-
-  function updateTemplateBadge(){
-    const chip = document.getElementById('templateBadge');
-    if (!chip) return;
-    const key = selectedTemplateKey();
-    const name = (key === 'siudi' && (document.getElementById('insurer')?.value || 'מנורה') === 'מנורה')
-      ? 'menora_siudi.docx'
-      : (key === 'tracking' ? 'מנורה - דוח מעקב.docx' : '—');
-    chip.textContent = 'תבנית: ' + name;
-  }
-
-  // Build query using only CONTEXT fields
-  function buildQuery(){
-    const q = new URLSearchParams();
-    if (state.insured_id) q.set('insured_id', state.insured_id);
-    // if (val('ctx_activity_date')) q.set('activity_date', val('ctx_activity_date'));
-    if (state.ctx.activity_date) q.set('activity_date', state.ctx.activity_date);
-    if (val('ctx_surv_place'))    q.set('surv_place', val('ctx_surv_place'));
-    if (val('ctx_surv_city'))     q.set('surv_city',  val('ctx_surv_city'));
-    if (val('ctx_injury_type'))   q.set('injury_type', val('ctx_injury_type'));
-
-    q.set('template', selectedTemplateKey());
-    q.set('ts', Date.now());
-    return q.toString();
-  }
-
-
-  const refreshBtn  = document.getElementById('refreshPreview');
-  const downloadBtn = document.getElementById('downloadDocx');
-  const frame       = document.getElementById('wordPreviewFrame');
-
-  document.getElementById('reportType')?.addEventListener('change', updateTemplateBadge);
-  document.getElementById('insurer')?.addEventListener('change', updateTemplateBadge);
-  updateTemplateBadge();
-
-  if (refreshBtn && frame) {
-    refreshBtn.addEventListener('click', function () {
-      updateTemplateBadge();
-      showBusy("מכין תצוגה...");
-      const tidy = () => { frame.removeEventListener('load', tidy); frame.removeEventListener('error', tidy); hideBusy(); };
-      frame.addEventListener('load', tidy,  { once:true });
-      frame.addEventListener('error', tidy, { once:true });
-      setTimeout(hideBusy, 15000);
-      const id = currentReportId();
-      frame.removeAttribute('srcdoc');
-      frame.src = 'about:blank';
-      frame.src = `/reports/${id}/preview-pdf?` + buildQuery();
-    });
-  }
-
-  if (downloadBtn) {
-    downloadBtn.addEventListener('click', async function(){
-      try {
-        updateTemplateBadge();
-        showBusy("מכין קובץ Word...");
-        const id = currentReportId();
-        const payload = {
-          insured_id:    state.insured_id || null,
-          activity_date: state.ctx.activity_date || "",
-          surv_place:    val('ctx_surv_place'),
-          surv_city:     val('ctx_surv_city'),
-          template:      selectedTemplateKey(),
-          injury_type:  val('ctx_injury_type'),
-        };
-
-        const resp = await fetch(`/reports/${id}/render-docx`, {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify(payload)
-        });
-        const data = await resp.json();
-        if (!data.ok) throw new Error(data.error || 'Docx generation failed');
-        hideBusy();
-        window.location.href = data.docx_url;
-      } catch (e) {
-        hideBusy();
-        alert(e.message || e);
-      }
-    });
-  }
-})();
-</script>
-
-<script>
-(function () {
-  function showSection(sectionKey, show) {
-    const el = document.querySelector(`[data-section="${sectionKey}"]`);
-    if (el) el.style.display = show ? "" : "none";
-  }
-  function computeTemplateFile() {
-    const rt = document.getElementById("reportType")?.value || "TRACKING";
-    if (rt === "SIUDI") return "menora_siudi.docx";
-    return "menora_report.docx";
-  }
-  function updateTemplateBadge() {
-    const badge = document.getElementById("templateBadge");
-    if (badge) badge.textContent = "תבנית: " + computeTemplateFile();
-  }
-  function applyTemplateVisibility() {
-    // keep all sections visible for now; future templates can hide/show
-    showSection("insured-info", true);
-    showSection("report-fields", true);
-    showSection("photos", true);
-  }
-  document.getElementById("reportType")?.addEventListener("change", () => {
-    applyTemplateVisibility();
-    updateTemplateBadge();
-  });
-  applyTemplateVisibility();
-  updateTemplateBadge();
-})();
-</script>
-
-<script>
-  // Helpers (only if not already defined elsewhere)
-  function isoToDmy(iso){
-    if(!iso) return "";
-    const [y,m,d] = iso.split("-");
-    return `${d.padStart(2,"0")}/${m.padStart(2,"0")}/${y}`;
-  }
-  function dmyToIso(dmy){
-    if(!dmy) return "";
-    const [d,m,y] = dmy.split(/[./-]/);
-    if(!y||!m||!d) return "";
-    return `${y.padStart(4,"0")}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
-  }
-
-  document.addEventListener('DOMContentLoaded', function(){
-    const el = document.getElementById('ctx_activity_date');
-    if(!el) return;
-
-    // reflect current ISO (if any) in the visible input
-    if (window.state?.ctx?.activity_date){
-      el.value = isoToDmy(state.ctx.activity_date);
-    }
-
-    flatpickr(el, {
-      dateFormat: "d/m/Y",
-      allowInput: true,
-      defaultDate: el.value || null,
-      onChange(selectedDates, dateStr){
-        let iso = "";
-        if (selectedDates?.[0]){
-          const d = selectedDates[0];
-          const pad = n => `${n}`.padStart(2,"0");
-          iso = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-        } else {
-          iso = dmyToIso(dateStr);
-        }
-        if (window.state) state.ctx.activity_date = iso; // keep ISO in state
-        el.value = iso ? isoToDmy(iso) : "";             // show DD/MM/YYYY
-      },
-      onClose(selectedDates, dateStr){
-        const iso = dmyToIso(dateStr);
-        if (window.state) state.ctx.activity_date = iso;
-        el.value = iso ? isoToDmy(iso) : "";
-      }
-    });
-  });
-</script>
-
-<script>
-(function(){
-  // ===== DOM =====
   const btn      = document.getElementById('btnImportLocalDropbox');
   const input    = document.getElementById('localDropboxPicker');
   const gridL    = document.getElementById('group-landscape');
   const gridP    = document.getElementById('group-portrait');
   const statusEl = document.getElementById('localImportStatus');
 
-  // These should exist on your form; adjust IDs if different
-  const caseInput   = document.getElementById('insured_id'); // case_id
-  const reportInput = document.getElementById('report_id');  // report_id
+  const picked = []; // {id,name,type,url,serverUrl?,serverName?,width,height,orientation,selected}
 
-  // ===== Config =====
-  const UPLOAD_URL = '/reports/import_local_dropbox'; // matches your Flask route
-
-  // in-memory picks
-  const picked = []; // {id,name,type,url,serverUrl?,width,height,orientation,selected}
-
-  // Expose for other buttons (save/preview)
+  // expose selections for other scripts
   window.getSelectedReportImages = function(){
     return picked.filter(x => x.selected).map(x => ({
-      name: x.name,
-      url:  x.serverUrl || x.url, // prefer server URL
+      name: x.serverName || x.name,
+      serverName: x.serverName || null,
+      url:  x.serverUrl || x.url,
       orientation: x.orientation,
       width: x.width, height: x.height, type: x.type
     }));
   };
 
-  // ===== Helpers =====
+  // expose selected filenames (prefer serverName)
+  window.selectedPhotoNames = function(){
+    const out = [];
+    for (const p of window.getSelectedReportImages()){
+      if (p.serverName) { out.push(p.serverName); continue; }
+      const u = p.url || '';
+      const m = u.match(/[?&]name=([^&#]+)/);
+      if (m) { out.push(decodeURIComponent(m[1])); continue; }
+      const n = (p.name || '').split(/[\\/]/).pop();
+      if (n) out.push(n);
+    }
+    return out;
+  };
+
   function setStatus(msg){ if(statusEl) statusEl.textContent = msg || ''; }
-  function clearGrids(){ gridL && (gridL.innerHTML=''); gridP && (gridP.innerHTML=''); }
+  function clearGrids(){ if(gridL) gridL.innerHTML=''; if(gridP) gridP.innerHTML=''; }
 
   function makeThumbCard(item){
     const wrap = document.createElement('label');
@@ -808,7 +505,6 @@ function fillInsuredCardFromOption(opt){
       div.textContent = 'וידאו';
       wrap.appendChild(div);
     }
-
     const meta = document.createElement('div');
     meta.style.marginTop='.35rem';
     meta.innerHTML = `<span class="name" title="${item.name}">${item.name}</span>`;
@@ -832,7 +528,7 @@ function fillInsuredCardFromOption(opt){
 
     let done = 0;
     for (const file of fileList){
-      if (!/^image\/|^video\//.test(file.type)) { continue; }
+      if (!/^image\/|^video\//.test(file.type)) continue;
 
       const url = URL.createObjectURL(file);
       let width=0, height=0, orientation='landscape';
@@ -848,88 +544,213 @@ function fillInsuredCardFromOption(opt){
         orientation = (width && height && height > width) ? 'portrait' : 'landscape';
       }
 
-      const item = {
-        id: crypto.randomUUID(),
-        name: file.name,
-        type: file.type || 'application/octet-stream',
-        url, width, height, orientation,
-        selected: true
-      };
+      const item = { id: crypto.randomUUID(), name: file.name, type: file.type || 'application/octet-stream',
+                     url, width, height, orientation, selected: true };
       picked.push(item);
       addItemToGrid(item);
 
       done++;
       setStatus(`נבחרו ${fileList.length} קבצים • נטענו ${done}/${fileList.length}`);
     }
-
     setStatus(`ייבוא הושלם: ${picked.length} קבצים (מסומנים כברירת מחדל).`);
+  }
+
+  function currentReportId(){
+    if (window.state && Number(window.state.report_id) > 0) return Number(window.state.report_id);
+    const f = document.getElementById('wordPreviewFrame');
+    if (f && f.src) {
+      const m = f.src.match(/\/reports\/(\d+)\/preview-pdf/i);
+      if (m) return Number(m[1]);
+    }
+    return 1;
   }
 
   async function uploadAll(files){
     const fd = new FormData();
-    for (const f of files) fd.append('files[]', f, f.name); // multi
-    fd.append('case_id',   (caseInput?.value || 'no_case').trim());
-    fd.append('report_id', (reportInput?.value || 'no_report').trim());
+    for (const f of files) fd.append('files[]', f, f.name);
 
-    const res = await fetch(UPLOAD_URL, { method:'POST', body: fd });
+    const caseId = (window.state?.insured_id ?? '').toString();
+    const repId  = (window.state?.report_id ?? currentReportId() ?? 1).toString();
+    fd.append('case_id',   caseId || 'no_case');
+    fd.append('report_id', repId  || 'no_report');
+
+    const res = await fetch('/reports/import_local_dropbox', { method:'POST', body: fd });
     if (!res.ok) throw new Error('Upload failed');
     return res.json(); // {status:"ok", saved:[{name,url},...]}
   }
 
   function mergeServerResults(result){
     if (!result || result.status !== 'ok' || !Array.isArray(result.saved)) return;
-
-    // try map by filename; if mismatch (server renames), attach sequentially
     let i = 0;
     for (const s of result.saved){
-      // attempt exact filename match
-      let item = picked.find(p => p.name === s.name)
-             ||  picked.find(p => (p.name||'').toLowerCase() === (s.name||'').toLowerCase());
-
-      if (!item){
-        // fallback: next item without a serverUrl
-        item = picked.find(p => !p.serverUrl) || picked[i];
-      }
+      let item = picked.find(p => (p.name || '').toLowerCase() === (s.name || '').toLowerCase())
+             || picked.find(p => !p.serverUrl)
+             || picked[i];
       if (item){
-        item.serverUrl = s.url; // use server serve URL for display & saving
+        item.serverUrl  = s.url || item.serverUrl;
+        item.serverName = s.name || item.serverName || item.name;  // keep server filename
+        item.name       = item.serverName;                         // show server name
       }
       i++;
     }
-
-    // re-render so thumbnails prefer server URLs
     clearGrids();
     picked.forEach(addItemToGrid);
   }
 
-  // ===== Events =====
-  btn?.addEventListener('click', () => input?.click());
-
-  input?.addEventListener('change', async (e) => {
+  // Events
+  btn?.addEventListener('click', ()=> input?.click());
+  input?.addEventListener('change', async (e)=>{
     const files = e.target.files;
     if (!files || !files.length) return;
-
-    // 1) Preview immediately
     await handleFiles(files);
-
-    // 2) Upload to server
-    try {
+    try{
       setStatus(`מעלה ${files.length} קבצים…`);
       const result = await uploadAll(files);
       setStatus(`הועלו ${files.length} קבצים בהצלחה.`);
       mergeServerResults(result);
-    } catch (err){
+    }catch(err){
       console.error(err);
       setStatus('שגיאה בהעלאה. בדוק את השרת/נתיב והרשאות כתיבה.');
-    } finally {
-      // allow re-selecting the same files later
+    }finally{
       e.target.value = '';
     }
   });
 })();
 </script>
 
+<script>
+(function () {
+  function showBusy(text){
+    const o = document.getElementById('busyOverlay');
+    const t = document.getElementById('busyText');
+    if (t && text) t.textContent = text;
+    if (o) o.style.display = 'flex';
+  }
+  function hideBusy(){ const o = document.getElementById('busyOverlay'); if (o) o.style.display = 'none'; }
+  function val(id){ return document.getElementById(id)?.value?.trim() || ""; }
 
+  function selectedTemplateKey(){
+    const rt = document.getElementById('reportType');
+    return (rt ? (rt.value || 'tracking') : 'tracking').toLowerCase();
+  }
 
+  // Build query with context + FIRST selected filename
+  function buildQuery(){
+    const q = new URLSearchParams();
+    if (state.insured_id) q.set('insured_id', state.insured_id);
+    if (state.ctx.activity_date) q.set('activity_date', state.ctx.activity_date);
+    const g = id => document.getElementById(id)?.value?.trim() || "";
+    if (g('ctx_surv_place'))  q.set('surv_place', g('ctx_surv_place'));
+    if (g('ctx_surv_city'))   q.set('surv_city',  g('ctx_surv_city'));
+    if (g('ctx_injury_type')) q.set('injury_type', g('ctx_injury_type'));
+    q.set('template', selectedTemplateKey());
+
+    const names = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
+    if (names.length) q.append('selected_photos[]', names[0]); // Step 1: first only
+
+    q.set('ts', Date.now());
+    return q.toString();
+  }
+  window.buildQuery = buildQuery; // used by Preview button
+
+  // Right card buttons
+  const refreshBtn  = document.getElementById('refreshPreview');
+  const downloadBtn = document.getElementById('downloadDocx');
+  const frame       = document.getElementById('wordPreviewFrame');
+
+  function currentReportId(){
+    if (window.state && Number(window.state.report_id) > 0) return Number(window.state.report_id);
+    return 1;
+  }
+
+  if (refreshBtn && frame) {
+    refreshBtn.addEventListener('click', function () {
+      showBusy("מכין תצוגה...");
+      const tidy = () => { frame.removeEventListener('load', tidy); frame.removeEventListener('error', tidy); hideBusy(); };
+      frame.addEventListener('load', tidy,  { once:true });
+      frame.addEventListener('error', tidy, { once:true });
+      setTimeout(hideBusy, 15000);
+      const id = currentReportId();
+      frame.removeAttribute('srcdoc');
+      frame.src = 'about:blank';
+      frame.src = `/reports/${id}/preview-pdf?` + buildQuery();
+    });
+  }
+
+  if (downloadBtn) {
+    downloadBtn.addEventListener('click', async function(){
+      try {
+        showBusy("מכין קובץ Word...");
+        const id = currentReportId();
+        const payload = {
+          insured_id:    state.insured_id || null,
+          activity_date: state.ctx.activity_date || "",
+          surv_place:    val('ctx_surv_place'),
+          surv_city:     val('ctx_surv_city'),
+          template:      selectedTemplateKey(),
+          injury_type:   val('ctx_injury_type'),
+          // Step 1: single photo (optional to include in DOCX save if your route expects it)
+          selected_photos: (typeof window.selectedPhotoNames === 'function') ? [window.selectedPhotoNames()[0] || ""] : []
+        };
+        const resp = await fetch(`/reports/${id}/render-docx`, {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        hideBusy();
+        if (!data.ok) throw new Error(data.error || 'Docx generation failed');
+        window.location.href = data.docx_url;
+      } catch (e) {
+        hideBusy();
+        alert(e.message || e);
+      }
+    });
+  }
+})();
+</script>
+
+<script>
+  // Datepicker (keeps ISO in state, shows DD/MM/YYYY)
+  function isoToDmy(iso){
+    if(!iso) return "";
+    const [y,m,d] = iso.split("-");
+    return `${d.padStart(2,"0")}/${m.padStart(2,"0")}/${y}`;
+  }
+  function dmyToIso(dmy){
+    if(!dmy) return "";
+    const [d,m,y] = dmy.split(/[./-]/);
+    if(!y||!m||!d) return "";
+    return `${y.padStart(4,"0")}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+  }
+  document.addEventListener('DOMContentLoaded', function(){
+    const el = document.getElementById('ctx_activity_date');
+    if(!el) return;
+    if (window.state?.ctx?.activity_date) el.value = isoToDmy(state.ctx.activity_date);
+    flatpickr(el, {
+      dateFormat: "d/m/Y",
+      allowInput: true,
+      defaultDate: el.value || null,
+      onChange(selectedDates, dateStr){
+        let iso = "";
+        if (selectedDates?.[0]){
+          const d = selectedDates[0];
+          const pad = n => `${n}`.padStart(2,"0");
+          iso = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+        } else {
+          iso = dmyToIso(dateStr);
+        }
+        if (window.state) state.ctx.activity_date = iso;
+        el.value = iso ? isoToDmy(iso) : "";
+      },
+      onClose(selectedDates, dateStr){
+        const iso = dmyToIso(dateStr);
+        if (window.state) state.ctx.activity_date = iso;
+        el.value = iso ? isoToDmy(iso) : "";
+      }
+    });
+  });
+</script>
 
 <script src="/static/assets/js/main.js"></script>
 {% endblock %}
