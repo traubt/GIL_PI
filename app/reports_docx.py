@@ -607,7 +607,7 @@ def preview_docx_as_pdf(report_id: int):
     # target widths (mm) — tuned so: landscape stacks 2 per page under §3 text,
     # portraits fit 2-across per row.
     LAND_W = Mm(120)      # landscape width on page
-    PORT_W = Mm(65)       # portrait width on page (2-up)
+    PORT_W = Mm(95)       # portrait width on page (2-up)
 
     tmpdir = tempfile.mkdtemp(prefix="report_img_")
     processed: list[dict] = []
