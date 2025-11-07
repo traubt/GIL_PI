@@ -548,8 +548,15 @@ def _report_media_root() -> str:
     )
 
 # ====== FULL ROUTE: /reports/<id>/preview-pdf  ===============================
+# ==== Preview to PDF (photo-aware, fixed sizes, 2-up portrait) ====
 @reports_docx_bp.route("/<int:report_id>/preview-pdf", methods=["GET"])
 def preview_docx_as_pdf(report_id: int):
+    import io, os, tempfile, shutil, datetime
+    from PIL import Image
+    from docxtpl import DocxTemplate, InlineImage
+    from docx.shared import Mm
+
+    # ---------- basics ----------
     insured_id = request.args.get("insured_id", type=int)
     overrides = {
         "activity_date": request.args.get("activity_date", ""),
@@ -557,192 +564,220 @@ def preview_docx_as_pdf(report_id: int):
         "surv_city":     request.args.get("surv_city",  ""),
         "injury_type":   request.args.get("injury_type", ""),
     }
-    context = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
+    ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
-    # template
-    tmpl_key = request.args.get("template", "tracking")
-    template_path = load_template_docx(map_template_key(tmpl_key))
+    # template file
+    tmpl_key = (request.args.get("template", "siudi") or "").strip().lower()
+    template_path = load_template_docx(TEMPLATE_MAP.get(tmpl_key, "menora_siudi.docx"))
     tpl = DocxTemplate(template_path)
 
-    # selected names (support both [] and non-[] styles)
-    selected = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos")
+    # request-selected names (supports selected_photos[] or selected_photos)
+    selected = request.args.getlist("selected_photos[]")
+    if not selected:
+        selected = request.args.getlist("selected_photos")
     selected = [os.path.basename(n) for n in selected if n]
 
-    case_id   = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
-    rep_id    = str(report_id)
-    media_root = _report_media_root()
+    # where photos live
+    case_id  = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
+    rep_id   = str(report_id)
+    media_root = current_app.config.get("REPORT_MEDIA_DIR",
+                    os.path.join(current_app.instance_path, "report_media"))
 
     def resolve_one(name: str) -> str | None:
         exact = os.path.join(media_root, case_id, rep_id, name)
         if os.path.isfile(exact):
             return exact
-        # fallback: anywhere under the case folder
+        # fallback – search whole case folder
         case_root = os.path.join(media_root, case_id)
-        if os.path.isdir(case_root):
-            for root, _dirs, files in os.walk(case_root):
-                if name in files:
-                    return os.path.join(root, name)
+        for root, _dirs, files in os.walk(case_root):
+            if name in files:
+                return os.path.join(root, name)
         current_app.logger.warning("[PHOTOS] not found: %s", name)
         return None
 
     paths = [p for n in selected if (p := resolve_one(n))]
     if not paths:
-        # fallback to all images in current report folder
         folder = os.path.join(media_root, case_id, rep_id)
         if os.path.isdir(folder):
             for fn in sorted(os.listdir(folder)):
-                if fn.lower().endswith((".jpg",".jpeg",".png",".webp",".bmp",".gif")):
+                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp")):
                     paths.append(os.path.join(folder, fn))
 
-    # preprocess (rotate/resize -> temp JPEGs) and build InlineImages with fixed widths
-    with _tmpdir() as td:
-        proc_items = _preprocess_for_docx(td, paths)
+    # ---------- image pre-process (size + lightweight re-encode) ----------
+    # target widths (mm) — tuned so: landscape stacks 2 per page under §3 text,
+    # portraits fit 2-across per row.
+    LAND_W = Mm(120)      # landscape width on page
+    PORT_W = Mm(65)       # portrait width on page (2-up)
 
-        # fixed visual sizes we want in the DOCX
-        LAND_W, PORT_W = Mm(120), Mm(42)
+    tmpdir = tempfile.mkdtemp(prefix="report_img_")
+    processed: list[dict] = []
+    try:
+        for idx, src in enumerate(paths):
+            with Image.open(src) as im:
+                im = im.convert("RGB")
+                w, h = im.size
+                # classify
+                is_portrait = h > w * 1.05
+                # target pixel width so Docx scaling keeps good quality
+                # (about 150–170 dpi for A4 @ 65/120mm)
+                px_target = 800 if is_portrait else 1400
+                scale = px_target / w
+                new_w = int(w * scale)
+                new_h = int(h * scale)
+                rim = im.resize((new_w, new_h), Image.LANCZOS)
 
-        images = []
-        for item in proc_items:
-            p, w, h = item["path"], item["w"], item["h"]
+                # save to temp (JPEG quality ~80)
+                out_name = f"img_{idx:03d}.jpg"
+                out_path = os.path.join(tmpdir, out_name)
+                rim.save(out_path, format="JPEG", quality=80, optimize=True, progressive=True)
 
-            # safety net: use the processed dimensions to decide portrait/landscape
-            is_portrait = (h or 0) >= (w or 0)
-            width = PORT_W if is_portrait else LAND_W
+                current_app.logger.info(
+                    "[PREPROC] %s -> %s | guess=%s | orig=%dx%d -> proc=%dx%d",
+                    os.path.basename(src), out_name,
+                    "portrait" if is_portrait else "landscape",
+                    w, h, new_w, new_h
+                )
 
-            current_app.logger.info(
-                "[EMBED] file=%s | proc=%dx%d | chosen=%s width=%s mm",
-                os.path.basename(p), w, h,
-                "portrait" if is_portrait else "landscape",
-                "PORT_W(42)" if is_portrait else "LAND_W(120)"
-            )
+                processed.append({"path": out_path, "portrait": is_portrait})
 
-            images.append(InlineImage(tpl, p, width=width))
+        # ---------- build InlineImage lists for template ----------
+        land_images = []
+        ports = []
+        for item in processed:
+            if item["portrait"]:
+                ports.append(InlineImage(tpl, item["path"], width=PORT_W))
+                current_app.logger.info("[EMBED] file=%s | chosen=portrait width=PORT_W(%s) mm",
+                                        os.path.basename(item["path"]), int(PORT_W.mm))
+            else:
+                land_images.append(InlineImage(tpl, item["path"], width=LAND_W))
+                current_app.logger.info("[EMBED] file=%s | chosen=landscape width=LAND_W(%s) mm",
+                                        os.path.basename(item["path"]), int(LAND_W.mm))
 
-        context["photo_s3"] = images[0] if images else ""
-        context["photos_s3"] = images
+        # 2-across pairs for portrait
+        port_pairs: list[list] = []
+        for i in range(0, len(ports), 2):
+            pair = [ports[i], ports[i+1] if i+1 < len(ports) else ""]
+            port_pairs.append(pair)
 
-        # render to DOCX bytes while temp files still exist
+        # fill template
+        context = dict(ctx)
+        context.update({
+            "land_images": land_images,
+            "port_pairs":  port_pairs,
+        })
         buf = io.BytesIO()
         tpl.render(context)
         tpl.save(buf)
         docx_bytes = buf.getvalue()
 
-    # convert DOCX bytes -> PDF bytes (your existing helper)
-    pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
-    return send_file(io.BytesIO(pdf_bytes),
-                     mimetype="application/pdf",
-                     download_name="preview.pdf")
+        # DOCX -> PDF
+        pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+        return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
+                         download_name="preview.pdf")
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
+
+# ==== "Word הורד" – render a .docx and give a URL to download ====
 @reports_docx_bp.route("/<int:report_id>/render-docx", methods=["POST"])
 def render_docx_download(report_id: int):
+    import io, os, tempfile, shutil, datetime, json
+    from PIL import Image
+    from docxtpl import DocxTemplate, InlineImage
+    from docx.shared import Mm
+
+    data = request.get_json(silent=True) or {}
+
+    insured_id = data.get("insured_id")
+    overrides = {
+        "activity_date": data.get("activity_date", ""),
+        "surv_place":    data.get("surv_place", ""),
+        "surv_city":     data.get("surv_city",  ""),
+        "injury_type":   data.get("injury_type", ""),
+    }
+    ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
+
+    tmpl_key = (data.get("template") or "siudi").strip().lower()
+    template_path = load_template_docx(tmpl_key)
+    tpl = DocxTemplate(template_path)
+
+    # names can arrive as `selected_photos` or we fallback to all in folder
+    selected = data.get("selected_photos") or []
+    selected = [os.path.basename(n) for n in selected if n]
+
+    case_id = str(insured_id or data.get("case_id") or "").strip()
+    rep_id  = str(report_id)
+    media_root = current_app.config.get("REPORT_MEDIA_DIR",
+                    os.path.join(current_app.instance_path, "report_media"))
+
+    def resolve_one(name: str) -> str | None:
+        exact = os.path.join(media_root, case_id, rep_id, name)
+        if os.path.isfile(exact):
+            return exact
+        case_root = os.path.join(media_root, case_id)
+        for root, _dirs, files in os.walk(case_root):
+            if name in files:
+                return os.path.join(root, name)
+        return None
+
+    paths = [p for n in selected if (p := resolve_one(n))]
+    if not paths:
+        folder = os.path.join(media_root, case_id, rep_id)
+        if os.path.isdir(folder):
+            for fn in sorted(os.listdir(folder)):
+                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp")):
+                    paths.append(os.path.join(folder, fn))
+
+    LAND_W = Mm(120)
+    PORT_W = Mm(65)
+
+    tmpdir = tempfile.mkdtemp(prefix="report_img_")
+    dst_dir = os.path.join(current_app.instance_path, "generated_reports")
+    os.makedirs(dst_dir, exist_ok=True)
+
     try:
-        body = request.get_json(silent=True) or {}
+        processed = []
+        from PIL import Image
+        for idx, src in enumerate(paths):
+            with Image.open(src) as im:
+                im = im.convert("RGB")
+                w, h = im.size
+                is_portrait = h > w * 1.05
+                px_target   = 800 if is_portrait else 1400
+                scale = px_target / w
+                rim = im.resize((int(w*scale), int(h*scale)), Image.LANCZOS)
 
-        insured_id = body.get("insured_id", None)
-        overrides = {
-            "activity_date": body.get("activity_date", ""),
-            "surv_place":    body.get("surv_place", ""),
-            "surv_city":     body.get("surv_city",  ""),
-            "injury_type":   body.get("injury_type", ""),
-        }
-        context = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
+                out_path = os.path.join(tmpdir, f"img_{idx:03d}.jpg")
+                rim.save(out_path, "JPEG", quality=80, optimize=True, progressive=True)
+                processed.append({"path": out_path, "portrait": is_portrait})
 
-        # template
-        tmpl_key      = (body.get("template") or "tracking").lower()
-        template_path = load_template_docx(map_template_key(tmpl_key))
-        tpl = DocxTemplate(template_path)
+        land_images, ports = [], []
+        for item in processed:
+            if item["portrait"]:
+                ports.append(InlineImage(tpl, item["path"], width=PORT_W))
+            else:
+                land_images.append(InlineImage(tpl, item["path"], width=LAND_W))
 
-        # -------- collect selected photo names (several payload shapes are supported) --------
-        # A) explicit names list (same as preview)
-        selected = body.get("selected_photos") or []
+        port_pairs = []
+        for i in range(0, len(ports), 2):
+            port_pairs.append([ports[i], ports[i+1] if i+1 < len(ports) else ""])
 
-        # B) or a 'photos' array of objects from the client picker:
-        #    [{name, selected, orientation, ...}]
-        if not selected and isinstance(body.get("photos"), list):
-            selected = [os.path.basename(p["name"])
-                        for p in body["photos"]
-                        if isinstance(p, dict) and p.get("selected", True) and p.get("name")]
+        context = dict(ctx)
+        context.update({
+            "land_images": land_images,
+            "port_pairs":  port_pairs,
+        })
 
-        # sanitize
-        selected = [os.path.basename(n) for n in selected if n]
+        out_name = f"report_{report_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+        out_path = os.path.join(dst_dir, out_name)
 
-        case_id   = str(body.get("insured_id") or body.get("case_id") or "").strip()
-        rep_id    = str(report_id)
-        media_root = current_app.config.get(
-            "REPORT_MEDIA_DIR",
-            os.path.join(current_app.instance_path, "report_media")
-        )
+        tpl.render(context)
+        tpl.save(out_path)
 
-        def resolve_one(name: str) -> str | None:
-            exact = os.path.join(media_root, case_id, rep_id, name)
-            if os.path.isfile(exact):
-                return exact
-            # fallback: search anywhere under the case folder
-            case_root = os.path.join(media_root, case_id)
-            if os.path.isdir(case_root):
-                for root, _dirs, files in os.walk(case_root):
-                    if name in files:
-                        return os.path.join(root, name)
-            current_app.logger.warning("[PHOTOS] not found: %s", name)
-            return None
+        return jsonify({"ok": True, "docx_url": f"/static/generated/{out_name}"})
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
 
-        paths = [p for n in selected if (p := resolve_one(n))]
-
-        # fallback: if none explicitly selected/resolved, include all images for this report
-        if not paths:
-            folder = os.path.join(media_root, case_id, rep_id)
-            if os.path.isdir(folder):
-                for fn in sorted(os.listdir(folder)):
-                    if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
-                        paths.append(os.path.join(folder, fn))
-
-        # -------- preprocess & size like preview (EXIF rotate + resize to temp JPEGs) --------
-        with _tmpdir() as td:
-            proc_items = _preprocess_for_docx(td, paths)
-
-            # fixed visual sizes we want in the DOCX
-            LAND_W, PORT_W = Mm(120), Mm(42)
-
-            images = []
-            for item in proc_items:
-                p, w, h = item["path"], item["w"], item["h"]
-
-                # safety net: use the processed dimensions to decide portrait/landscape
-                is_portrait = (h or 0) >= (w or 0)
-                width = PORT_W if is_portrait else LAND_W
-
-                current_app.logger.info(
-                    "[EMBED] file=%s | proc=%dx%d | chosen=%s width=%s mm",
-                    os.path.basename(p), w, h,
-                    "portrait" if is_portrait else "landscape",
-                    "PORT_W(42)" if is_portrait else "LAND_W(120)"
-                )
-
-                images.append(InlineImage(tpl, p, width=width))
-
-            context["photo_s3"] = images[0] if images else ""
-            context["photos_s3"] = images
-
-            # render DOCX to bytes while temp files exist
-            buf = io.BytesIO()
-            tpl.render(context)
-            tpl.save(buf)
-            docx_bytes = buf.getvalue()
-
-        # -------- save to disk and return a link (JSON) --------
-        # make sure OUTPUT_DIR / ensure_output_dir() exist in your file (as before)
-        ensure_output_dir()
-        fname = f"report_{report_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-        out_path = os.path.join(OUTPUT_DIR, fname)
-        with open(out_path, "wb") as f:
-            f.write(docx_bytes)
-
-        return jsonify({"ok": True, "docx_url": f"/reports/{report_id}/download/{fname}"}), 200
-
-    except Exception as e:
-        current_app.logger.exception("render-docx failed")
-        # keeps the client from trying to JSON-parse an HTML traceback
-        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 
