@@ -219,6 +219,79 @@
               </div>
               <!-- /PHOTOS -->
 
+<!-- ===================== תמונת זיהוי (תבנית ייעודית) ===================== -->
+<div id="id-photo-card" class="card mt-3" dir="rtl" style="border-radius:14px;">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-person-badge"></i>
+      <strong>תמונת זיהוי</strong>
+    </div>
+    <small class="text-muted">תבנית ייעודית (תמונה אחת בלבד)</small>
+  </div>
+
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <!-- תאריך (DD/MM/YYYY UI + hidden ISO like activity date) -->
+      <div class="col-12 col-md-3">
+        <label for="id_photo_date_dmy" class="form-label">תאריך</label>
+        <input type="text" class="form-control" id="id_photo_date_dmy" placeholder="dd/mm/yyyy">
+        <input type="hidden" id="id_photo_date" name="id_photo_date"> <!-- ISO yyyy-mm-dd -->
+      </div>
+
+      <!-- שעה -->
+      <div class="col-12 col-md-3">
+        <label for="id_photo_time" class="form-label">שעה</label>
+        <input type="time" class="form-control" id="id_photo_time" name="id_photo_time">
+      </div>
+
+      <!-- עיר -->
+      <div class="col-12 col-md-3">
+        <label for="id_photo_city" class="form-label">עיר</label>
+        <input type="text" class="form-control" id="id_photo_city" name="id_photo_city" placeholder="לדוגמה: באר שבע">
+      </div>
+
+      <!-- מקום צילום -->
+      <div class="col-12 col-md-3">
+        <label for="id_photo_place" class="form-label">מקום צילום</label>
+        <input type="text" class="form-control" id="id_photo_place" name="id_photo_place" placeholder="לדוגמה: סורוקה / קניון">
+      </div>
+    </div>
+
+    <hr class="my-3">
+
+    <div class="row g-3">
+      <!-- בחר תמונה (כפתור כמו menora_siudi) -->
+      <div class="col-12 col-lg-6">
+        <label class="form-label d-block">בחר תמונה (תמונה אחת)</label>
+
+        <!-- primary: local dropbox picker (single) -->
+        <button type="button" id="btn_idphoto_from_dropbox" class="btn btn-outline-primary btn-sm">
+          <i class="bi bi-folder2-open"></i> ייבא מדרופבוקס מקומי
+        </button>
+
+        <!-- fallback: native file input (hidden; triggered if picker not available) -->
+        <input type="file" id="id_photo_file_fallback" accept="image/*" style="display:none;">
+
+        <!-- store the chosen path/filename for backend -->
+        <input type="hidden" id="id_photo_src" name="id_photo_src"> <!-- path/url or dataURL -->
+        <div class="form-text mt-1">תמונה אחת מזוהה (פנים ברורות). יוצג ממוזער בצד ימין.</div>
+      </div>
+
+      <!-- תצוגה מקדימה (thumbnail) -->
+      <div class="col-12 col-lg-6">
+        <label class="form-label d-block">תצוגה מקדימה</label>
+        <div id="id_photo_preview_box"
+             class="border rounded p-2 d-flex align-items-center justify-content-center"
+             style="min-height:220px; background:#fafafa;">
+          <img id="id_photo_thumb" alt="ID Photo" style="max-width:100%; max-height:200px; display:none; border-radius:8px;">
+          <span id="id_photo_empty" class="text-muted">לא נבחרה תמונה</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- =================== /תמונת זיהוי (תבנית ייעודית) ==================== -->
+
             </div>
           </div>
         </div>
@@ -764,5 +837,104 @@ for (const n of names) q.append('selected_photos[]', n);
   });
 </script>
 
-<script src="/static/assets/js/main.js"></script>
+// PHOTO ID script
+<script>
+  // --- date widget: mirror "תאריך פעילות" behavior (DD/MM/YYYY UI + hidden ISO) ---
+  (function(){
+    function _isoToDmy(iso){
+      if(!iso) return "";
+      const [y,m,d] = iso.split("-");
+      return `${d.padStart(2,"0")}/${m.padStart(2,"0")}/${y}`;
+    }
+    function _dmyToIso(dmy){
+      if(!dmy) return "";
+      const [d,m,y] = dmy.split(/[./-]/);
+      if(!y||!m||!d) return "";
+      return `${y.padStart(4,"0")}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+    }
+
+    const ui = document.getElementById('id_photo_date_dmy');
+    const iso = document.getElementById('id_photo_date');
+
+    // initialize from existing state if available
+    if (window.state?.ctx?.id_photo_date) {
+      iso.value = window.state.ctx.id_photo_date;
+      ui.value = _isoToDmy(iso.value);
+    }
+
+    // if you already use flatpickr on the page, this will match the same format
+    if (window.flatpickr) {
+      flatpickr(ui, {
+        dateFormat: "d/m/Y",
+        allowInput: true,
+        defaultDate: iso.value ? iso.value : null,
+        onChange: function(selectedDates, dateStr){
+          iso.value = _dmyToIso(dateStr);
+        },
+        onValueUpdate: function(selectedDates, dateStr){
+          iso.value = _dmyToIso(dateStr);
+        }
+      });
+    } else {
+      // no flatpickr – keep manual conversion
+      ui.addEventListener('change', function(){
+        iso.value = _dmyToIso(ui.value.trim());
+      });
+    }
+  })();
+
+  // --- single-photo picker like menora_siudi: prefers global local-dropbox picker; falls back to file input ---
+  (function(){
+    const btn   = document.getElementById('btn_idphoto_from_dropbox');
+    const file  = document.getElementById('id_photo_file_fallback');
+    const src   = document.getElementById('id_photo_src');
+    const img   = document.getElementById('id_photo_thumb');
+    const empty = document.getElementById('id_photo_empty');
+
+    function showThumb(url){
+      img.src = url;
+      img.style.display = 'block';
+      empty.style.display = 'none';
+    }
+
+    // handle fallback <input type=file>
+    file.addEventListener('change', function(){
+      const f = this.files && this.files[0];
+      if(!f){ return; }
+      const reader = new FileReader();
+      reader.onload = function(e){
+        src.value = e.target.result; // dataURL fallback
+        showThumb(e.target.result);
+      };
+      reader.readAsDataURL(f);
+    });
+
+    // primary click handler: try the app’s local dropbox picker (single selection)
+    btn.addEventListener('click', async function(){
+      // If your app already exposes the menora_siudi picker, we leverage it:
+      // expected signature: window.openLocalDropboxPicker({ multiple:false }) -> Promise<{url|path, thumbUrl?}>
+      if (typeof window.openLocalDropboxPicker === 'function') {
+        try{
+          const sel = await window.openLocalDropboxPicker({ multiple:false });
+          if (!sel) return;
+          const chosen = Array.isArray(sel) ? sel[0] : sel;
+
+          // Support both path and url/thumbnail contracts
+          const chosenUrl = chosen.thumbUrl || chosen.url || chosen.path;
+          if (chosenUrl){
+            src.value = chosen.url || chosen.path || chosen.thumbUrl;
+            showThumb(chosenUrl);
+            return;
+          }
+        }catch(e){
+          // silently fall back
+          console.warn('Dropbox picker failed, falling back to file chooser', e);
+        }
+      }
+      // fallback to native file chooser
+      file.click();
+    });
+  })();
+</script>
+
 {% endblock %}
