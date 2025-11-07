@@ -549,14 +549,13 @@ def _report_media_root() -> str:
 
 # ====== FULL ROUTE: /reports/<id>/preview-pdf  ===============================
 # ==== Preview to PDF (photo-aware, fixed sizes, 2-up portrait) ====
+# ---- preview PDF: two-portraits-per-row without tables ----
 @reports_docx_bp.route("/<int:report_id>/preview-pdf", methods=["GET"])
 def preview_docx_as_pdf(report_id: int):
-    import io, os, tempfile, shutil, datetime
-    from PIL import Image
+    import io, os
     from docxtpl import DocxTemplate, InlineImage
     from docx.shared import Mm
 
-    # ---------- basics ----------
     insured_id = request.args.get("insured_id", type=int)
     overrides = {
         "activity_date": request.args.get("activity_date", ""),
@@ -566,217 +565,216 @@ def preview_docx_as_pdf(report_id: int):
     }
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
-    # template file
-    tmpl_key = (request.args.get("template", "siudi") or "").strip().lower()
-    template_path = load_template_docx(TEMPLATE_MAP.get(tmpl_key, "menora_siudi.docx"))
+    # --- template path ---
+    tmpl_key = (request.args.get("template", "siudi") or "siudi").strip().lower()
+    template_path = load_template_docx(map_template_key(tmpl_key))  # full path
+    current_app.logger.info("[DOCX] Using template: %s", template_path)
+
     tpl = DocxTemplate(template_path)
 
-    # request-selected names (supports selected_photos[] or selected_photos)
-    selected = request.args.getlist("selected_photos[]")
-    if not selected:
-        selected = request.args.getlist("selected_photos")
+    # --- collect selected files (names) -> absolute paths ---
+    selected = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos")
     selected = [os.path.basename(n) for n in selected if n]
-
-    # where photos live
-    case_id  = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
-    rep_id   = str(report_id)
-    media_root = current_app.config.get("REPORT_MEDIA_DIR",
-                    os.path.join(current_app.instance_path, "report_media"))
+    case_id   = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
+    rep_id    = str(report_id)
+    media_root = current_app.config.get("REPORT_MEDIA_DIR", os.path.join(current_app.instance_path, "report_media"))
 
     def resolve_one(name: str) -> str | None:
-        exact = os.path.join(media_root, case_id, rep_id, name)
-        if os.path.isfile(exact):
-            return exact
-        # fallback – search whole case folder
-        case_root = os.path.join(media_root, case_id)
-        for root, _dirs, files in os.walk(case_root):
+        # exact
+        p = os.path.join(media_root, case_id, rep_id, name)
+        if os.path.isfile(p): return p
+        # fallback search under case folder
+        root_case = os.path.join(media_root, case_id)
+        for root, _d, files in os.walk(root_case):
             if name in files:
                 return os.path.join(root, name)
         current_app.logger.warning("[PHOTOS] not found: %s", name)
         return None
 
     paths = [p for n in selected if (p := resolve_one(n))]
+    # fallback: include all images in the report folder
     if not paths:
         folder = os.path.join(media_root, case_id, rep_id)
         if os.path.isdir(folder):
             for fn in sorted(os.listdir(folder)):
-                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp")):
+                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
                     paths.append(os.path.join(folder, fn))
 
-    # ---------- image pre-process (size + lightweight re-encode) ----------
-    # target widths (mm) — tuned so: landscape stacks 2 per page under §3 text,
-    # portraits fit 2-across per row.
-    LAND_W = Mm(120)      # landscape width on page
-    PORT_W = Mm(95)       # portrait width on page (2-up)
-
-    tmpdir = tempfile.mkdtemp(prefix="report_img_")
-    processed: list[dict] = []
-    try:
-        for idx, src in enumerate(paths):
-            with Image.open(src) as im:
-                im = im.convert("RGB")
+    # --- classify by orientation (use real pixel size, not EXIF orientation) ---
+    from PIL import Image
+    lands, ports = [], []
+    for p in paths:
+        try:
+            with Image.open(p) as im:
                 w, h = im.size
-                # classify
-                is_portrait = h > w * 1.05
-                # target pixel width so Docx scaling keeps good quality
-                # (about 150–170 dpi for A4 @ 65/120mm)
-                px_target = 800 if is_portrait else 1400
-                scale = px_target / w
-                new_w = int(w * scale)
-                new_h = int(h * scale)
-                rim = im.resize((new_w, new_h), Image.LANCZOS)
-
-                # save to temp (JPEG quality ~80)
-                out_name = f"img_{idx:03d}.jpg"
-                out_path = os.path.join(tmpdir, out_name)
-                rim.save(out_path, format="JPEG", quality=80, optimize=True, progressive=True)
-
-                current_app.logger.info(
-                    "[PREPROC] %s -> %s | guess=%s | orig=%dx%d -> proc=%dx%d",
-                    os.path.basename(src), out_name,
-                    "portrait" if is_portrait else "landscape",
-                    w, h, new_w, new_h
-                )
-
-                processed.append({"path": out_path, "portrait": is_portrait})
-
-        # ---------- build InlineImage lists for template ----------
-        land_images = []
-        ports = []
-        for item in processed:
-            if item["portrait"]:
-                ports.append(InlineImage(tpl, item["path"], width=PORT_W))
-                current_app.logger.info("[EMBED] file=%s | chosen=portrait width=PORT_W(%s) mm",
-                                        os.path.basename(item["path"]), int(PORT_W.mm))
+            if w >= h:
+                lands.append(p)
             else:
-                land_images.append(InlineImage(tpl, item["path"], width=LAND_W))
-                current_app.logger.info("[EMBED] file=%s | chosen=landscape width=LAND_W(%s) mm",
-                                        os.path.basename(item["path"]), int(LAND_W.mm))
+                ports.append(p)
+        except Exception as e:
+            current_app.logger.warning("[PHOTOS] failed to open %s: %s", p, e)
 
-        # 2-across pairs for portrait
-        port_pairs: list[list] = []
-        for i in range(0, len(ports), 2):
-            pair = [ports[i], ports[i+1] if i+1 < len(ports) else ""]
-            port_pairs.append(pair)
+    # --- sizing: keep your landscape width, choose portrait width so 2 fit per line ---
+    LAND_W = Mm(120)  # as before
+    PORT_W = Mm(76)   # ~76 mm + ~10–14 mm gap fits two across 165 mm text width
 
-        # fill template
-        context = dict(ctx)
-        context.update({
-            "land_images": land_images,
-            "port_pairs":  port_pairs,
-        })
-        buf = io.BytesIO()
-        tpl.render(context)
-        tpl.save(buf)
-        docx_bytes = buf.getvalue()
+    land_images = [InlineImage(tpl, p, width=LAND_W) for p in lands]
 
-        # DOCX -> PDF
-        pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
-        return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf",
-                         download_name="preview.pdf")
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    # chunk portraits into pairs (left, right_or_None)
+    def chunk2(items):
+        it = iter(items)
+        for a in it:
+            b = next(it, None)
+            yield a, b
+
+    port_rows = []
+    for l, r in chunk2(ports):
+        left  = InlineImage(tpl, l, width=PORT_W)
+        right = InlineImage(tpl, r, width=PORT_W) if r else None
+        port_rows.append((left, right))
+
+    # NBSP gap between two inline images keeps them visually separated and prevents collapse
+    gap = "\u00A0" * 8  # 8 NBSPs (~small gutter). Adjust to taste.
+
+    # build final context
+    ctx.update({
+        "land_images": land_images,
+        "port_rows":   port_rows,   # list of (left_img, right_img_or_None)
+        "gap":         gap,
+    })
+
+    # render -> DOCX bytes
+    buf = io.BytesIO()
+    tpl.render(ctx)
+    tpl.save(buf)
+    docx_bytes = buf.getvalue()
+
+    # DOCX -> PDF (your existing converter)
+    pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
+
+
 
 
 # ==== "Word הורד" – render a .docx and give a URL to download ====
 @reports_docx_bp.route("/<int:report_id>/render-docx", methods=["POST"])
 def render_docx_download(report_id: int):
-    import io, os, tempfile, shutil, datetime, json
+    import io, os, datetime, json
     from PIL import Image
+    from flask import current_app, request, jsonify, url_for
     from docxtpl import DocxTemplate, InlineImage
     from docx.shared import Mm
 
-    data = request.get_json(silent=True) or {}
+    payload = request.get_json(silent=True) or {}
 
-    insured_id = data.get("insured_id")
+    insured_id   = payload.get("insured_id")
     overrides = {
-        "activity_date": data.get("activity_date", ""),
-        "surv_place":    data.get("surv_place", ""),
-        "surv_city":     data.get("surv_city",  ""),
-        "injury_type":   data.get("injury_type", ""),
+        "activity_date": payload.get("activity_date", ""),
+        "surv_place":    payload.get("surv_place", ""),
+        "surv_city":     payload.get("surv_city",  ""),
+        "injury_type":   payload.get("injury_type", ""),
     }
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
-    tmpl_key = (data.get("template") or "siudi").strip().lower()
-    template_path = load_template_docx(tmpl_key)
+    # --- template path ---
+    tmpl_key = (payload.get("template") or "siudi").strip().lower()
+    template_path = load_template_docx(map_template_key(tmpl_key))
+    current_app.logger.info("[DOCX] Using template: %s", template_path)
+
     tpl = DocxTemplate(template_path)
 
-    # names can arrive as `selected_photos` or we fallback to all in folder
-    selected = data.get("selected_photos") or []
-    selected = [os.path.basename(n) for n in selected if n]
+    # --- collect selected names from payload ---
+    names = payload.get("selected_photos") or []
+    if not names and isinstance(payload.get("photos"), list):
+        # optional detailed objects: [{'name': '...'}, ...]
+        names = [os.path.basename(p.get("name", "")) for p in payload["photos"] if p.get("name")]
 
-    case_id = str(insured_id or data.get("case_id") or "").strip()
-    rep_id  = str(report_id)
+    names = [os.path.basename(n) for n in names if n]
+
+    # --- resolve to absolute paths ---
+    case_id   = str(insured_id or payload.get("case_id", "")).strip()
+    rep_id    = str(report_id)
     media_root = current_app.config.get("REPORT_MEDIA_DIR",
-                    os.path.join(current_app.instance_path, "report_media"))
+        os.path.join(current_app.instance_path, "report_media")
+    )
 
     def resolve_one(name: str) -> str | None:
         exact = os.path.join(media_root, case_id, rep_id, name)
-        if os.path.isfile(exact):
-            return exact
+        if os.path.isfile(exact): return exact
+        # fallback search under case folder
         case_root = os.path.join(media_root, case_id)
-        for root, _dirs, files in os.walk(case_root):
-            if name in files:
-                return os.path.join(root, name)
+        if os.path.isdir(case_root):
+            for root, _dirs, files in os.walk(case_root):
+                if name in files:
+                    return os.path.join(root, name)
+        current_app.logger.warning("[PHOTOS] not found: %s", name)
         return None
 
-    paths = [p for n in selected if (p := resolve_one(n))]
+    paths = [p for n in names if (p := resolve_one(n))]
+
+    # fallback: include all images in the report folder if none selected
     if not paths:
         folder = os.path.join(media_root, case_id, rep_id)
         if os.path.isdir(folder):
             for fn in sorted(os.listdir(folder)):
-                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp")):
+                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
                     paths.append(os.path.join(folder, fn))
 
-    LAND_W = Mm(120)
-    PORT_W = Mm(65)
-
-    tmpdir = tempfile.mkdtemp(prefix="report_img_")
-    dst_dir = os.path.join(current_app.instance_path, "generated_reports")
-    os.makedirs(dst_dir, exist_ok=True)
-
-    try:
-        processed = []
-        from PIL import Image
-        for idx, src in enumerate(paths):
-            with Image.open(src) as im:
-                im = im.convert("RGB")
+    # --- orientation split using real pixel sizes ---
+    lands, ports = [], []
+    for p in paths:
+        try:
+            with Image.open(p) as im:
                 w, h = im.size
-                is_portrait = h > w * 1.05
-                px_target   = 800 if is_portrait else 1400
-                scale = px_target / w
-                rim = im.resize((int(w*scale), int(h*scale)), Image.LANCZOS)
+            (lands if w >= h else ports).append(p)
+        except Exception as e:
+            current_app.logger.warning("[PHOTOS] open fail %s: %s", p, e)
 
-                out_path = os.path.join(tmpdir, f"img_{idx:03d}.jpg")
-                rim.save(out_path, "JPEG", quality=80, optimize=True, progressive=True)
-                processed.append({"path": out_path, "portrait": is_portrait})
+    # --- sizes (match preview) ---
+    LAND_W = Mm(120)   # landscape width
+    PORT_W = Mm(76)    # portrait width so two fit per line
 
-        land_images, ports = [], []
-        for item in processed:
-            if item["portrait"]:
-                ports.append(InlineImage(tpl, item["path"], width=PORT_W))
-            else:
-                land_images.append(InlineImage(tpl, item["path"], width=LAND_W))
+    land_images = [InlineImage(tpl, p, width=LAND_W) for p in lands]
 
-        port_pairs = []
-        for i in range(0, len(ports), 2):
-            port_pairs.append([ports[i], ports[i+1] if i+1 < len(ports) else ""])
+    # chunk portraits into (left, right_or_None)
+    def chunk2(items):
+        it = iter(items)
+        for a in it:
+            b = next(it, None)
+            yield a, b
 
-        context = dict(ctx)
-        context.update({
-            "land_images": land_images,
-            "port_pairs":  port_pairs,
-        })
+    port_rows = []
+    for l, r in chunk2(ports):
+        left  = InlineImage(tpl, l, width=PORT_W)
+        right = InlineImage(tpl, r, width=PORT_W) if r else None
+        port_rows.append((left, right))
 
-        out_name = f"report_{report_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-        out_path = os.path.join(dst_dir, out_name)
+    gap = "\u00A0" * 8  # NBSP gutter between two inline images
 
-        tpl.render(context)
-        tpl.save(out_path)
+    # merge into context
+    ctx.update({
+        "land_images": land_images,
+        "port_rows":   port_rows,
+        "gap":         gap,
+    })
 
-        return jsonify({"ok": True, "docx_url": f"/static/generated/{out_name}"})
-    finally:
-        shutil.rmtree(tmpdir, ignore_errors=True)
+    # --- render and save to instance/generated_reports ---
+    out_dir = os.path.join(current_app.instance_path, "generated_reports")
+    os.makedirs(out_dir, exist_ok=True)
+
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"report_{report_id}_{stamp}.docx"
+    abs_path = os.path.join(out_dir, filename)
+
+    tpl.render(ctx)
+    tpl.save(abs_path)
+
+    # public URL via your url_rule('generated_reports', ...)
+    docx_url = url_for("generated_reports", filename=filename)
+
+    return jsonify({"ok": True, "docx_url": docx_url})
+
+
 
 
 
