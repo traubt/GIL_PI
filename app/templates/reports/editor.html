@@ -359,6 +359,27 @@
     if (o) o.style.display = 'none';
   }
 
+  // Keep GET URLs short: turn data URLs or long paths into a short basename
+  function shortenPhotoSrc(val){
+    if (!val) return "";
+    const s = String(val).trim();
+
+    // If it's a data URL, don't send it on GET
+    if (s.startsWith("data:")) return "";
+
+    // If it's a URL with ?name=..., prefer that
+    try{
+      const u = new URL(s, window.location.origin);
+      const n = u.searchParams.get('name');
+      if (n) return n;
+    }catch(e){ /* not a URL; fall back below */ }
+
+    // Otherwise, just basename
+    const m = s.match(/[^/\\]+$/);
+    return m ? m[0] : s.slice(0, 120);
+  }
+
+
   function currentInsurer(){
     return document.getElementById('insurer')?.value?.trim() || 'מנורה';
   }
@@ -685,19 +706,28 @@
     const q = new URLSearchParams();
     if (state.insured_id) q.set('insured_id', state.insured_id);
 
-    // take what the UI shows; server formats if needed
     const g = id => document.getElementById(id)?.value?.trim() || "";
-    const uiDateText = g('id_photo_date_dmy');  // the visible DD/MM/YYYY
+    const uiDateText = g('id_photo_date_dmy');   // what user sees (DD/MM/YYYY)
+
     if (uiDateText) q.set('id_photo_date_text', uiDateText);
-    if (g('id_photo_date')) q.set('id_photo_date', g('id_photo_date')); // hidden ISO (fallback)
+    if (g('id_photo_date')) q.set('id_photo_date', g('id_photo_date')); // ISO fallback
     if (g('id_photo_time')) q.set('id_photo_time', g('id_photo_time'));
     if (g('id_photo_city')) q.set('id_photo_city', g('id_photo_city'));
     if (g('id_photo_place')) q.set('id_photo_place', g('id_photo_place'));
-    if (g('id_photo_src')) q.set('id_photo_src', g('id_photo_src'));     // path/dataURL/basename
+
+    // IMPORTANT: do not push data: URLs into GET — shorten to a basename
+    const rawSrc  = g('id_photo_src');
+    const safeSrc = shortenPhotoSrc(rawSrc);
+    if (safeSrc) q.set('id_photo_src', safeSrc);
 
     q.set('ts', Date.now());
+
+    // debug
+    console.log('[Photo-ID] raw src len:', rawSrc ? rawSrc.length : 0, 'safe src:', safeSrc);
+
     return q.toString();
   }
+
 
 
   function buildQuery(){
@@ -729,35 +759,41 @@
     if (window.state && Number(window.state.report_id) > 0) return Number(window.state.report_id);
     return 1;
   }
-  if (refreshBtn && frame) {
-      refreshBtn.addEventListener('click', function () {
-        const tmplKey   = selectedTemplateKey();                 // <-- which template key
-        const tmplLabel = document.querySelector('#reportType option:checked')?.textContent?.trim() || 'התבנית הנבחרת';
+if (refreshBtn && frame) {
+  refreshBtn.addEventListener('click', async function () {
+    const tmplKey   = selectedTemplateKey();
+    const tmplLabel = document.querySelector('#reportType option:checked')?.textContent?.trim() || 'התבנית הנבחרת';
 
-        showBusy(`מכין תצוגה עבור ${tmplLabel}`);
-        const tidy = () => { frame.removeEventListener('load', tidy); frame.removeEventListener('error', tidy); hideBusy(); };
-        frame.addEventListener('load', tidy,  { once:true });
-        frame.addEventListener('error', tidy, { once:true });
-        setTimeout(hideBusy, 15000);
+    // show spinner first and keep it until the *real* PDF loads
+    showBusy(`מכין תצוגה עבור ${tmplLabel}`);
 
-        const id = currentReportId();
-        let url;
-        if (tmplKey === 'id_photos') {
-          url = `/reports/${id}/photo-id/preview-pdf?` + buildPhotoIdQuery();
-        } else {
-          url = `/reports/${id}/preview-pdf?` + buildQuery();
-        }
+    const id  = currentReportId();
+    const url = (tmplKey === 'id_photos')
+      ? `/reports/${id}/photo-id/preview-pdf?` + buildPhotoIdQuery()
+      : `/reports/${id}/preview-pdf?`           + buildQuery();
 
-        // ---- DEBUG LOGS ----
-        console.log('[Preview] tmplKey:', tmplKey);
-        console.log('[Preview] GET =>', url);
+    // --- debug ---
+    console.log('[Preview] tmplKey:', tmplKey);
+    console.log('[Preview] GET =>', url);
 
-        frame.removeAttribute('srcdoc');
-        frame.src = 'about:blank';
-        frame.src = url;
-      });
+    // clean any srcdoc and attach one-time listeners
+    frame.removeAttribute('srcdoc');
+    const tidy = () => {
+      frame.removeEventListener('load', tidy);
+      frame.removeEventListener('error', tidy);
+      hideBusy();
+    };
+    frame.addEventListener('load',  tidy, { once:true });
+    frame.addEventListener('error', tidy, { once:true });
 
-  }
+    // safety timeout (20s) so the overlay can’t get stuck
+    setTimeout(() => { hideBusy(); }, 20000);
+
+    // IMPORTANT: set the real URL directly (no 'about:blank' in between)
+    frame.src = url;
+  });
+}
+
   if (downloadBtn) {
     downloadBtn.addEventListener('click', async function(){
       try {

@@ -775,6 +775,226 @@ def render_docx_download(report_id: int):
     return jsonify({"ok": True, "docx_url": docx_url})
 
 
+# ===================== PHOTO ID: dedicated endpoints (server only) =====================
+# Uses your existing helpers:
+#   - reports_docx_bp (Blueprint)
+#   - get_report_context(report_id, insured_id=..., overrides=None)
+#   - load_template_docx(template_filename) -> absolute path
+#   - _docx_to_pdf_bytes(docx_bytes) -> bytes
+
+@reports_docx_bp.get("/<int:report_id>/photo-id/preview-pdf")
+def photo_id_preview_pdf(report_id: int):
+    """
+    Preview PDF for 'menora_photo_id.docx'.
+
+    Query params (send what the UI shows; no special formatting required):
+      insured_id
+      id_photo_date_text   -> the visible date text (e.g., '04/11/2025' or '4.11.2025')
+      id_photo_date        -> optional ISO fallback ('YYYY-MM-DD') if you don't send *_text
+      id_photo_time        -> pass-through (e.g., '12:33 PM') — embedded as-is
+      id_photo_city
+      id_photo_place
+      id_photo_src         -> data URL | absolute path | basename under REPORT_MEDIA_DIR/<insured>/<report>/**
+    """
+    from flask import request, current_app, send_file
+    from docxtpl import DocxTemplate, InlineImage
+    from docx.shared import Mm
+    import os, io, re, base64, tempfile
+
+    # ---- local helpers (kept inside the route to avoid global changes) ----
+    def _media_root() -> str:
+        return current_app.config.get(
+            "REPORT_MEDIA_DIR",
+            os.path.join(current_app.instance_path, "report_media"),
+        )
+
+    def _resolve_one_image(src: str, insured_id: int | None, report_id: int) -> str | None:
+        """data URL -> temp file; absolute path; else search by basename under media folders."""
+        if not src:
+            return None
+        if src.startswith("data:"):
+            m = re.match(r"data:image/(png|jpe?g|webp);base64,(.+)$", src, re.I)
+            if not m:
+                return None
+            ext = "jpg" if m.group(1).lower().startswith("jp") else m.group(1).lower()
+            fd, path = tempfile.mkstemp(prefix="photo_id_", suffix=f".{ext}")
+            os.write(fd, base64.b64decode(m.group(2))); os.close(fd)
+            return path
+        if os.path.isabs(src) and os.path.isfile(src):
+            return src
+        base = os.path.basename(src)
+        roots = []
+        root = _media_root()
+        if insured_id:
+            roots.append(os.path.join(root, str(insured_id), str(report_id)))
+            roots.append(os.path.join(root, str(insured_id)))
+        else:
+            roots.append(root)
+        for r0 in roots:
+            if os.path.isdir(r0):
+                for r, _d, files in os.walk(r0):
+                    if base in files:
+                        return os.path.join(r, base)
+        return None
+
+    def _iso_to_dots_fallback(iso_or_text: str) -> str:
+        """
+        If the string looks like ISO 'YYYY-MM-DD', convert to 'D.MM.YYYY'.
+        Otherwise, return as-is (we trust the UI).
+        """
+        s = (iso_or_text or "").strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+            y, m, d = s.split("-")
+            return f"{int(d)}.{m}.{y}"
+        return s
+
+    # ---- collect inputs exactly as sent by the UI ----
+    insured_id = request.args.get("insured_id", type=int)
+    date_text  = (request.args.get("id_photo_date_text") or "").strip()
+    date_iso   = (request.args.get("id_photo_date") or "").strip()
+    time_text  = (request.args.get("id_photo_time") or "").strip()     # pass-through
+    city       = (request.args.get("id_photo_city") or "").strip()
+    place_only = (request.args.get("id_photo_place") or "").strip()
+    photo_src  = (request.args.get("id_photo_src") or "").strip()
+    place_text = " ".join(p for p in [city, place_only] if p).strip()
+
+    # ---- base context from your existing helper ----
+    ctx = get_report_context(report_id, insured_id=insured_id)
+
+    # Date text strategy:
+    # 1) If UI gave us id_photo_date_text, use it as-is.
+    # 2) Else if UI sent id_photo_date (ISO), convert locally to D.MM.YYYY once.
+    # 3) Else, fall back to ctx.activity_date (already whatever your app uses) and apply same fallback.
+    if not date_text:
+        date_text = date_iso or ctx.get("ctx", {}).get("activity_date") or ""
+        date_text = _iso_to_dots_fallback(date_text)
+
+    # Merge the fields expected by the template
+    ctx.update({
+        "id_date":  date_text,     # final string for the template (no more formatting)
+        "id_time":  time_text,     # pass-through string
+        "id_place": place_text,
+    })
+
+    template_path = load_template_docx("menora_photo_id.docx")
+    tpl = DocxTemplate(template_path)
+
+    resolved = _resolve_one_image(photo_src, insured_id, report_id)
+    ctx["id_photo"] = InlineImage(tpl, resolved, width=Mm(120)) if resolved else ""
+
+    # Render -> PDF
+    buf = io.BytesIO(); tpl.render(ctx); tpl.save(buf)
+    pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
+    return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
+
+
+@reports_docx_bp.post("/<int:report_id>/photo-id/render-docx")
+def photo_id_render_docx(report_id: int):
+    """
+    Generate DOCX for 'menora_photo_id.docx'.
+
+    JSON body (send what the UI shows; no special formatting required):
+      insured_id
+      id_photo_date_text   -> preferred (visible text)
+      id_photo_date        -> optional ISO fallback
+      id_photo_time        -> pass-through (e.g., '12:33 PM')
+      id_photo_city
+      id_photo_place
+      id_photo_src
+    """
+    from flask import request, current_app, jsonify, url_for
+    from docxtpl import DocxTemplate, InlineImage
+    from docx.shared import Mm
+    import os, re, base64, tempfile, io, datetime as _dt
+
+    # same local helpers as preview
+    def _media_root() -> str:
+        return current_app.config.get(
+            "REPORT_MEDIA_DIR",
+            os.path.join(current_app.instance_path, "report_media"),
+        )
+
+    def _resolve_one_image(src: str, insured_id: int | None, report_id: int) -> str | None:
+        if not src:
+            return None
+        if src.startswith("data:"):
+            m = re.match(r"data:image/(png|jpe?g|webp);base64,(.+)$", src, re.I)
+            if not m: return None
+            ext = "jpg" if m.group(1).lower().startswith("jp") else m.group(1).lower()
+            fd, path = tempfile.mkstemp(prefix="photo_id_", suffix=f".{ext}")
+            os.write(fd, base64.b64decode(m.group(2))); os.close(fd)
+            return path
+        if os.path.isabs(src) and os.path.isfile(src):
+            return src
+        base = os.path.basename(src)
+        roots = []
+        root = _media_root()
+        if insured_id:
+            roots.append(os.path.join(root, str(insured_id), str(report_id)))
+            roots.append(os.path.join(root, str(insured_id)))
+        else:
+            roots.append(root)
+        for r0 in roots:
+            if os.path.isdir(r0):
+                for r, _d, files in os.walk(r0):
+                    if base in files:
+                        return os.path.join(r, base)
+        return None
+
+    def _iso_to_dots_fallback(iso_or_text: str) -> str:
+        s = (iso_or_text or "").strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", s):
+            y, m, d = s.split("-")
+            return f"{int(d)}.{m}.{y}"
+        return s
+
+    payload    = request.get_json(silent=True) or {}
+    insured_id = payload.get("insured_id")
+
+    date_text  = (payload.get("id_photo_date_text") or "").strip()
+    date_iso   = (payload.get("id_photo_date") or "").strip()
+    time_text  = (payload.get("id_photo_time") or "").strip()
+    city       = (payload.get("id_photo_city") or "").strip()
+    place_only = (payload.get("id_photo_place") or "").strip()
+    photo_src  = (payload.get("id_photo_src") or "").strip()
+    place_text = " ".join(p for p in [city, place_only] if p).strip()
+
+    ctx = get_report_context(report_id, insured_id=insured_id)
+
+    if not date_text:
+        date_text = date_iso or ctx.get("ctx", {}).get("activity_date") or ""
+        date_text = _iso_to_dots_fallback(date_text)
+
+    ctx.update({
+        "id_date":  date_text,     # final date string
+        "id_time":  time_text,     # pass-through
+        "id_place": place_text,
+    })
+
+    template_path = load_template_docx("menora_photo_id.docx")
+    tpl = DocxTemplate(template_path)
+
+    resolved = _resolve_one_image(photo_src, insured_id, report_id)
+    ctx["id_photo"] = InlineImage(tpl, resolved, width=Mm(120)) if resolved else ""
+
+    out_dir = os.path.join(current_app.instance_path, "generated_reports")
+    os.makedirs(out_dir, exist_ok=True)
+    filename = f"photo_id_{report_id}_{_dt.datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+    abs_path = os.path.join(out_dir, filename)
+
+    tpl.render(ctx)
+    tpl.save(abs_path)
+
+    try:
+        href = url_for("generated_reports", filename=filename)
+    except Exception:
+        href = f"/generated_reports/{filename}"
+
+    return jsonify({"ok": True, "docx_url": href})
+# ================== /PHOTO ID: dedicated endpoints (server only) =======================
+
+
+
 
 
 
