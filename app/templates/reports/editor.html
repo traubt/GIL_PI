@@ -380,6 +380,29 @@
   }
 
 
+  // === Photo-ID: pick ONE server filename we already have ===
+  function getPhotoIdServerName(){
+    // Prefer the single-photo widget (if it already has serverName)
+    if (typeof window.getSelectedReportImages === 'function'){
+      const one = window.getSelectedReportImages().find(x => x.serverName);
+      if (one?.serverName){
+        console.log('[PhotoID][client] single widget ->', one.serverName);
+        return one.serverName;
+      }
+    }
+    // Fallback: first checked gallery name (same as סיעודי)
+    if (typeof window.selectedPhotoNames === 'function'){
+      const names = window.selectedPhotoNames();
+      if (names?.length){
+        console.log('[PhotoID][client] gallery fallback ->', names[0]);
+        return names[0];
+      }
+    }
+    console.log('[PhotoID][client] no server filename found');
+    return null;
+  }
+
+
   function currentInsurer(){
     return document.getElementById('insurer')?.value?.trim() || 'מנורה';
   }
@@ -706,26 +729,36 @@
     const q = new URLSearchParams();
     if (state.insured_id) q.set('insured_id', state.insured_id);
 
-    const g = id => document.getElementById(id)?.value?.trim() || "";
-    const uiDateText = g('id_photo_date_dmy');   // what user sees (DD/MM/YYYY)
+    const v = id => (document.getElementById(id)?.value || '').trim();
+    if (v('id_photo_date_dmy')) q.set('id_photo_date_text', v('id_photo_date_dmy'));
+    if (v('id_photo_date'))     q.set('id_photo_date',      v('id_photo_date'));
+    if (v('id_photo_time'))     q.set('id_photo_time',      v('id_photo_time'));
+    if (v('id_photo_city'))     q.set('id_photo_city',      v('id_photo_city'));
+    if (v('id_photo_place'))    q.set('id_photo_place',     v('id_photo_place'));
 
-    if (uiDateText) q.set('id_photo_date_text', uiDateText);
-    if (g('id_photo_date')) q.set('id_photo_date', g('id_photo_date')); // ISO fallback
-    if (g('id_photo_time')) q.set('id_photo_time', g('id_photo_time'));
-    if (g('id_photo_city')) q.set('id_photo_city', g('id_photo_city'));
-    if (g('id_photo_place')) q.set('id_photo_place', g('id_photo_place'));
-
-    // IMPORTANT: do not push data: URLs into GET — shorten to a basename
-    const rawSrc  = g('id_photo_src');
-    const safeSrc = shortenPhotoSrc(rawSrc);
-    if (safeSrc) q.set('id_photo_src', safeSrc);
+    // *** key change: send ONE server filename, like סיעודי ***
+    const one = getPhotoIdServerName();
+    if (one) q.append('selected_photos[]', one);
 
     q.set('ts', Date.now());
-
-    // debug
-    console.log('[Photo-ID] raw src len:', rawSrc ? rawSrc.length : 0, 'safe src:', safeSrc);
-
+    console.log('[PhotoID][client] buildPhotoIdQuery =>', q.toString());
     return q.toString();
+  }
+
+  function buildPhotoIdPayload(){
+    const v = id => (document.getElementById(id)?.value || '').trim();
+    const payload = {
+      insured_id:         state.insured_id || null,
+      id_photo_date_text: v('id_photo_date_dmy'),
+      id_photo_date:      v('id_photo_date'),
+      id_photo_time:      v('id_photo_time'),
+      id_photo_city:      v('id_photo_city'),
+      id_photo_place:     v('id_photo_place'),
+    };
+    const one = getPhotoIdServerName();
+    payload.selected_photos = one ? [one] : [];
+    console.log('[PhotoID][client] buildPhotoIdPayload =>', payload);
+    return payload;
   }
 
 
