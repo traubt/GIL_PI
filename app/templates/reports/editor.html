@@ -53,7 +53,8 @@
       <div class="d-flex gap-2">
         <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>
         <button id="btnFinalize" class="btn btn-outline-primary">סגירת דו״ח (סופי)</button>
-        <button id="btnPreview" class="btn btn-primary">תצוגה מקדימה (PDF)</button>
+        <button id="sendEmail" class="btn btn-primary">שלח אימייל</button>
+<!--        <button id="btnPreview" class="btn btn-primary">תצוגה מקדימה (PDF)</button>-->
 
         <div class="btn-group">
           <button type="button" class="btn btn-success dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
@@ -1273,6 +1274,63 @@ if (refreshBtn && frame) {
   }
 })();
 </script>
+
+<script>
+/* === SEND EMAIL (Outlook-safe, Hebrew RTL, real field ids) === */
+document.addEventListener('DOMContentLoaded', function () {
+  const btn = document.getElementById('sendEmail');
+  if (!btn) return;
+
+  const RLM = '\u200F'; // Right-to-Left Mark
+
+  function get(id){ return (document.getElementById(id)?.value || '').trim(); }
+  function joinWords(arr){
+    return arr.filter(Boolean).join(' ').replace(/\s{2,}/g,' ').trim();
+  }
+
+  btn.addEventListener('click', function () {
+    // pull from actual read-only fields on the page
+    const claimNumber = get('db_claim_number');   // <== exists on the form
+    const insuredName = get('db_full_name');      // <== exists on the form
+    const insuredId   = get('db_id_number');      // <== exists on the form
+
+    // optional: if you have an insurer email input later, it will be used
+    const toEmail = (document.getElementById('insurer_email')?.value || '').trim();
+
+    // Subject: תביעה <מספר תביעה> - שם המבוטח ת"ז <מספר>
+    const subjectHeb = joinWords([
+      'תביעה', claimNumber,
+      '-', insuredName,
+      'ת"ז', insuredId
+    ]);
+
+    // Body (plain text; we’ll CRLF for Outlook and force RTL with RLM)
+    const bodyLines = [
+      'שלום,',
+      '',
+      'לבקשתך ביצענו מעקב סיעודי, מצ"ב:',
+      '1. דו"ח המעקב בצירוף תמונות',
+      '2. תמונת זיהוי',
+      '3. חשבון עסקה',
+      '',
+      '*הקבצים המצורפים הינם גם ב-PDF וגם ב-JPG.*'
+    ];
+
+    // Force RTL by prefixing RLM on each line (prevents LTR reordering in Outlook)
+    const bodyRtl = bodyLines.map(l => RLM + l).join('\r\n');
+
+    // IMPORTANT: encode with encodeURIComponent (NOT URLSearchParams) to avoid '+' signs
+    const qp = [
+      'subject=' + encodeURIComponent(RLM + subjectHeb),
+      'body='    + encodeURIComponent(bodyRtl).replace(/%0A/g, '%0D%0A') // normalize to CRLF
+    ].join('&');
+
+    const href = 'mailto:' + (toEmail ? encodeURIComponent(toEmail) : '') + '?' + qp;
+    window.location.href = href;
+  });
+});
+</script>
+
 
 
 {% endblock %}
