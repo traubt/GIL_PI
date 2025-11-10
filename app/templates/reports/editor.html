@@ -112,16 +112,16 @@
                 </select>
               </div>
 
-              <div class="col-md-6">
-                <label for="reportType" class="form-label">סוג דו״ח</label>
-                <select id="reportType" class="form-select">
-<!--                  <option value="TRACKING" selected>דוח מעקב</option>-->
-                  <option value="SIUDI">דוח חקירה סיעודי</option>
-                  <option value="ID_PHOTOS">דוח תמונת זיהוי</option>
-<!--                  <option value="PERSONAL">דוח פרטים אישיים</option>-->
-<!--                  <option value="PHOTOSET">דוח תמונות</option>-->
-                </select>
-              </div>
+<!--              <div class="col-md-6">-->
+<!--                <label for="reportType" class="form-label">סוג דו״ח</label>-->
+<!--                <select id="reportType" class="form-select">-->
+<!--&lt;!&ndash;                  <option value="TRACKING" selected>דוח מעקב</option>&ndash;&gt;-->
+<!--                  <option value="SIUDI">דוח חקירה סיעודי</option>-->
+<!--                  <option value="ID_PHOTOS">דוח תמונת זיהוי</option>-->
+<!--&lt;!&ndash;                  <option value="PERSONAL">דוח פרטים אישיים</option>&ndash;&gt;-->
+<!--&lt;!&ndash;                  <option value="PHOTOSET">דוח תמונות</option>&ndash;&gt;-->
+<!--                </select>-->
+<!--              </div>-->
 
               <!-- Section 2: פרטי מבוטח (disabled DB fields) -->
               <div class="col-12 section-block" data-section="insured-info">
@@ -300,13 +300,26 @@
       <!-- RIGHT: Word preview -->
       <div class="col-lg-5">
         <div class="card position-sticky h-100" style="top: 12px;">
-          <div class="card-header d-flex align-items-center justify-content-between">
-            <div style="font-weight:600">תצוגה מקדימה (Word)</div>
-            <div class="btn-group">
-              <button id="refreshPreview" class="btn btn-sm btn-outline-primary">רענן תצוגה</button>
-              <button id="downloadDocx" class="btn btn-sm btn-primary">הורד Word</button>
-            </div>
-          </div>
+<div class="card-header d-flex align-items-center justify-content-between">
+  <div style="font-weight:600">תצוגה מקדימה (Word)</div>
+
+  <!-- actions: dropdown inline with the buttons -->
+  <div class="preview-actions d-flex align-items-center gap-2 flex-nowrap">
+    <select id="reportType"
+            class="form-select form-select-sm w-auto"
+            style="min-width:220px"
+            aria-label="בחר דו&quot;ח">
+      <option value="" selected>בחר דו"ח</option>
+      {% for rt in report_types %}
+        <option value="{{ rt.value }}">{{ rt.label }}</option>
+      {% endfor %}
+    </select>
+
+    <button id="refreshPreview" class="btn btn-sm btn-outline-primary">רענן תצוגה</button>
+    <button id="downloadDocx" class="btn btn-sm btn-primary">הורד Word</button>
+  </div>
+</div>
+
           <div class="card-body p-0" style="height: 520px;">
             <iframe id="wordPreviewFrame"
                     src="about:blank"
@@ -322,6 +335,22 @@
 </main>
 
 <a id="downloadDummy" style="display:none" rel="noopener" target="_blank"></a>
+
+<script>
+(function(){
+  const sel = document.getElementById('reportType');
+  if (!sel) return;
+  // if only the placeholder option exists, inject defaults
+  if (sel.options.length <= 1) {
+    [
+      {v:'SIUDI',      t:'דוח חקירה סיעודי'},
+      {v:'ID_PHOTOS',  t:'תמונת זיהוי'},
+    ].forEach(o => sel.add(new Option(o.t, o.v)));
+  }
+})();
+
+
+</script>
 
 
 <script>
@@ -794,6 +823,12 @@
   }
 if (refreshBtn && frame) {
   refreshBtn.addEventListener('click', async function () {
+      const rt = document.getElementById('reportType')?.value || "";
+      if (!rt) {
+        alert('נא לבחור דוח מהרשימה');
+        return;
+      }
+
     const tmplKey   = selectedTemplateKey();
     const tmplLabel = document.querySelector('#reportType option:checked')?.textContent?.trim() || 'התבנית הנבחרת';
 
@@ -830,6 +865,12 @@ if (refreshBtn && frame) {
   if (downloadBtn) {
     downloadBtn.addEventListener('click', async function(){
       try {
+        const rt = document.getElementById('reportType')?.value || "";
+        if (!rt) {
+          alert('נא לבחור דוח מהרשימה');
+          return false;
+        }
+
         showBusy("מכין קובץ Word...");
         const id      = currentReportId();
         const tmplKey = selectedTemplateKey();
