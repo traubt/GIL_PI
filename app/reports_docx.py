@@ -776,124 +776,117 @@ def render_docx_download(report_id: int):
 
 
 # ===================== PHOTO ID: dedicated endpoints (server only) =====================
-# Uses your existing helpers:
-#   - reports_docx_bp (Blueprint)
-#   - get_report_context(report_id, insured_id=..., overrides=None)
-#   - load_template_docx(template_filename) -> absolute path
-#   - _docx_to_pdf_bytes(docx_bytes) -> bytes
+
+import datetime as dt
+
+
+# --------------------------- PHOTO-ID: Preview (PDF) ---------------------------
 
 @reports_docx_bp.get("/<int:report_id>/photo-id/preview-pdf")
 def photo_id_preview_pdf(report_id: int):
-    from flask import request, send_file
+    insured_id = request.args.get("insured_id", type=int) or 0
 
-    insured_id = request.args.get("insured_id", type=int)
-
-    # --- map UI → template keys (simple pass-through) ---
     id_date  = request.args.get("id_photo_date_text", "") or request.args.get("id_photo_date", "")
     id_time  = request.args.get("id_photo_time", "")
-    id_city  = request.args.get("id_photo_city", "")
-    id_place = request.args.get("id_photo_place", "")
+    id_city  = (request.args.get("id_photo_city") or "").strip()
+    id_place = (request.args.get("id_photo_place") or "").strip()
 
-    # --- collect ONE selected name like סיעודי ---
-    names = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos")
+    # get the first selected server-side filename from the thumbnails mechanism
+    names = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos") or []
     img_name = names[0] if names else None
-    current_app.logger.info("[PhotoID][preview] insured_id=%s report_id=%s name=%r", insured_id, report_id, img_name)
 
-    # --- base context (db.* etc.) ---
+    current_app.logger.info("[PhotoID][preview] report=%s insured=%s file=%r", report_id, insured_id, img_name)
+
+    # resolve expected location: <media_root>/<insured_id>/<report_id>/<filename>
+    media_root = current_app.config.get("REPORT_MEDIA_DIR", os.path.join(current_app.instance_path, "report_media"))
+    img_path = os.path.join(media_root, str(insured_id), str(report_id), img_name) if img_name else None
+    if img_path and not os.path.exists(img_path):
+        current_app.logger.warning("[PhotoID][preview] missing image: %s", img_path)
+        img_path = None
+    current_app.logger.info("[PhotoID][preview] image path: %r", img_path)
+
+    # build context
     ctx = get_report_context(report_id, insured_id=insured_id)
+    place_str = ", ".join(v for v in (id_place, id_city) if v)
     ctx.update({
         "id_date":  id_date or _iso_to_dots(ctx.get("ctx", {}).get("activity_date", "")),
         "id_time":  id_time,
-        "id_place": " ".join(p for p in [id_city, id_place] if p).strip(),
+        "id_place": place_str,
     })
 
-    # --- template path ---
-    template_path = load_template_docx("menora_photo_id.docx")
-    current_app.logger.info("[PhotoID][preview] template=%s", template_path)
+    template_path = os.path.join(current_app.root_path, "docx_templates", "menora_photo_id.docx")
+    current_app.logger.info("[PhotoID][preview] template: %s", template_path)
+
     tpl = DocxTemplate(template_path)
+    if img_path:
+        ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(140))
+    else:
+        ctx["id_photo"] = ""  # keep placeholder empty if not found
+    tpl.render(ctx)
 
-    # --- resolve name -> absolute path (same logic as סיעודי) ---
-    case_id   = str(insured_id or "").strip()
-    rep_id    = str(report_id)
-    media_root = current_app.config.get("REPORT_MEDIA_DIR", os.path.join(current_app.instance_path, "report_media"))
-
-    def resolve_one(name: str) -> str | None:
-        exact = os.path.join(media_root, case_id, rep_id, name)
-        if os.path.isfile(exact): return exact
-        case_root = os.path.join(media_root, case_id)
-        if os.path.isdir(case_root):
-            for root, _dirs, files in os.walk(case_root):
-                if name in files:
-                    return os.path.join(root, name)
-        current_app.logger.warning("[PhotoID][preview] NOT FOUND: %s", name)
-        return None
-
-    img_path = resolve_one(img_name) if img_name else None
-    current_app.logger.info("[PhotoID][preview] path=%r", img_path)
-
-    # put into context
-    ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(120)) if img_path else ""
-
-    # render -> DOCX bytes -> PDF
+    # -> PDF
     buf = io.BytesIO()
-    tpl.render(ctx); tpl.save(buf)
+    tpl.save(buf)
+    buf.seek(0)
     pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
-    current_app.logger.info("[PhotoID][preview] pdf bytes=%s", len(pdf_bytes))
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
+
+
+# --------------------------- PHOTO-ID: Render DOCX -----------------------------
 
 @reports_docx_bp.post("/<int:report_id>/photo-id/render-docx")
 def photo_id_render_docx(report_id: int):
-    payload    = request.get_json(silent=True) or {}
-    insured_id = payload.get("insured_id")
+    payload = request.get_json(silent=True) or {}
+    insured_id = payload.get("insured_id") or 0
 
     id_date  = (payload.get("id_photo_date_text") or payload.get("id_photo_date") or "").strip()
     id_time  = (payload.get("id_photo_time") or "").strip()
     id_city  = (payload.get("id_photo_city") or "").strip()
     id_place = (payload.get("id_photo_place") or "").strip()
 
-    names   = payload.get("selected_photos") or []
+    names = payload.get("selected_photos") or []
     img_name = names[0] if names else None
-    current_app.logger.info("[PhotoID][docx] insured_id=%s report_id=%s name=%r", insured_id, report_id, img_name)
+    current_app.logger.info("[PhotoID][docx] report=%s insured=%s file=%r", report_id, insured_id, img_name)
+
+    media_root = current_app.config.get("REPORT_MEDIA_DIR", os.path.join(current_app.instance_path, "report_media"))
+    img_path = os.path.join(media_root, str(insured_id), str(report_id), img_name) if img_name else None
+    if img_path and not os.path.exists(img_path):
+        current_app.logger.warning("[PhotoID][docx] missing image: %s", img_path)
+        img_path = None
+    current_app.logger.info("[PhotoID][docx] image path: %r", img_path)
 
     ctx = get_report_context(report_id, insured_id=insured_id)
+    place_str = ", ".join(v for v in (id_place, id_city) if v)
     ctx.update({
         "id_date":  id_date or _iso_to_dots(ctx.get("ctx", {}).get("activity_date", "")),
         "id_time":  id_time,
-        "id_place": " ".join(p for p in [id_city, id_place] if p).strip(),
+        "id_place": place_str,
     })
 
-    template_path = load_template_docx("menora_photo_id.docx")
+    template_path = os.path.join(current_app.root_path, "docx_templates", "menora_photo_id.docx")
+    current_app.logger.info("[PhotoID][docx] template: %s", template_path)
+
     tpl = DocxTemplate(template_path)
+    if img_path:
+        ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(140))
+    else:
+        ctx["id_photo"] = ""
+    tpl.render(ctx)
 
-    case_id   = str(insured_id or "").strip()
-    rep_id    = str(report_id)
-    media_root = current_app.config.get("REPORT_MEDIA_DIR", os.path.join(current_app.instance_path, "report_media"))
-
-    def resolve_one(name: str) -> str | None:
-        exact = os.path.join(media_root, case_id, rep_id, name)
-        if os.path.isfile(exact): return exact
-        case_root = os.path.join(media_root, case_id)
-        if os.path.isdir(case_root):
-            for root, _dirs, files in os.walk(case_root):
-                if name in files:
-                    return os.path.join(root, name)
-        current_app.logger.warning("[PhotoID][docx] NOT FOUND: %s", name)
-        return None
-
-    img_path = resolve_one(img_name) if img_name else None
-    current_app.logger.info("[PhotoID][docx] path=%r", img_path)
-
-    ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(120)) if img_path else ""
-
-    out_dir  = os.path.join(current_app.instance_path, "generated_reports")
+    # save to instance/generated_reports
+    out_dir = os.path.join(current_app.instance_path, "generated_reports")
     os.makedirs(out_dir, exist_ok=True)
-    filename = f"photo_id_{report_id}_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"report_{report_id}_{stamp}.docx"
     abs_path = os.path.join(out_dir, filename)
+    tpl.save(abs_path)
 
-    tpl.render(ctx); tpl.save(abs_path)
-    href = url_for("generated_reports", filename=filename)
-    current_app.logger.info("[PhotoID][docx] saved=%s", abs_path)
-    return jsonify({"ok": True, "docx_url": href})
+    # public URL (you likely already expose this directory via a static route named 'generated_reports')
+    docx_url = url_for("generated_reports", filename=filename)
+    current_app.logger.info("[PhotoID][docx] saved: %s -> %s", abs_path, docx_url)
+
+    return jsonify({"ok": True, "docx_url": docx_url})
+
 
 # ================== /PHOTO ID: dedicated endpoints (server only) =======================
 
