@@ -98,8 +98,8 @@
 <!--                        data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>-->
                 <button class="btn btn-sm btn-info open-appointments" data-case-id="{{ insured.id }}"> 📅ארועים</button>
                 <button class="btn btn-sm btn-info tasks-btn" data-id="{{ insured.id }}">    משימות</button>
-                <button type="button" class="btn btn-sm btn-secondary change-status-btn"
-                        data-id="{{ insured.id }}" data-status="{{ insured.status|default('פתוחה') }}">שנה סטטוס</button>
+                <button class="btn btn-sm btn-warning create-report-btn"   data-insured-id="{{ insured.id }}">  צור דוח</button>
+                <button type="button" class="btn btn-sm btn-secondary change-status-btn"   data-id="{{ insured.id }}" data-status="{{ insured.status|default('פתוחה') }}">שנה סטטוס</button>
               </td>
             </tr>
             {% endfor %}
@@ -710,7 +710,13 @@ $(document).on('click', '.edit-task', function () {
     $('select[name="status"]').val($tr.find('td').eq(4).text());
 });
 
-
+$(document).on('click', '.create-report-btn', function () {
+  const id = $(this).data('insured-id');
+  if (!id) return;
+  // same tab (or use window.open(url,'_blank') for new tab)
+  const url = `/reports/editor?insured_id=${encodeURIComponent(id)}`;
+  window.location.href = url;
+});
 
 </script>
 

@@ -291,6 +291,68 @@
   </div>
 </div>
 <!-- =================== /תמונת זיהוי (תבנית ייעודית) ==================== -->
+<!-- ===================== חשבונית סיעודי ===================== -->
+<div id="invoice-siudi-card" class="card mt-3" dir="rtl" style="border-radius:14px;">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-receipt"></i>
+      <strong>חשבונית סיעודי</strong>
+    </div>
+<!--    <small class="text-muted">שדהי המינימום ליצירת חשבונית מנורה</small>-->
+  </div>
+
+  <div class="card-body">
+    <div class="row g-3">
+
+      <!-- תאריך חשבונית (DD/MM/YYYY UI + ISO חבוי) -->
+      <div class="col-12 col-md-3">
+        <label for="inv_date_dmy" class="form-label">תאריך</label>
+        <input type="text" class="form-control" id="inv_date_dmy" placeholder="dd/mm/yyyy">
+        <input type="hidden" id="inv_date" name="inv_date"> <!-- yyyy-mm-dd -->
+      </div>
+
+      <!-- מספר חשבונית -->
+      <div class="col-12 col-md-3">
+        <label for="inv_number" class="form-label">מס' חשבונית</label>
+        <input type="text" class="form-control" id="inv_number" placeholder="לדוגמה: 164772">
+        <div class="form-text">תוצג בתוך המסגרת</div>
+      </div>
+
+      <!-- סכום לפני מע"מ -->
+      <div class="col-12 col-md-3">
+        <label for="inv_subtotal" class="form-label">סכום לפני מע״מ</label>
+        <input type="number" step="0.01" class="form-control" id="inv_subtotal" placeholder="לדוגמה: 2200.00">
+      </div>
+
+      <!-- אחוז מע״מ -->
+      <div class="col-12 col-md-3">
+        <label for="inv_vat_rate" class="form-label">% מע״מ</label>
+        <input type="number" step="0.01" class="form-control" id="inv_vat_rate" value="18.00">
+      </div>
+
+      <!-- חישוב אוטומטי -->
+      <div class="col-12 col-md-3">
+        <label for="inv_vat_amount" class="form-label">סכום מע״מ</label>
+        <input type="text" class="form-control" id="inv_vat_amount" readonly>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label for="inv_total" class="form-label">סכום כולל מע״מ</label>
+        <input type="text" class="form-control" id="inv_total" readonly>
+      </div>
+
+<!--      <div class="col-12">-->
+<!--        <div class="small text-muted">-->
+<!--          * אין צורך להזין שוב: <strong>תיקנו</strong> (inv_ref), <strong>הנדון</strong> (claim.subject) ו<strong>ת״ז</strong> – נלקחים אוטומטית מפרטי המבוטח.-->
+<!--          סעיף הפריטים הוא שורה אחת קבועה: <em>מעקב סיעודי</em>.-->
+<!--        </div>-->
+<!--      </div>-->
+    </div>
+  </div>
+</div>
+<!-- =================== /חשבונית סיעודי ==================== -->
+
+
 
             </div>
           </div>
@@ -345,6 +407,7 @@
     [
       {v:'SIUDI',      t:'דוח חקירה סיעודי'},
       {v:'ID_PHOTOS',  t:'תמונת זיהוי'},
+      {v:'SIUDI_INVOICE', t:'חשבונית סיעודי'}
     ].forEach(o => sel.add(new Option(o.t, o.v)));
   }
 })();
@@ -741,6 +804,8 @@
     // Explicit keys your server expects
     if (v === 'ID_PHOTOS' || v === 'PHOTO_ID') return 'id_photos'; // Photo-ID
     if (v === 'SIUDI' || v === 'MENORA_SIUDI') return 'siudi';     // מנורה סיעודי
+    if (v === 'SIUDI_INVOICE') return 'siudi_invoice';
+
 
     const map = { TRACKING:'tracking', PERSONAL:'personal', PHOTOSET:'photoset' };
     const supported = new Set(Object.keys(map).concat(['ID_PHOTOS','PHOTO_ID','SIUDI','MENORA_SIUDI']));
@@ -794,23 +859,63 @@
 
   function buildQuery(){
     const q = new URLSearchParams();
+
+    // basics
     if (state.insured_id) q.set('insured_id', state.insured_id);
-    if (state.ctx.activity_date) q.set('activity_date', state.ctx.activity_date);
+    if (state.ctx?.activity_date) q.set('activity_date', state.ctx.activity_date);
+
     const g = id => document.getElementById(id)?.value?.trim() || "";
+
+    // common context fields (stay as-is)
     if (g('ctx_surv_place'))  q.set('surv_place', g('ctx_surv_place'));
     if (g('ctx_surv_city'))   q.set('surv_city',  g('ctx_surv_city'));
     if (g('ctx_injury_type')) q.set('injury_type', g('ctx_injury_type'));
-    q.set('template', selectedTemplateKey());
+
+    // template
+    const tmplKey = selectedTemplateKey();
+    q.set('template', tmplKey);
+
+    // report-type specific
     const rt = (document.getElementById('reportType')?.value || '').toUpperCase();
+
     if (rt === 'ID_PHOTOS') {
       q.set('template_file', 'menora_photo_id.docx'); // explicit file hint
     }
+
+    // ===== Siudi Invoice (fixed 1-line item "מעקב סיעודי") =====
+    if (rt === 'SIUDI_INVOICE') {
+      q.set('template_file', 'invoice_monora_siudi.docx');
+
+      // typed on the invoice card
+      // inv_date is hidden ISO (yyyy-mm-dd); inv_date_dmy is UI only
+      q.set('inv_date',          g('inv_date') || "");      // e.g. 2025-09-30
+      q.set('inv_number',        g('inv_number') || "");
+      q.set('totals_subtotal',   g('inv_subtotal') || "");
+      q.set('totals_vat_rate',   g('inv_vat_rate') || "");
+      q.set('totals_vat_amount', g('inv_vat_amount') || "");
+      q.set('totals_total',      g('inv_total') || "");
+
+      // pulled from existing insured/context (no need to retype)
+      const invRef        = (state.ref_number || state.reference_no || "").toString();  // "תיקנו"
+      const claimNumber   = (state.db?.claim_number || "").toString();
+      const claimSubject  = (state.db?.full_name || "").toString();
+      const idNumber      = (state.db?.id_number || "").toString();
+
+      if (invRef)       q.set('inv_ref', invRef);
+      if (claimNumber)  q.set('claim.number', claimNumber);
+      if (claimSubject) q.set('claim.subject', claimSubject);
+      if (idNumber)     q.set('insured.id_number', idNumber);
+    }
+
+    // photo selection (kept for other report types)
     const names = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
     for (const n of names) q.append('selected_photos[]', n);
+
     q.set('ts', Date.now());
     return q.toString();
   }
   window.buildQuery = buildQuery;
+
 
   /* ============================== 6) RIGHT CARD BUTTONS (PREVIEW/DOWNLOAD) ============================== */
   const refreshBtn  = document.getElementById('refreshPreview');
@@ -880,37 +985,75 @@ if (refreshBtn && frame) {
         const photos = (typeof window.getSelectedReportImages === 'function') ? window.getSelectedReportImages() : [];
 
         // choose endpoint + payload by template
-        let endpoint, payload;
-        if (tmplKey === 'id_photos') {
-          endpoint = `/reports/${id}/photo-id/render-docx`;
-          const g = id => document.getElementById(id)?.value?.trim() || "";
 
-          // NEW: pick the single server-side filename (same mechanism as preview/siudi)
-          const one = getPhotoIdServerName();
+      let endpoint, payload;
 
-          payload = {
-            insured_id: state.insured_id || null,
-            id_photo_date_text: g('id_photo_date_dmy'),
-            id_photo_date:      g('id_photo_date'),
-            id_photo_time:      g('id_photo_time'),
-            id_photo_city:      g('id_photo_city'),
-            id_photo_place:     g('id_photo_place'),
-            id_photo_src:       g('id_photo_src'),
-            selected_photos:    one ? [one] : []          // ← THIS LINE DOES THE TRICK
-          };
-        }          else {
-          endpoint = `/reports/${id}/render-docx`;
-          payload = {
-            insured_id:    state.insured_id || null,
-            activity_date: state.ctx.activity_date || "",
-            surv_place:    val('ctx_surv_place'),
-            surv_city:     val('ctx_surv_city'),
-            template:      tmplKey,
-            injury_type:   val('ctx_injury_type'),
-            selected_photos: names,
-            photos: photos
-          };
-        }
+      if (tmplKey === 'id_photos') {
+        endpoint = `/reports/${id}/photo-id/render-docx`;
+        const g = id => document.getElementById(id)?.value?.trim() || "";
+        const one = getPhotoIdServerName && getPhotoIdServerName(); // single server-side image name
+
+        payload = {
+          insured_id: state.insured_id || null,
+          id_photo_date_text: g('id_photo_date_dmy'),
+          id_photo_date:      g('id_photo_date'),
+          id_photo_time:      g('id_photo_time'),
+          id_photo_city:      g('id_photo_city'),
+          id_photo_place:     g('id_photo_place'),
+          id_photo_src:       g('id_photo_src'),
+          selected_photos:    one ? [one] : []
+        };
+
+      } else if (tmplKey === 'siudi_invoice') {
+        // ✅ Siudi Invoice (single fixed line "מעקב סיעודי")
+        endpoint = `/reports/${id}/render-docx`;
+        const g = id => document.getElementById(id)?.value?.trim() || "";
+
+        payload = {
+          template:      'siudi_invoice',
+          template_file: 'invoice_monora_siudi.docx',
+
+          // typed on the invoice card
+          inv_date:     g('inv_date'),      // ISO yyyy-mm-dd (hidden field)
+          inv_number:   g('inv_number'),
+          totals: {
+            subtotal:   g('inv_subtotal'),
+            vat_rate:   g('inv_vat_rate'),
+            vat_amount: g('inv_vat_amount'),
+            total:      g('inv_total')
+          },
+
+          // pulled from state / insured card (no need to re-enter)
+          insured_id: state.insured_id || null,
+          inv_ref:    (state.ref_number || state.reference_no || "").toString(),
+          claim: {
+            number:  (state.db?.claim_number || "").toString(),
+            subject: (state.db?.full_name    || "").toString()
+          },
+          insured: {
+            id_number: (state.db?.id_number  || "").toString()
+          }
+        };
+
+      } else {
+        // default (other report types)
+        endpoint = `/reports/${id}/render-docx`;
+
+        const names  = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
+        const photos = (typeof window.getSelectedReportImages === 'function') ? window.getSelectedReportImages() : [];
+
+        payload = {
+          insured_id:    state.insured_id || null,
+          activity_date: state.ctx.activity_date || "",
+          surv_place:    val('ctx_surv_place'),
+          surv_city:     val('ctx_surv_city'),
+          template:      tmplKey,
+          injury_type:   val('ctx_injury_type'),
+          selected_photos: names,
+          photos: photos
+        };
+      }
+
 
         // ---- DEBUG LOGS ----
         console.log('[Download] tmplKey:', tmplKey);
@@ -1052,6 +1195,82 @@ if (refreshBtn && frame) {
     }
   })();
 
+})();
+
+// ===== Invoice datepicker (mirrors to ISO) =====
+(function(){
+  function dmyToIso(dmy){ if(!dmy) return ""; const [d,m,y]=dmy.split(/[./-]/); return `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`; }
+  function isoToDmy(iso){ if(!iso) return ""; const [y,m,d]=iso.split("-"); return `${d}/${m}/${y}`; }
+
+  const ui  = document.getElementById('inv_date_dmy');
+  const iso = document.getElementById('inv_date');
+  if (ui && iso) {
+    // default: today
+    const today = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    iso.value = `${today.getFullYear()}-${pad(today.getMonth()+1)}-${pad(today.getDate())}`;
+    ui.value  = isoToDmy(iso.value);
+
+    if (window.flatpickr) {
+      flatpickr(ui, {
+        dateFormat: "d/m/Y",
+        allowInput: true,
+        defaultDate: ui.value,
+        onChange: (_, str)=> iso.value = dmyToIso(str),
+        onClose:  (_, str)=> iso.value = dmyToIso(str)
+      });
+    } else {
+      ui.addEventListener('change', ()=> iso.value = dmyToIso(ui.value.trim()));
+    }
+  }
+})();
+
+// ===== Auto totals for invoice =====
+(function(){
+  const sub = document.getElementById('inv_subtotal');
+  const rate= document.getElementById('inv_vat_rate');
+  const vat = document.getElementById('inv_vat_amount');
+  const tot = document.getElementById('inv_total');
+  function num(x){ const n = parseFloat(String(x).replace(/,/g,'')); return isFinite(n)? n : 0; }
+  function fmt(n){ return n.toFixed(2); }
+  function recalc(){
+    const s = num(sub?.value);
+    const r = num(rate?.value);
+    const v = s * r / 100;
+    const t = s + v;
+    if (vat) vat.value = fmt(v);
+    if (tot) tot.value = fmt(t);
+  }
+  sub?.addEventListener('input', recalc);
+  rate?.addEventListener('input', recalc);
+  recalc();
+})();
+
+
+</script>
+
+<script>
+// Pre-select insured when arriving with ?insured_id=...
+(function () {
+  const params = new URLSearchParams(location.search);
+  const insuredId = params.get('insured_id');
+  if (!insuredId) return;
+
+  const sel = document.getElementById('insuredId');   // <-- correct id
+  if (sel) {
+    // if the option doesn't exist (edge-case), inject a temporary one
+    if (![...sel.options].some(o => o.value === insuredId)) {
+      const opt = new Option('— מבוטח נטען מכתובת —', insuredId, true, true);
+      sel.add(opt);
+    } else {
+      sel.value = insuredId;
+    }
+    // trigger your existing change handler to fill the form + state
+    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  } else {
+    // last-resort: at least set state
+    if (window.state) window.state.insured_id = insuredId;
+  }
 })();
 </script>
 

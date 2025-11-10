@@ -29,6 +29,7 @@ reports_docx_bp = Blueprint("reports_docx", __name__, url_prefix="/reports")
 TEMPLATE_MAP = {
     "tracking": "menora_report.docx",   # your old tracking template
     "siudi":    "menora_siudi.docx",    # the new one
+     "siudi_invoice": "invoice_monora_siudi.docx",
 }
 
 from datetime import datetime, date
@@ -37,7 +38,11 @@ from flask import request, current_app
 # import your model
 # from app.models import GilInsured   # <-- adjust to your actual import
 
-
+def ddmmyyyy(iso_str: str) -> str:
+    try:
+        return datetime.strptime(iso_str.strip(), "%Y-%m-%d").strftime("%d/%m/%Y")
+    except Exception:
+        return iso_str or ""
 
 def map_template_key(key: str) -> str:
     return TEMPLATE_MAP.get((key or "").lower(), TEMPLATE_MAP["tracking"])
@@ -572,6 +577,38 @@ def preview_docx_as_pdf(report_id: int):
 
     tpl = DocxTemplate(template_path)
 
+    # ===================== SIUDI INVOICE (no photos) ======================
+    if tmpl_key == "siudi_invoice":
+        g = request.args.get
+        inv_date_iso = (g("inv_date") or "").strip()
+        # ensure nested dicts exist
+        ctx.setdefault("insured", {})
+        ctx.setdefault("claim", {})
+        ctx.setdefault("totals", {})
+
+        ctx.update({
+            "inv_date":    ddmmyyyy(inv_date_iso),
+            "inv_number":  (g("inv_number") or "").strip(),
+            "inv_ref":     (g("inv_ref") or "").strip(),
+        })
+        ctx["insured"]["id_number"] = (g("insured.id_number") or "").strip()
+        ctx["claim"]["number"]      = (g("claim.number") or "").strip()
+        ctx["claim"]["subject"]     = (g("claim.subject") or "").strip()
+        ctx["totals"].update({
+            "subtotal":   (g("totals_subtotal") or "").strip(),
+            "vat_rate":   (g("totals_vat_rate") or "").strip(),
+            "vat_amount": (g("totals_vat_amount") or "").strip(),
+            "total":      (g("totals_total") or "").strip(),
+        })
+
+        # render -> pdf
+        buf = io.BytesIO()
+        tpl.render(ctx)
+        tpl.save(buf)
+        pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
+        return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
+    # =====================================================================
+
     # --- collect selected files (names) -> absolute paths ---
     selected = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos")
     selected = [os.path.basename(n) for n in selected if n]
@@ -580,10 +617,8 @@ def preview_docx_as_pdf(report_id: int):
     media_root = current_app.config.get("REPORT_MEDIA_DIR", os.path.join(current_app.instance_path, "report_media"))
 
     def resolve_one(name: str) -> str | None:
-        # exact
         p = os.path.join(media_root, case_id, rep_id, name)
         if os.path.isfile(p): return p
-        # fallback search under case folder
         root_case = os.path.join(media_root, case_id)
         for root, _d, files in os.walk(root_case):
             if name in files:
@@ -592,7 +627,6 @@ def preview_docx_as_pdf(report_id: int):
         return None
 
     paths = [p for n in selected if (p := resolve_one(n))]
-    # fallback: include all images in the report folder
     if not paths:
         folder = os.path.join(media_root, case_id, rep_id)
         if os.path.isdir(folder):
@@ -600,27 +634,22 @@ def preview_docx_as_pdf(report_id: int):
                 if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
                     paths.append(os.path.join(folder, fn))
 
-    # --- classify by orientation (use real pixel size, not EXIF orientation) ---
+    # --- classify by orientation ---
     from PIL import Image
     lands, ports = [], []
     for p in paths:
         try:
             with Image.open(p) as im:
                 w, h = im.size
-            if w >= h:
-                lands.append(p)
-            else:
-                ports.append(p)
+            (lands if w >= h else ports).append(p)
         except Exception as e:
             current_app.logger.warning("[PHOTOS] failed to open %s: %s", p, e)
 
-    # --- sizing: keep your landscape width, choose portrait width so 2 fit per line ---
-    LAND_W = Mm(120)  # as before
-    PORT_W = Mm(76)   # ~76 mm + ~10–14 mm gap fits two across 165 mm text width
+    LAND_W = Mm(120)
+    PORT_W = Mm(76)
 
     land_images = [InlineImage(tpl, p, width=LAND_W) for p in lands]
 
-    # chunk portraits into pairs (left, right_or_None)
     def chunk2(items):
         it = iter(items)
         for a in it:
@@ -633,30 +662,24 @@ def preview_docx_as_pdf(report_id: int):
         right = InlineImage(tpl, r, width=PORT_W) if r else None
         port_rows.append((left, right))
 
-    # NBSP gap between two inline images keeps them visually separated and prevents collapse
-    gap = "\u00A0" * 8  # 8 NBSPs (~small gutter). Adjust to taste.
+    gap = "\u00A0" * 8
 
-    # build final context
     ctx.update({
         "land_images": land_images,
-        "port_rows":   port_rows,   # list of (left_img, right_img_or_None)
+        "port_rows":   port_rows,
         "gap":         gap,
     })
 
-    # render -> DOCX bytes
     buf = io.BytesIO()
     tpl.render(ctx)
     tpl.save(buf)
     docx_bytes = buf.getvalue()
 
-    # DOCX -> PDF (your existing converter)
     pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
 
 
 
-
-# ==== "Word הורד" – render a .docx and give a URL to download ====
 @reports_docx_bp.route("/<int:report_id>/render-docx", methods=["POST"])
 def render_docx_download(report_id: int):
     import io, os, datetime, json
@@ -683,25 +706,63 @@ def render_docx_download(report_id: int):
 
     tpl = DocxTemplate(template_path)
 
+    # ===================== SIUDI INVOICE (no photos) ======================
+    if tmpl_key == "siudi_invoice":
+        inv_date_iso = (payload.get("inv_date") or "").strip()
+        # ensure nested dicts exist
+        ctx.setdefault("insured", {})
+        ctx.setdefault("claim", {})
+        ctx.setdefault("totals", {})
+
+        # values typed in the invoice card
+        ctx.update({
+            "inv_date":    ddmmyyyy(inv_date_iso),
+            "inv_number":  (payload.get("inv_number") or "").strip(),
+            "inv_ref":     (payload.get("inv_ref") or "").strip(),
+        })
+        # pulled from state/client
+        ctx["insured"]["id_number"] = (payload.get("insured", {}).get("id_number") or "").strip()
+        ctx["claim"]["number"]      = (payload.get("claim",   {}).get("number")    or "").strip()
+        ctx["claim"]["subject"]     = (payload.get("claim",   {}).get("subject")   or "").strip()
+        ctx["totals"].update({
+            "subtotal":   (payload.get("totals", {}).get("subtotal")   or "").strip(),
+            "vat_rate":   (payload.get("totals", {}).get("vat_rate")   or "").strip(),
+            "vat_amount": (payload.get("totals", {}).get("vat_amount") or "").strip(),
+            "total":      (payload.get("totals", {}).get("total")      or "").strip(),
+        })
+
+        # --- render and save to instance/generated_reports ---
+        out_dir = os.path.join(current_app.instance_path, "generated_reports")
+        os.makedirs(out_dir, exist_ok=True)
+
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"report_{report_id}_{stamp}.docx"
+        abs_path = os.path.join(out_dir, filename)
+
+        tpl.render(ctx)
+        tpl.save(abs_path)
+
+        docx_url = url_for("generated_reports", filename=filename)
+        return jsonify({"ok": True, "docx_url": docx_url})
+    # =====================================================================
+
     # --- collect selected names from payload ---
     names = payload.get("selected_photos") or []
     if not names and isinstance(payload.get("photos"), list):
-        # optional detailed objects: [{'name': '...'}, ...]
         names = [os.path.basename(p.get("name", "")) for p in payload["photos"] if p.get("name")]
-
     names = [os.path.basename(n) for n in names if n]
 
     # --- resolve to absolute paths ---
-    case_id   = str(insured_id or payload.get("case_id", "")).strip()
-    rep_id    = str(report_id)
-    media_root = current_app.config.get("REPORT_MEDIA_DIR",
+    case_id    = str(insured_id or payload.get("case_id", "")).strip()
+    rep_id     = str(report_id)
+    media_root = current_app.config.get(
+        "REPORT_MEDIA_DIR",
         os.path.join(current_app.instance_path, "report_media")
     )
 
     def resolve_one(name: str) -> str | None:
         exact = os.path.join(media_root, case_id, rep_id, name)
         if os.path.isfile(exact): return exact
-        # fallback search under case folder
         case_root = os.path.join(media_root, case_id)
         if os.path.isdir(case_root):
             for root, _dirs, files in os.walk(case_root):
@@ -731,12 +792,11 @@ def render_docx_download(report_id: int):
             current_app.logger.warning("[PHOTOS] open fail %s: %s", p, e)
 
     # --- sizes (match preview) ---
-    LAND_W = Mm(120)   # landscape width
-    PORT_W = Mm(76)    # portrait width so two fit per line
+    LAND_W = Mm(120)
+    PORT_W = Mm(76)
 
     land_images = [InlineImage(tpl, p, width=LAND_W) for p in lands]
 
-    # chunk portraits into (left, right_or_None)
     def chunk2(items):
         it = iter(items)
         for a in it:
@@ -749,9 +809,8 @@ def render_docx_download(report_id: int):
         right = InlineImage(tpl, r, width=PORT_W) if r else None
         port_rows.append((left, right))
 
-    gap = "\u00A0" * 8  # NBSP gutter between two inline images
+    gap = "\u00A0" * 8
 
-    # merge into context
     ctx.update({
         "land_images": land_images,
         "port_rows":   port_rows,
@@ -769,10 +828,9 @@ def render_docx_download(report_id: int):
     tpl.render(ctx)
     tpl.save(abs_path)
 
-    # public URL via your url_rule('generated_reports', ...)
     docx_url = url_for("generated_reports", filename=filename)
-
     return jsonify({"ok": True, "docx_url": docx_url})
+
 
 
 # ===================== PHOTO ID: dedicated endpoints (server only) =====================
