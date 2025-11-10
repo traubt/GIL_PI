@@ -843,6 +843,10 @@ if (refreshBtn && frame) {
         if (tmplKey === 'id_photos') {
           endpoint = `/reports/${id}/photo-id/render-docx`;
           const g = id => document.getElementById(id)?.value?.trim() || "";
+
+          // NEW: pick the single server-side filename (same mechanism as preview/siudi)
+          const one = getPhotoIdServerName();
+
           payload = {
             insured_id: state.insured_id || null,
             id_photo_date_text: g('id_photo_date_dmy'),
@@ -850,9 +854,10 @@ if (refreshBtn && frame) {
             id_photo_time:      g('id_photo_time'),
             id_photo_city:      g('id_photo_city'),
             id_photo_place:     g('id_photo_place'),
-            id_photo_src:       g('id_photo_src')
+            id_photo_src:       g('id_photo_src'),
+            selected_photos:    one ? [one] : []          // ← THIS LINE DOES THE TRICK
           };
-        } else {
+        }          else {
           endpoint = `/reports/${id}/render-docx`;
           payload = {
             insured_id:    state.insured_id || null,
