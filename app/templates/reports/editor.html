@@ -746,8 +746,9 @@ window.safeUUID = (function () {
           width = dims.w; height = dims.h;
           orientation = (width && height && height > width) ? 'portrait' : 'landscape';
         }
-        const item = { id: crypto.randomUUID(), name: file.name, type: file.type || 'application/octet-stream',
-                       url, width, height, orientation, selected: true };
+        const item = { id: (window.safeUUID ? window.safeUUID() : (Math.random().toString(36).slice(2) + Date.now())),
+               name: file.name, type: file.type || 'application/octet-stream',
+               url, width, height, orientation, selected: true };
         picked.push(item); addItemToGrid(item);
         done++; setStatus(`נבחרו ${fileList.length} קבצים • נטענו ${done}/${fileList.length}`);
       }
