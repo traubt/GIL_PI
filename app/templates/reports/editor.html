@@ -400,6 +400,25 @@
 <a id="downloadDummy" style="display:none" rel="noopener" target="_blank"></a>
 
 <script>
+// Safe UUID function: uses crypto.randomUUID when available (HTTPS/localhost),
+// otherwise falls back to a RFC4122-ish v4 generator.
+window.safeUUID = (function () {
+  if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+    return () => window.crypto.randomUUID();
+  }
+  // Fallback: Math.random-based v4 (good enough for client ids)
+  return function uuidv4() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  };
+})();
+</script>
+
+
+<script>
 (function(){
   const sel = document.getElementById('reportType');
   if (!sel) return;
