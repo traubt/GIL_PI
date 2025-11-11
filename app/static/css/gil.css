@@ -1,0 +1,42 @@
+/* highlight active row in appointments modal */
+#appointmentsTable tr.table-active {
+    background-color: #d4edda !important;  /* light green */
+}
+
+/* highlight selected rows in insured table */
+#insuredTable tr.selected,
+#insuredTable tr.table-active {
+    background-color: #d4edda !important;
+}
+
+
+  .thumb-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 10px;
+  }
+  .thumb {
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    padding: 6px;
+    text-align: center;
+    background: #fafafa;
+  }
+  .thumb img {
+    width: 100%;
+    height: 100px;
+    object-fit: cover;
+    border-radius: 4px;
+  }
+  .thumb .name {
+    font-size: 12px;
+    margin-top: 4px;
+    direction: ltr;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+
+
+
