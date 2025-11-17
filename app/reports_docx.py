@@ -840,6 +840,62 @@ import datetime as dt
 
 # --------------------------- PHOTO-ID: Preview (PDF) ---------------------------
 
+def _resolve_photo_id_image(insured_id, report_id, name_or_path):
+    """
+    Try to resolve the image for the photo-id report.
+
+    - If we get an absolute filesystem path (local Dropbox on the server) – use it.
+    - Otherwise, treat it as a file name and look for it under REPORT_MEDIA_DIR
+      for this insured (in any subfolder), with a preference to the report folder.
+    """
+    if not name_or_path:
+        return None
+
+    s = str(name_or_path).strip()
+    if not s:
+        return None
+
+    # If someone accidentally passed a data: URL, we can't handle it here
+    if s.startswith("data:"):
+        current_app.logger.warning(
+            "[PhotoID] got data: URL for insured=%s report=%s; cannot resolve on server",
+            insured_id, report_id
+        )
+        return None
+
+    media_root = current_app.config.get(
+        "REPORT_MEDIA_DIR",
+        os.path.join(current_app.instance_path, "report_media")
+    )
+
+    # 1) Direct filesystem path (Dropbox local path on the server)
+    if (s.startswith("/") or ":" in s) and os.path.isfile(s):
+        return s
+
+    # 2) If it's a URL, strip querystring/fragment and use the basename
+    if "?" in s or "#" in s:
+        s = s.split("?", 1)[0].split("#", 1)[0]
+    base = os.path.basename(s)
+
+    # Prefer: <media_root>/<insured_id>/<report_id>/<base>
+    cand = os.path.join(media_root, str(insured_id), str(report_id), base)
+    if os.path.isfile(cand):
+        return cand
+
+    # Fallback: search anywhere under this insured's folder
+    insured_root = os.path.join(media_root, str(insured_id))
+    if os.path.isdir(insured_root):
+        for root, _dirs, files in os.walk(insured_root):
+            if base in files:
+                return os.path.join(root, base)
+
+    current_app.logger.warning(
+        "[PhotoID] cannot resolve image %r for insured=%s report=%s",
+        name_or_path, insured_id, report_id
+    )
+    return None
+
+
 @reports_docx_bp.get("/<int:report_id>/photo-id/preview-pdf")
 def photo_id_preview_pdf(report_id: int):
     insured_id = request.args.get("insured_id", type=int) or 0
@@ -849,19 +905,26 @@ def photo_id_preview_pdf(report_id: int):
     id_city  = (request.args.get("id_photo_city") or "").strip()
     id_place = (request.args.get("id_photo_place") or "").strip()
 
-    # get the first selected server-side filename from the thumbnails mechanism
+    # Source selected in the "תמונת זיהוי" widget (now usually a short name)
+    id_src = (request.args.get("id_photo_src") or "").strip()
+
+    # Also look at selected_photos[] (we always send one basename from the client)
     names = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos") or []
-    img_name = names[0] if names else None
+    base_name = names[0] if names else None
 
-    current_app.logger.info("[PhotoID][preview] report=%s insured=%s file=%r", report_id, insured_id, img_name)
+    # If we somehow got the route name 'serve' as a "filename", ignore it
+    if base_name and base_name.lower() == "serve":
+        base_name = None
 
-    # resolve expected location: <media_root>/<insured_id>/<report_id>/<filename>
-    media_root = current_app.config.get("REPORT_MEDIA_DIR", os.path.join(current_app.instance_path, "report_media"))
-    img_path = os.path.join(media_root, str(insured_id), str(report_id), img_name) if img_name else None
-    if img_path and not os.path.exists(img_path):
-        current_app.logger.warning("[PhotoID][preview] missing image: %s", img_path)
-        img_path = None
-    current_app.logger.info("[PhotoID][preview] image path: %r", img_path)
+    # Prefer the explicit server-side filename; fall back to id_src only if needed
+    key = base_name or id_src
+    img_path = _resolve_photo_id_image(insured_id, report_id, key)
+
+
+    current_app.logger.info(
+        "[PhotoID][preview] report=%s insured=%s src=%r base=%r -> %r",
+        report_id, insured_id, id_src, base_name, img_path
+    )
 
     # build context
     ctx = get_report_context(report_id, insured_id=insured_id)
@@ -889,12 +952,9 @@ def photo_id_preview_pdf(report_id: int):
     pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
 
-
-# --------------------------- PHOTO-ID: Render DOCX -----------------------------
-
 @reports_docx_bp.post("/<int:report_id>/photo-id/render-docx")
 def photo_id_render_docx(report_id: int):
-    payload = request.get_json(silent=True) or {}
+    payload    = request.get_json(silent=True) or {}
     insured_id = payload.get("insured_id") or 0
 
     id_date  = (payload.get("id_photo_date_text") or payload.get("id_photo_date") or "").strip()
@@ -902,16 +962,26 @@ def photo_id_render_docx(report_id: int):
     id_city  = (payload.get("id_photo_city") or "").strip()
     id_place = (payload.get("id_photo_place") or "").strip()
 
-    names = payload.get("selected_photos") or []
-    img_name = names[0] if names else None
-    current_app.logger.info("[PhotoID][docx] report=%s insured=%s file=%r", report_id, insured_id, img_name)
+    # Source selected in the "תמונת זיהוי" widget (may be full path / URL / data:)
+    id_src = (payload.get("id_photo_src") or "").strip()
 
-    media_root = current_app.config.get("REPORT_MEDIA_DIR", os.path.join(current_app.instance_path, "report_media"))
-    img_path = os.path.join(media_root, str(insured_id), str(report_id), img_name) if img_name else None
-    if img_path and not os.path.exists(img_path):
-        current_app.logger.warning("[PhotoID][docx] missing image: %s", img_path)
-        img_path = None
-    current_app.logger.info("[PhotoID][docx] image path: %r", img_path)
+    # Also consider selected_photos (client sends [basename])
+    names = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos") or []
+    base_name = names[0] if names else None
+
+    # If we somehow got the route name 'serve' as a "filename", ignore it
+    if base_name and base_name.lower() == "serve":
+        base_name = None
+
+    # Prefer the explicit server-side filename; fall back to id_src only if needed
+    key = base_name or id_src
+    img_path = _resolve_photo_id_image(insured_id, report_id, key)
+
+
+    current_app.logger.info(
+        "[PhotoID][docx] report=%s insured=%s src=%r base=%r -> %r",
+        report_id, insured_id, id_src, base_name, img_path
+    )
 
     ctx = get_report_context(report_id, insured_id=insured_id)
     place_str = ", ".join(v for v in (id_place, id_city) if v)
@@ -926,24 +996,25 @@ def photo_id_render_docx(report_id: int):
 
     tpl = DocxTemplate(template_path)
     if img_path:
-        ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(140))
+      ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(140))
     else:
-        ctx["id_photo"] = ""
+      ctx["id_photo"] = ""
     tpl.render(ctx)
 
     # save to instance/generated_reports
     out_dir = os.path.join(current_app.instance_path, "generated_reports")
     os.makedirs(out_dir, exist_ok=True)
-    stamp = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
+    stamp    = dt.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"report_{report_id}_{stamp}.docx"
     abs_path = os.path.join(out_dir, filename)
     tpl.save(abs_path)
 
-    # public URL (you likely already expose this directory via a static route named 'generated_reports')
     docx_url = url_for("generated_reports", filename=filename)
     current_app.logger.info("[PhotoID][docx] saved: %s -> %s", abs_path, docx_url)
 
     return jsonify({"ok": True, "docx_url": docx_url})
+
+
 
 
 # ================== /PHOTO ID: dedicated endpoints (server only) =======================

@@ -491,28 +491,30 @@ window.safeUUID = (function () {
     return m ? m[0] : s.slice(0, 120);
   }
 
+  // === Photo-ID: resolve *only* the image chosen in the "תמונת זיהוי" card ===
 
-  // === Photo-ID: pick ONE server filename we already have ===
   function getPhotoIdServerName(){
-    // Prefer the single-photo widget (if it already has serverName)
-    if (typeof window.getSelectedReportImages === 'function'){
-      const one = window.getSelectedReportImages().find(x => x.serverName);
-      if (one?.serverName){
-        console.log('[PhotoID][client] single widget ->', one.serverName);
-        return one.serverName;
-      }
+    const srcField = document.getElementById('id_photo_src');
+    const raw = (srcField && srcField.value || "").trim();
+
+    // If it's still a data: URL from local-only file, we *cannot* resolve it on the server
+    if (!raw){
+      console.log('[PhotoID][client] no image selected (empty src)');
+      return null;
     }
-    // Fallback: first checked gallery name (same as סיעודי)
-    if (typeof window.selectedPhotoNames === 'function'){
-      const names = window.selectedPhotoNames();
-      if (names?.length){
-        console.log('[PhotoID][client] gallery fallback ->', names[0]);
-        return names[0];
-      }
+    if (raw.startsWith('data:')) {
+      console.log('[PhotoID][client] src is data: URL – cannot resolve on server');
+      return null;
     }
-    console.log('[PhotoID][client] no server filename found');
-    return null;
+
+    // Re-use the same logic we use for the query string:
+    //  - if URL has ?name=..., use that
+    //  - otherwise basename of the path
+    const base = shortenPhotoSrc(raw);
+    console.log('[PhotoID][client] using id_photo_src (server name) =', base);
+    return base || null;
   }
+
 
 
   function currentInsurer(){
@@ -845,13 +847,20 @@ window.safeUUID = (function () {
     if (state.insured_id) q.set('insured_id', state.insured_id);
 
     const v = id => (document.getElementById(id)?.value || '').trim();
+
     if (v('id_photo_date_dmy')) q.set('id_photo_date_text', v('id_photo_date_dmy'));
     if (v('id_photo_date'))     q.set('id_photo_date',      v('id_photo_date'));
     if (v('id_photo_time'))     q.set('id_photo_time',      v('id_photo_time'));
     if (v('id_photo_city'))     q.set('id_photo_city',      v('id_photo_city'));
     if (v('id_photo_place'))    q.set('id_photo_place',     v('id_photo_place'));
 
-    // *** key change: send ONE server filename, like סיעודי ***
+    // Send ONLY a short/clean version of the source (never a long data URL)
+    const rawSrc   = v('id_photo_src');
+    const shortSrc = shortenPhotoSrc(rawSrc);  // uses basename, drops data: URLs
+    if (shortSrc) q.set('id_photo_src', shortSrc);
+
+
+    // Optional: still send the base file name (for backwards compat)
     const one = getPhotoIdServerName();
     if (one) q.append('selected_photos[]', one);
 
@@ -869,14 +878,14 @@ window.safeUUID = (function () {
       id_photo_time:      v('id_photo_time'),
       id_photo_city:      v('id_photo_city'),
       id_photo_place:     v('id_photo_place'),
+      id_photo_src:       v('id_photo_src')   // NEW: raw source/path
     };
+
     const one = getPhotoIdServerName();
     payload.selected_photos = one ? [one] : [];
     console.log('[PhotoID][client] buildPhotoIdPayload =>', payload);
     return payload;
   }
-
-
 
   function buildQuery(){
     const q = new URLSearchParams();
@@ -1146,7 +1155,7 @@ if (refreshBtn && frame) {
 
   /* ============================== 8) PHOTO-ID MINI BLOCK ============================== */
   (function(){
-    // date mirror
+    // date mirror helpers
     function _isoToDmy(iso){
       if(!iso) return "";
       const [y,m,d] = iso.split("-");
@@ -1158,46 +1167,96 @@ if (refreshBtn && frame) {
       if(!y||!m||!d) return "";
       return `${y.padStart(4,"0")}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
     }
-    const ui = document.getElementById('id_photo_date_dmy');
-    const iso = document.getElementById('id_photo_date');
+
+    const ui   = document.getElementById('id_photo_date_dmy');
+    const iso  = document.getElementById('id_photo_date');
+    const btn  = document.getElementById('btn_idphoto_from_dropbox');
+    const file = document.getElementById('id_photo_file_fallback');
+    const src  = document.getElementById('id_photo_src');
+    const img  = document.getElementById('id_photo_thumb');
+    const empty= document.getElementById('id_photo_empty');
+
+    // ----- datepicker -----
     if (ui && iso){
       if (window.state?.ctx?.id_photo_date) {
         iso.value = window.state.ctx.id_photo_date;
-        ui.value = _isoToDmy(iso.value);
+        ui.value  = _isoToDmy(iso.value);
       }
       if (window.flatpickr) {
         flatpickr(ui, {
           dateFormat: "d/m/Y",
           allowInput: true,
           defaultDate: iso.value ? iso.value : null,
-          onChange: function(selectedDates, dateStr){ iso.value = _dmyToIso(dateStr); },
-          onValueUpdate: function(selectedDates, dateStr){ iso.value = _dmyToIso(dateStr); }
+          onChange: function(_, dateStr){ iso.value = _dmyToIso(dateStr); },
+          onValueUpdate: function(_, dateStr){ iso.value = _dmyToIso(dateStr); }
         });
       } else {
         ui.addEventListener('change', function(){ iso.value = _dmyToIso(ui.value.trim()); });
       }
     }
-    // single-photo choose
-    const btn   = document.getElementById('btn_idphoto_from_dropbox');
-    const file  = document.getElementById('id_photo_file_fallback');
-    const src   = document.getElementById('id_photo_src');
-    const img   = document.getElementById('id_photo_thumb');
-    const empty = document.getElementById('id_photo_empty');
-    function showThumb(url){ if (img && empty){ img.src=url; img.style.display='block'; empty.style.display='none'; } }
+
+    function showThumb(url){
+      if (img && empty){
+        img.src = url;
+        img.style.display = 'block';
+        empty.style.display = 'none';
+      }
+    }
+
+    // ----- helper: upload single ID photo to /reports/import_local_dropbox -----
+    async function uploadIdPhoto(fileObj){
+      const fd = new FormData();
+      fd.append('files[]', fileObj, fileObj.name);
+
+      const caseId = (window.state?.insured_id ?? '').toString() || 'no_case';
+      const repId  = (window.state?.report_id ?? 1).toString();
+
+      fd.append('case_id',   caseId);
+      fd.append('report_id', repId);
+
+      const res = await fetch('/reports/import_local_dropbox', {
+        method: 'POST',
+        body: fd
+      });
+      if (!res.ok) throw new Error('ID photo upload failed (HTTP ' + res.status + ')');
+      const j = await res.json();
+      if (!j || j.status !== 'ok' || !Array.isArray(j.saved) || !j.saved.length) {
+        throw new Error('ID photo upload failed (bad JSON)');
+      }
+      // { name, url } – same shape as regular photos
+      return j.saved[0];
+    }
+
+    // ----- local file fallback -----
     if (file){
-      file.addEventListener('change', function(){
+      file.addEventListener('change', async function(){
         const f = this.files && this.files[0];
-        if(!f){ return; }
+        if (!f) return;
+
+        // Quick local preview
         const reader = new FileReader();
         reader.onload = function(e){
-          if (src) src.value = e.target.result; // dataURL fallback
           showThumb(e.target.result);
         };
         reader.readAsDataURL(f);
+
+        // Upload to server so preview/Word can use it
+        try{
+          const saved = await uploadIdPhoto(f);
+          // Store server URL (or name). shortenPhotoSrc/getPhotoIdServerName will extract basename.
+          if (src) src.value = saved.url || saved.name || f.name;
+          console.log('[PhotoID][client] uploaded id photo =>', saved);
+        }catch(err){
+          console.error('[PhotoID][client] upload failed:', err);
+          alert('שגיאה בהעלאת תמונת הזיהוי לשרת');
+        }
       });
     }
+
+    // ----- main button: prefer local Dropbox picker if available -----
     if (btn){
       btn.addEventListener('click', async function(){
+        // If we have the custom local-Dropbox picker, use it
         if (typeof window.openLocalDropboxPicker === 'function') {
           try{
             const sel = await window.openLocalDropboxPicker({ multiple:false });
@@ -1207,16 +1266,20 @@ if (refreshBtn && frame) {
             if (chosenUrl){
               if (src) src.value = chosen.url || chosen.path || chosen.thumbUrl;
               showThumb(chosenUrl);
+              console.log('[PhotoID][client] picker result =>', chosen);
               return;
             }
-          }catch(e){ console.warn('Dropbox picker failed, fallback to file', e); }
+          }catch(e){
+            console.warn('Dropbox picker failed, fallback to file', e);
+          }
         }
+        // fallback: standard file dialog (will trigger uploadIdPhoto on change)
         file?.click();
       });
     }
   })();
 
-})();
+
 
 // ===== Invoice datepicker (mirrors to ISO) =====
 (function(){
@@ -1267,7 +1330,7 @@ if (refreshBtn && frame) {
   recalc();
 })();
 
-
+})();
 </script>
 
 <script>
