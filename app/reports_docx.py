@@ -30,6 +30,12 @@ TEMPLATE_MAP = {
     "tracking": "menora_report.docx",   # your old tracking template
     "siudi":    "menora_siudi.docx",    # the new one
      "siudi_invoice": "invoice_monora_siudi.docx",
+
+    # === new Menora Life insurance templates ===
+    "menora_life_followup": "menora_life_followup.docx",
+    "menora_life_photos": "menora_life_photos.docx",  # placeholder until you build it
+    "menora_life_photoid": "menora_photo_id.docx",  # reuse Siudi photo ID
+    "menora_life_invoice": "menora_life_invoice.docx",  # placeholder until ready
 }
 
 from datetime import datetime, date
@@ -37,6 +43,10 @@ from flask import request, current_app
 
 # import your model
 # from app.models import GilInsured   # <-- adjust to your actual import
+
+
+
+
 
 def ddmmyyyy(iso_str: str) -> str:
     try:

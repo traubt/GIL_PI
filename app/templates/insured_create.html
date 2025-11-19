@@ -94,7 +94,7 @@
           <select id="claim_type" name="claim_type" class="form-select" required>
             <option value="">בחר סוג חקירה</option>
             <option value="סיעוד" {% if insured and insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
-            <option value="אכא" {% if insured and insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
+            <option value="אכע" {% if insured and insured.claim_type == 'אכע' %}selected{% endif %}>אכע</option>
             <option value="פרטי" {% if insured and insured.claim_type == 'פרטי' %}selected{% endif %}>פרטי</option>
             <option value="מסחרי" {% if insured and insured.claim_type == 'מסחרי' %}selected{% endif %}>מסחרי</option>
           </select>
@@ -341,13 +341,13 @@ $(document).ready(function () {
   const claimCard = document.getElementById("claimDetailsCard");
 
   // Initial check if editing an insured with existing claim type
-  if (claimTypeSelect.value === "סיעוד" || claimTypeSelect.value === "אכא") {
+  if (claimTypeSelect.value === "סיעוד" || claimTypeSelect.value === "אכע") {
     claimCard.style.display = "block";
   }
 
   claimTypeSelect.addEventListener("change", function () {
     const selectedValue = this.value.trim();
-    if (selectedValue === "סיעוד" || selectedValue === "אכא") {
+    if (selectedValue === "סיעוד" || selectedValue === "אכע") {
       claimCard.style.display = "block";
     } else {
       claimCard.style.display = "none";

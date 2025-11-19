@@ -73,13 +73,13 @@
           <option value="שלמה" {% if insured and insured.insurance == 'שלמה' %}selected{% endif %}>שלמה</option>
           <option value="איילון" {% if insured and insured.insurance == 'איילון' %}selected{% endif %}>איילון</option>
         </select>
-      </div>
+      </div>   
 
       <div class="col-12 col-sm-6 col-md-4 col-lg-2">
         <label for="claim_type" class="form-label">סוג חקירה</label>
         <select id="claim_type" name="claim_type" class="form-select">
           <option value="סיעוד" {% if insured and insured.claim_type == 'סיעוד' %}selected{% endif %}>סיעוד</option>
-          <option value="אכא" {% if insured and insured.claim_type == 'אכא' %}selected{% endif %}>אכא</option>
+          <option value="אכע" {% if insured and insured.claim_type == 'אכע' %}selected{% endif %}>אכע</option>
           <option value="פרטי" {% if insured and insured.claim_type == 'פרטי' %}selected{% endif %}>פרטי</option>
           <option value="מסחרי" {% if insured and insured.claim_type == 'מסחרי' %}selected{% endif %}>מסחרי</option>
         </select>
@@ -420,11 +420,11 @@ $(function () {
       return;
     }
 
-    // 3) claim number required if type is אכא or סיעוד
+    // 3) claim number required if type is אכע or סיעוד
     const claimType   = ($('#claim_type').val()   || '').trim();
     const claimNumber = ($('#claim_number').val() || '').trim();
-    if ((claimType === 'אכא' || claimType === 'סיעוד') && !claimNumber) {
-      alert('עבור סוג חקירה אכא/סיעוד יש להזין מספר תביעה לפני הוספת מקושר');
+    if ((claimType === 'אכע' || claimType === 'סיעוד') && !claimNumber) {
+      alert('עבור סוג חקירה אכע/סיעוד יש להזין מספר תביעה לפני הוספת מקושר');
       return;
     }
 
@@ -541,7 +541,7 @@ function toggleClaimNumberField() {
   const claimType = document.getElementById("claim_type").value.trim();
   const cont = document.getElementById("claimNumberContainer");
   const input = document.getElementById("claim_number");
-  if (claimType === "סיעוד" || claimType === "אכא") { cont.style.display = "block"; }
+  if (claimType === "סיעוד" || claimType === "אכע") { cont.style.display = "block"; }
   else { cont.style.display = "none"; if (input) input.value = ""; }
 }
 

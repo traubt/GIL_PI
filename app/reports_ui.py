@@ -268,17 +268,83 @@ def _wkhtmltopdf_bytes(body_html: str, header_html: str, footer_html: str) -> by
                 os.remove(p)
             except Exception:
                 pass
-
+# --- Detect insurer & claim type profile ---
+def get_report_profile(insurer_name, claim_type):
+    # Menora Life (אובדן כושר עבודה)
+    if insurer_name == "מנורה" and claim_type == "אכע":
+        return {
+            "default_type": "menora_life_followup",
+            "report_types": [
+                {"value": "menora_life_followup", "label": "דוח מעקב ביטוח חיים"},
+                {"value": "menora_life_photos",   "label": "דוח תמונות"},
+                {"value": "menora_life_photoid",  "label": "תמונת זיהוי"},
+                {"value": "menora_life_invoice",  "label": "חשבונית עסקה"},
+            ]
+        }
+    return None
 
 # ---------- UI pages ----------
 
-@reports_ui_bp.route('/editor', methods=['GET'])
-def reports_editor():
-    insureds = db.session.query(GilInsured).order_by(GilInsured.last_name.asc()).all()
-    return render_template('reports/editor.html', insureds=insureds)
+@reports_ui_bp.route("/editor", methods=["GET"])
+def editor_page():
+    """
+    Render the report editor (main UI) with proper report type options
+    depending on insurer and claim type.
+    """
 
+    # Pre-selected ids (when coming from admin_insured etc.)
+    insured_id = request.args.get("insured_id", type=int)
+    report_id  = request.args.get("report_id", type=int)
 
-# ---------- Draft/Finalize APIs (unchanged behaviour) ----------
+    # Full list for the dropdown on the left
+    insureds = (
+        db.session.query(GilInsured)
+        .order_by(GilInsured.last_name.asc())
+        .all()
+    )
+
+    # The currently-selected insured (if any)
+    insured = None
+    if insured_id:
+        insured = next((i for i in insureds if i.id == insured_id), None)
+
+    # --- Build report type profile (Menora / אכע → life reports) ---
+    if insured:
+        # NOTE: model field is "insurance", not "insurer_name"
+        profile = get_report_profile(insured.insurance, insured.claim_type)
+    else:
+        profile = None
+
+    if profile:
+        report_types = profile["report_types"]          # already [{value,label}, ...]
+        selected_report_type = profile["default_type"]  # e.g. "menora_life_followup"
+    else:
+        # Default bundle for סיעודי / everything that is NOT Menora אכע
+        report_types = [
+            {"value": "SIUDI", "label": "דוח חקירה סיעודי"},
+            {"value": "ID_PHOTOS", "label": "תמונת זיהוי"},
+            {"value": "SIUDI_INVOICE", "label": "חשבונית סיעודי"},
+        ]
+        selected_report_type = "SIUDI"
+
+    ctx = {
+        "insureds":            insureds,            # <-- needed for the dropdown
+        "insured":             insured,
+        "insured_id":          insured_id,
+        "report_id":           report_id,
+        "report_types":        report_types,
+        "selected_report_type": selected_report_type,
+    }
+
+    current_app.logger.info(
+        "[EDITOR] insurer=%s claim_type=%s -> default=%s",
+        getattr(insured, "insurance", None),
+        getattr(insured, "claim_type", None),
+        selected_report_type,
+    )
+
+    return render_template("reports/editor.html", **ctx)
+
 
 @reports_ui_bp.route('/save_draft', methods=['POST'])
 def save_draft():

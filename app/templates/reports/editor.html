@@ -43,12 +43,21 @@
 
     <!-- Top toolbar -->
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-      <div class="d-flex align-items-center gap-2">
-        <span id="templateBadge" class="badge bg-light text-dark border">תבנית: —</span>
-        <span id="refBadge" class="badge bg-primary">מספרנו: —</span>
-        <span id="versionBadge" class="badge bg-info text-dark">גרסה: 0</span>
-        <span id="statusBadge" class="badge bg-secondary">סטטוס: Draft</span>
+      <div class="d-flex align-items-center flex-wrap gap-2">
+        <span id="templateBadge" class="badge bg-light text-dark border px-3 py-2 shadow-sm">
+          <i class="bi bi-file-earmark-text me-1"></i> תבנית: —
+        </span>
+        <span id="refBadge" class="badge bg-primary px-3 py-2 shadow-sm">
+          <i class="bi bi-hash me-1"></i> מספרנו: —
+        </span>
+        <span id="versionBadge" class="badge bg-info text-dark px-3 py-2 shadow-sm">
+          <i class="bi bi-git me-1"></i> גרסה: 0
+        </span>
+        <span id="statusBadge" class="badge bg-secondary px-3 py-2 shadow-sm">
+          <i class="bi bi-clipboard-check me-1"></i> סטטוס: טיוטה
+        </span>
       </div>
+
 
       <div class="d-flex gap-2">
 <!--        <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>-->
@@ -372,9 +381,14 @@
             class="form-select form-select-sm w-auto"
             style="min-width:220px"
             aria-label="בחר דו&quot;ח">
-      <option value="" selected>בחר דו"ח</option>
+      <option value="" {% if not selected_report_type %}selected{% endif %}>
+        בחר דו"ח
+      </option>
       {% for rt in report_types %}
-        <option value="{{ rt.value }}">{{ rt.label }}</option>
+        <option value="{{ rt.value }}"
+                {% if rt.value == selected_report_type %}selected{% endif %}>
+          {{ rt.label }}
+        </option>
       {% endfor %}
     </select>
 
@@ -540,13 +554,30 @@ window.safeUUID = (function () {
   }
   function applyTemplateSections(){
     document.querySelectorAll('.section-block').forEach(b=>b.style.display = '');
-    $('#templateBadge').innerText = 'תבנית: ' + computeTemplateName();
+    $('#templateBadge').innerHTML = `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
   }
-  function updateMetaBadges(){
-    $('#refBadge').innerText     = 'מספרנו: ' + (state.reference_no || '—');
-    $('#versionBadge').innerText = 'גרסה: ' + (state.version_no ?? 0);
-    $('#statusBadge').innerText  = 'סטטוס: ' + (state.status_str || 'Draft');
+
+  function updateMetaBadges() {
+    const refEl   = $('#refBadge');
+    const verEl   = $('#versionBadge');
+    const statEl  = $('#statusBadge');
+
+    if (refEl)   refEl.innerHTML = `<i class="bi bi-hash me-1"></i> מספרנו: ${(state.reference_no || '—')}`;
+    if (verEl)   verEl.innerHTML = `<i class="bi bi-git me-1"></i> גרסה: ${(state.version_no ?? 0)}`;
+
+    const s = (state.status_str || 'Draft').toLowerCase();
+    let heb = 'טיוטה', cls = 'bg-secondary';
+    if (s === 'final' || s === 'finalized') { heb = 'סופי'; cls = 'bg-success'; }
+    else if (s === 'sent') { heb = 'נשלח'; cls = 'bg-info'; }
+    else if (s === 'draft') { heb = 'טיוטה'; cls = 'bg-secondary'; }
+
+    if (statEl) {
+      statEl.className = `badge ${cls} px-3 py-2 shadow-sm`;
+      statEl.innerHTML = `<i class="bi bi-clipboard-check me-1"></i> סטטוס: ${heb}`;
+    }
   }
+
+
   function recomputeReferenceNow(){
     const base = (state.ref_number && state.ref_number.toString().trim()) || "00000";
     const padded = base.padStart(5, "0");
@@ -572,26 +603,40 @@ window.safeUUID = (function () {
       const el = document.getElementById(id);
       if (el) el.value = val || '';
     }
-    state.db = {
-      ref_number: map.db_ref_number || "", full_name: map.db_full_name || "", birth_date: birthIso || "",
-      gender: gender || "", id_number: map.db_id_number || "", claim_number: map.db_claim_number || ""
-    };
-  }
+  state.db = {
+    ref_number: map.db_ref_number || "",
+    full_name:  map.db_full_name  || "",
+    birth_date: birthIso          || "",
+    gender:     gender            || "",
+    id_number:  map.db_id_number  || "",
+    claim_number: map.db_claim_number || ""
+  };
+
+  // 🔹 NEW: use ref_number as the base for "מספרנו"
+  state.ref_number = state.db.ref_number || "";
+  recomputeReferenceNow();
+}
+
+    // expose for other scripts at bottom
+  window.fillInsuredCardFromOption = fillInsuredCardFromOption;
+
 
   /* ============================== 2) FORM BINDINGS ============================== */
   const insuredSel = $('#insuredId');
   if (insuredSel){
-    insuredSel.addEventListener('change', e=>{
-      const opt = e.target.selectedOptions[0];
-      state.insured_id = e.target.value || "";
-      state.insured_insurance = opt ? (opt.dataset.insurance || "") : "";
-      state.insured_claim_type = opt ? (opt.dataset.claimType || opt.getAttribute('data-claim-type') || "") : "";
-      state.ref_number = opt ? (opt.dataset.ref || "") : "";
-      fillInsuredCardFromOption(opt);
-      applyTemplateSections();
-      recomputeReferenceNow();
+    insuredSel.addEventListener('change', e => {
+      const id = e.target.value;
+      if (!id) return;
+
+      // keep any other query params (like report_id), just replace insured_id
+      const params = new URLSearchParams(window.location.search);
+      params.set('insured_id', id);
+
+      // reload the editor for the selected insured – server will choose profile
+      window.location.href = window.location.pathname + '?' + params.toString();
     });
   }
+
   const reportTypeSel = $('#reportType');
   if (reportTypeSel){
     reportTypeSel.addEventListener('change', e=>{
@@ -814,31 +859,36 @@ window.safeUUID = (function () {
   })();
 
   /* ============================== 5) BUILD QUERY FOR PREVIEW ============================== */
-  function selectedTemplateKey(){
+  function selectedTemplateKey() {
     const sel = document.getElementById('reportType');
     const raw = sel ? sel.value : '';
     if (!raw) {
-      alert('No template found: report type is empty');
+      alert('נא לבחור דוח מהרשימה');
       return 'tracking';
     }
 
-    const v = String(raw).trim().toUpperCase();
+    const v  = String(raw).trim();
+    const up = v.toUpperCase();
 
-    // Explicit keys your server expects
-    if (v === 'ID_PHOTOS' || v === 'PHOTO_ID') return 'id_photos'; // Photo-ID
-    if (v === 'SIUDI' || v === 'MENORA_SIUDI') return 'siudi';     // מנורה סיעודי
-    if (v === 'SIUDI_INVOICE') return 'siudi_invoice';
+    // --- Menora Life reports: use the explicit keys we defined on the server ---
+    if (v === 'menora_life_followup') return 'menora_life_followup';
+    if (v === 'menora_life_photos')   return 'tracking';        // placeholder for now
+    if (v === 'menora_life_photoid')  return 'id_photos';       // reuse Photo-ID flow
+    if (v === 'menora_life_invoice')  return 'siudi_invoice';   // reuse invoice flow
 
+    // --- Classic סיעודי bundle ---
+    if (up === 'ID_PHOTOS' || up === 'PHOTO_ID')   return 'id_photos';
+    if (up === 'SIUDI' || up === 'MENORA_SIUDI')   return 'siudi';
+    if (up === 'SIUDI_INVOICE')                   return 'siudi_invoice';
 
-    const map = { TRACKING:'tracking', PERSONAL:'personal', PHOTOSET:'photoset' };
-    const supported = new Set(Object.keys(map).concat(['ID_PHOTOS','PHOTO_ID','SIUDI','MENORA_SIUDI']));
+    // Legacy types (we mostly don’t use them anymore, but keep a safe fallback)
+    const map = { TRACKING: 'tracking', PERSONAL: 'personal', PHOTOSET: 'photoset' };
+    if (map[up]) return map[up];
 
-    if (!supported.has(v)) {
-      alert(`No template found for "${v}"`);
-      return 'tracking';
-    }
-    return map[v];
+    alert(`No template found for "${raw}"`);
+    return 'tracking';
   }
+
 
 
   // Build query for the Photo-ID preview (single photo)
@@ -1340,22 +1390,27 @@ if (refreshBtn && frame) {
   const insuredId = params.get('insured_id');
   if (!insuredId) return;
 
-  const sel = document.getElementById('insuredId');   // <-- correct id
-  if (sel) {
-    // if the option doesn't exist (edge-case), inject a temporary one
-    if (![...sel.options].some(o => o.value === insuredId)) {
-      const opt = new Option('— מבוטח נטען מכתובת —', insuredId, true, true);
-      sel.add(opt);
-    } else {
-      sel.value = insuredId;
-    }
-    // trigger your existing change handler to fill the form + state
-    sel.dispatchEvent(new Event('change', { bubbles: true }));
+  const sel = document.getElementById('insuredId');
+  if (!sel) return;
+
+  // if the option doesn't exist (edge-case), inject a temporary one
+  if (![...sel.options].some(o => o.value === insuredId)) {
+    const opt = new Option('— מבוטח נטען מכתובת —', insuredId, true, true);
+    sel.add(opt);
   } else {
-    // last-resort: at least set state
-    if (window.state) window.state.insured_id = insuredId;
+    sel.value = insuredId;
   }
+
+  // fill the insured details card, *without* triggering change/redirect
+  const opt = sel.selectedOptions[0];
+  if (opt && window.fillInsuredCardFromOption) {
+    window.fillInsuredCardFromOption(opt);
+  }
+
+  // keep state.insured_id in sync
+  if (window.state) window.state.insured_id = insuredId;
 })();
+
 </script>
 
 <script>
