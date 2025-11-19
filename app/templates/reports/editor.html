@@ -530,28 +530,50 @@ window.safeUUID = (function () {
   }
 
 
-
   function currentInsurer(){
     return document.getElementById('insurer')?.value?.trim() || 'מנורה';
   }
-  function computeTemplateName(){
-    const insurer = currentInsurer();
-    const rtRaw   = (state.report_type || '').trim();
-    const rt      = rtRaw.toUpperCase();
-    const labelByType = {
-      'TRACKING':'דוח מעקב','ID_PHOTOS':'תמונת זיהוי','PERSONAL':'דוח פרטים אישיים','PHOTOSET':'תמונות','SIUDI':'דוח חקירה סיעודי'
-    };
-    const fileByType = {
-      'TRACKING':'דוח מעקב.docx',
-      'ID_PHOTOS':'תמונת זיהוי.docx',
-      'PERSONAL':'דוח פרטים אישיים.docx',
-      'PHOTOSET':'תמונות.docx',
-      'SIUDI': (insurer==='מנורה') ? 'menora_siudi.docx' : 'דוח חקירה סיעודי.docx'
-    };
-    const label = labelByType[rt] || rtRaw;
-    const file  = fileByType[rt]  || (label + '.docx');
-    return `${insurer} - ${file}`;
-  }
+
+function computeTemplateName() {
+  const insurer = currentInsurer();
+
+  // read directly from the dropdown
+  const sel = document.getElementById("reportType");
+  const selected = sel ? sel.value.trim() : "";
+  if (!selected) return `${insurer} - לא נבחר דו"ח`;
+
+  // define a clean mapping from report dropdown value → docx filename
+  const templateMap = {
+    // --- Menora Life Insurance (אכע) ---
+    menora_life_followup: "menora_life_followup.docx",
+    menora_life_photos:   "menora_life_photos.docx",
+    menora_life_photoid:  "menora_photo_id.docx",
+    menora_life_invoice:  "menora_life_invoice.docx",
+
+    // --- Classic Siudi (סיעודי) ---
+    SIUDI:           "menora_siudi.docx",
+    ID_PHOTOS:       "תמונת זיהוי.docx",
+    SIUDI_INVOICE:   "invoice_monora_siudi.docx",
+
+    // --- Generic fallbacks ---
+    TRACKING:        "דוח מעקב.docx",
+    PERSONAL:        "דוח פרטים אישיים.docx",
+    PHOTOSET:        "תמונות.docx"
+  };
+
+  // normalize key for lookup
+  const key = selected.toUpperCase();
+  let filename = templateMap[selected] || templateMap[key];
+
+  // fallback for unknowns
+  if (!filename) filename = `${selected}.docx`;
+
+  return filename;
+}
+
+
+
+
   function applyTemplateSections(){
     document.querySelectorAll('.section-block').forEach(b=>b.style.display = '');
     $('#templateBadge').innerHTML = `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
