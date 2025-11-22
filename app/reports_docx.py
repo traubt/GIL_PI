@@ -182,6 +182,7 @@ def _fetch_insured_row(insured_id: int) -> dict:
         "gender":       ins.gender or "",
         "id_number":    ins.id_number or "",
         "claim_number": ins.claim_number or "",
+        "phone": ins.phone or "",
         "age":          _calc_age(ins.birth_date),
         "injury_type":  getattr(ins, "injury_type", "") or "",
     }
@@ -189,25 +190,69 @@ def _fetch_insured_row(insured_id: int) -> dict:
 def get_report_context(report_id: int, *, insured_id: int | None = None, overrides: dict | None = None) -> dict:
     overrides = overrides or {}
     db_fields  = _fetch_insured_row(insured_id) if insured_id else {}
+
+    # activity date (same as before)
     raw_date   = overrides.get("activity_date", "")
     act_iso    = _to_iso(raw_date) or raw_date
 
     ctx_fields = {
-        "activity_date":       act_iso,
-        "activity_date_dots":  _iso_to_dots(act_iso),
-        "surv_place":          overrides.get("surv_place", ""),
-        "surv_city":           overrides.get("surv_city",  ""),
-        "injury_type":         overrides.get("injury_type", ""),
+        "activity_date": act_iso,
+        "activity_date_dots": _iso_to_dots(act_iso),
+        "surv_place": overrides.get("surv_place", ""),
+        "surv_city": overrides.get("surv_city", ""),
+        "injury_type": overrides.get("injury_type", ""),
     }
+
+    # === Menora Life Follow-up additional context ===
+    ctx_fields.update({
+        "injury_type": overrides.get("injury_type", ""),
+    })
+
+    # ---- pull Menora Life fields from overrides ----
+    bg              = overrides.get("background", "")
+    occupation      = overrides.get("occupation", "")
+    social_media    = overrides.get("social_media", "")
+    social_ident    = overrides.get("social_media_identification", "")
+    tracking_date   = overrides.get("tracking_date", "")
+    start_time      = overrides.get("start_time", "")
+    end_time        = overrides.get("end_time", "")
+    summary         = overrides.get("summary", "")
+    authorities_1   = overrides.get("authorities_1", "")
+    authorities_2   = overrides.get("authorities_2", "")
+
+    db_fields.update({
+        "background": bg,
+        "occupation": occupation,
+        "social_media": social_media,
+        "social_media_identification": social_ident,
+        "tracking_date": tracking_date,
+        "start_time": start_time,
+        "end_time": end_time,
+        "summary": summary,
+        "authorities_1": authorities_1,
+        "authorities_2": authorities_2,
+    })
+
+    # 🔹 DEBUG: what’s going into db.background?
+    try:
+        current_app.logger.info(
+            "[CTX] get_report_context: db.background=%r (report_id=%s, insured_id=%s)",
+            db_fields.get("background", ""),
+            report_id,
+            insured_id,
+        )
+    except Exception:
+        pass
 
     lex = _gender_lex(db_fields.get("gender"))
 
     return {
         "db": db_fields,
         "ctx": ctx_fields,
-        "lex": lex,           # <— NEW
+        "lex": lex,
         "now": _now_hebrew(),
     }
+
 
 
 
@@ -218,6 +263,7 @@ def _collect_overrides_from_query(args) -> dict:
     Empty values are ignored (keep defaults).
     """
     mapping = {
+        # ---- generic fields (existing) ----
         "activity_date": "case.activity_date",
         "claim_number": "case.claim_number",
         "insured_name": "insured.name",
@@ -226,13 +272,27 @@ def _collect_overrides_from_query(args) -> dict:
         "injury_type": "insured.injury_type",
         "surv_place": "surveillance.place",
         "surv_city": "surveillance.city",
+
+        # ---- Menora Life follow-up fields ----
+        "background": "db.background",
+        "occupation": "insured.occupation",
+        "social_media": "insured.social_media",
+        "social_media_identification": "insured.social_media_identification",
+        "tracking_date": "case.tracking_date",
+        "start_time": "case.start_time",
+        "end_time": "case.end_time",
+        "summary": "case.summary",
+        "authorities_1": "case.authorities_1",
+        "authorities_2": "case.authorities_2",
     }
+
     out = {}
     for qkey, path in mapping.items():
         val = (args.get(qkey) or "").strip()
         if val:
             _deep_set(out, path, val)
     return out
+
 
 def _collect_overrides_from_json(json_body: dict | None) -> dict:
     """Same as query, but from a JSON body for the download route."""
@@ -247,7 +307,18 @@ def _collect_overrides_from_json(json_body: dict | None) -> dict:
         "injury_type": "insured.injury_type",
         "surv_place": "surveillance.place",
         "surv_city": "surveillance.city",
+
+        # --- Menora Life Follow-up extra fields ---
+        "background": "db.background",
+        "occupation": "insured.occupation",
+        "social_media": "insured.social_media",
+        "social_media_identification": "insured.social_media_identification",
+        "tracking_date": "case.tracking_date",
+        "start_time": "case.start_time",
+        "end_time": "case.end_time",
+        "summary": "case.summary",
     }
+
     out = {}
     for k, dotted in fields.items():
         val = (json_body.get(k) or "").strip()
@@ -572,12 +643,39 @@ def preview_docx_as_pdf(report_id: int):
     from docx.shared import Mm
 
     insured_id = request.args.get("insured_id", type=int)
+
+    # ---- collect overrides from the query (including background) ----
     overrides = {
-        "activity_date": request.args.get("activity_date", ""),
-        "surv_place":    request.args.get("surv_place", ""),
-        "surv_city":     request.args.get("surv_city",  ""),
-        "injury_type":   request.args.get("injury_type", ""),
+        "activity_date": (request.args.get("activity_date") or "").strip(),
+        "surv_place":    (request.args.get("surv_place") or "").strip(),
+        "surv_city":     (request.args.get("surv_city")  or "").strip(),
+        "injury_type":   (request.args.get("injury_type") or "").strip(),
+
+        # Menora Life follow-up fields (we care about background here)
+        "background":    (request.args.get("background") or "").strip(),
+        "occupation":    (request.args.get("occupation") or "").strip(),
+        "social_media":  (request.args.get("social_media") or "").strip(),
+        "social_media_identification":
+            (request.args.get("social_media_identification") or "").strip(),
+        "tracking_date": (request.args.get("tracking_date") or "").strip(),
+        "start_time":    (request.args.get("start_time") or "").strip(),
+        "end_time":      (request.args.get("end_time") or "").strip(),
+        "summary":       (request.args.get("summary") or "").strip(),
+        "authorities_1": (request.args.get("authorities_1") or "").strip(),
+        "authorities_2": (request.args.get("authorities_2") or "").strip(),
     }
+
+    # 🔹 DEBUG: raw value arriving from the client
+    try:
+        current_app.logger.info(
+            "[CTX][preview] query.background=%r (report_id=%s, insured_id=%s)",
+            overrides["background"],
+            report_id,
+            insured_id,
+        )
+    except Exception:
+        pass
+
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
     # --- template path ---
@@ -700,13 +798,40 @@ def render_docx_download(report_id: int):
 
     payload = request.get_json(silent=True) or {}
 
-    insured_id   = payload.get("insured_id")
+    insured_id = payload.get("insured_id")
+
+    # ---- collect overrides from JSON (including background) ----
     overrides = {
-        "activity_date": payload.get("activity_date", ""),
-        "surv_place":    payload.get("surv_place", ""),
-        "surv_city":     payload.get("surv_city",  ""),
-        "injury_type":   payload.get("injury_type", ""),
+        "activity_date": payload.get("activity_date", "").strip(),
+        "surv_place":    payload.get("surv_place", "").strip(),
+        "surv_city":     payload.get("surv_city",  "").strip(),
+        "injury_type":   payload.get("injury_type", "").strip(),
+
+        # Menora Life follow-up fields
+        "background":    payload.get("background", "").strip(),
+        "occupation":    payload.get("occupation", "").strip(),
+        "social_media":  payload.get("social_media", "").strip(),
+        "social_media_identification":
+            payload.get("social_media_identification", "").strip(),
+        "tracking_date": payload.get("tracking_date", "").strip(),
+        "start_time":    payload.get("start_time", "").strip(),
+        "end_time":      payload.get("end_time", "").strip(),
+        "summary":       payload.get("summary", "").strip(),
+        "authorities_1": payload.get("authorities_1", "").strip(),
+        "authorities_2": payload.get("authorities_2", "").strip(),
     }
+
+    # 🔹 DEBUG: raw value from download POST
+    try:
+        current_app.logger.info(
+            "[CTX][download] payload.background=%r (report_id=%s, insured_id=%s)",
+            overrides["background"],
+            report_id,
+            insured_id,
+        )
+    except Exception:
+        pass
+
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
     # --- template path ---

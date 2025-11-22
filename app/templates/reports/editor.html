@@ -27,6 +27,15 @@
     #busyOverlay .panel{ padding:18px 24px; border-radius:12px; background:#fff; box-shadow:0 8px 30px rgba(0,0,0,.1); }
     #busyOverlay .spinner{ width:36px; height:36px; border-radius:50%; border:4px solid #d9d9d9; border-top-color:#0d6efd; animation:spin .9s linear infinite; margin:0 auto 10px; }
     @keyframes spin{ to{ transform: rotate(360deg) } }
+
+  .template-ph::placeholder {
+    color: #adb5bd;   /* Bootstrap secondary / light grey */
+  }
+
+  .label-strong {
+    font-weight: bold;
+    text-decoration: underline;
+  }
   </style>
 
   <div class="pagetitle">
@@ -195,6 +204,124 @@
                 </div>
               </div>
 
+
+              <!-- ===== LIFE FOLLOW-UP TEMPLATE FIELDS ===== -->
+
+<!-- ===== LIFE FOLLOW-UP TEMPLATE FIELDS ===== -->
+
+<div id="lifeFollowupFields" class="card mt-3 d-none">
+  <div class="card-header bg-light fw-bold">
+    שדות תבנית (הקשר לדוח)
+  </div>
+  <div class="card-body">
+    <div class="row g-2">
+
+      <!-- סוג הפגיעה / נושא החקירה -->
+      <div class="col-12">
+        <label class="form-label label-strong">סוג הפגיעה / נושא החקירה</label>
+        <textarea id="life_injury_type"
+                  class="form-control template-ph"
+                  rows="2"
+                  placeholder="למשל: מסרטן הערמונית"></textarea>
+      </div>
+
+      <!-- רקע המבוטח -->
+      <div class="col-12">
+        <label class="form-label label-strong">רקע המבוטח</label>
+        <textarea id="db_background"
+                  class="form-control template-ph"
+                  rows="3"
+                  placeholder="למשל: סובל מבעיה רפואית..."></textarea>
+      </div>
+
+      <!-- עיסוק -->
+      <div class="col-12">
+        <label class="form-label label-strong">עיסוק המבוטח</label>
+        <textarea id="db_occupation"
+                  class="form-control template-ph"
+                  rows="2"
+                  placeholder="למשל: הנפגע בעל חברת הובלות"></textarea>
+      </div>
+
+      <!-- חקירת רשויות 1 -->
+      <div class="col-12">
+        <label class="form-label label-strong">חקירת רשויות 1</label>
+        <textarea id="db_authorities_1"
+                  class="form-control template-ph"
+                  rows="3"
+                  placeholder="למשל: בחקירה שערכנו הוברר כי לנפגע קיים תיק עוסק מורשה במס ערך מוסף. (אם אין השאירי שדה זה ריק)"></textarea>
+      </div>
+
+      <!-- חקירת רשויות 2 -->
+      <div class="col-12">
+        <label class="form-label label-strong">חקירת רשויות 2</label>
+        <textarea id="db_authorities_2"
+                  class="form-control template-ph"
+                  rows="3"
+                  placeholder="למשל: בחקירה שערכנו הוברר כי לנפגע קיים תיק עוסק מורשה במס ערך מוסף. (אם אין השאירי שדה זה ריק)"></textarea>
+      </div>
+
+      <!-- חקירה במדיה החברתית -->
+      <div class="col-12">
+        <label class="form-label label-strong">חקירה במדיה החברתית</label>
+        <textarea id="db_social_media"
+                  class="form-control template-ph"
+                  rows="3"
+                  placeholder="למשל: בסריקה ברשת האינטרנט ובמדיה החברתית אותר דף פייסבוק..."></textarea>
+      </div>
+
+      <!-- זיהוי במדיה החברתית -->
+      <div class="col-12">
+        <label class="form-label label-strong">זיהוי במדיה החברתית</label>
+        <textarea id="db_social_media_identification"
+                  class="form-control template-ph"
+                  rows="2"
+                  placeholder="למשל: זיהוי – הנפגע זוהה עפ&quot;י ..."></textarea>
+      </div>
+
+      <!-- תאריך פעילות -->
+      <div class="col-md-4">
+        <label class="form-label">תאריך פעילות</label>
+        <input id="db_tracking_date"
+               type="text"
+               class="form-control template-ph"
+               placeholder="dd/mm/yyyy">
+      </div>
+
+      <!-- התחלת פעילות -->
+      <div class="col-md-4">
+        <label class="form-label">התחלת פעילות</label>
+        <input id="db_start_time"
+               type="time"
+               class="form-control template-ph">
+      </div>
+
+      <!-- סיום פעילות -->
+      <div class="col-md-4">
+        <label class="form-label">סיום פעילות</label>
+        <input id="db_end_time"
+               type="time"
+               class="form-control template-ph">
+      </div>
+
+      <!-- סיכום -->
+      <div class="col-12">
+        <label class="form-label">סיכום</label>
+        <textarea id="db_summary"
+                  class="form-control template-ph"
+                  rows="3"
+                  placeholder="הכנס סיכום קצר של הפעילות או תצפיות החוקר"></textarea>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
+
+
+
+
               <!-- Section 4: תמונות -->
               <div class="col-12 section-block" data-section="photos">
                 <div class="card mt-1">
@@ -230,7 +357,7 @@
               <!-- /PHOTOS -->
 
 <!-- ===================== תמונת זיהוי (תבנית ייעודית) ===================== -->
-<div id="id-photo-card" class="card mt-3" dir="rtl" style="border-radius:14px;">
+<div id="id-photo-card" class="card mt-3 d-none" dir="rtl" style="border-radius:14px;">
   <div class="card-header d-flex align-items-center justify-content-between">
     <div class="d-flex align-items-center gap-2">
       <i class="bi bi-person-badge"></i>
@@ -302,7 +429,7 @@
 </div>
 <!-- =================== /תמונת זיהוי (תבנית ייעודית) ==================== -->
 <!-- ===================== חשבונית סיעודי ===================== -->
-<div id="invoice-siudi-card" class="card mt-3" dir="rtl" style="border-radius:14px;">
+<div id="invoice-siudi-card" class="card mt-3 d-none" dir="rtl" style="border-radius:14px;">
   <div class="card-header d-flex align-items-center justify-content-between">
     <div class="d-flex align-items-center gap-2">
       <i class="bi bi-receipt"></i>
@@ -505,6 +632,7 @@ window.safeUUID = (function () {
     return m ? m[0] : s.slice(0, 120);
   }
 
+
   // === Photo-ID: resolve *only* the image chosen in the "תמונת זיהוי" card ===
 
   function getPhotoIdServerName(){
@@ -574,10 +702,62 @@ function computeTemplateName() {
 
 
 
-  function applyTemplateSections(){
-    document.querySelectorAll('.section-block').forEach(b=>b.style.display = '');
-    $('#templateBadge').innerHTML = `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
+  function applyTemplateSections() {
+    const rtSel = document.getElementById('reportType');
+    const rt    = (rtSel && rtSel.value ? rtSel.value.trim() : '');
+    const rtUpper = rt.toUpperCase();
+
+    // cards
+    const genericCard = document.querySelector('[data-section="report-fields"]');
+    const lifeCard    = document.getElementById('lifeFollowupFields');
+    const idPhotoCard = document.getElementById('id-photo-card');
+    const invoiceCard = document.getElementById('invoice-siudi-card');
+
+    // 1) reset: show generic, hide all special cards
+    if (genericCard) genericCard.style.display = '';
+    if (lifeCard)    lifeCard.classList.add('d-none');
+    if (idPhotoCard) idPhotoCard.classList.add('d-none');
+    if (invoiceCard) invoiceCard.classList.add('d-none');
+
+    // 2) Menora Life follow-up – show the dedicated card instead of generic
+    if (rt === 'menora_life_followup') {
+      if (genericCard) genericCard.style.display = 'none';
+      if (lifeCard)    lifeCard.classList.remove('d-none');
+    }
+
+    // 3) PHOTO ID card:
+    //    - classic SIUDI bundle
+    //    - standalone ID_PHOTOS
+    //    - Menora Life photo-id
+    if (
+      rtUpper === 'SIUDI' ||
+      rtUpper === 'ID_PHOTOS' ||
+      rt === 'menora_life_photoid'
+    ) {
+      if (idPhotoCard) idPhotoCard.classList.remove('d-none');
+    }
+
+    // 4) INVOICE card:
+    //    - classic SIUDI bundle
+    //    - standalone SIUDI_INVOICE
+    //    - Menora Life invoice
+    if (
+      rtUpper === 'SIUDI' ||
+      rtUpper === 'SIUDI_INVOICE' ||
+      rt === 'menora_life_invoice'
+    ) {
+      if (invoiceCard) invoiceCard.classList.remove('d-none');
+    }
+
+    // 5) update badge with the resolved DOCX file name
+    const badge = document.getElementById('templateBadge');
+    if (badge) {
+      badge.innerHTML =
+        `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
+    }
   }
+
+
 
   function updateMetaBadges() {
     const refEl   = $('#refBadge');
@@ -959,63 +1139,82 @@ function computeTemplateName() {
     return payload;
   }
 
-  function buildQuery(){
+  function buildQuery() {
     const q = new URLSearchParams();
 
-    // basics
-    if (state.insured_id) q.set('insured_id', state.insured_id);
-    if (state.ctx?.activity_date) q.set('activity_date', state.ctx.activity_date);
+    // ====== Basics ======
+    if (state.insured_id) q.set("insured_id", state.insured_id);
+    if (state.ctx?.activity_date) q.set("activity_date", state.ctx.activity_date);
 
-    const g = id => document.getElementById(id)?.value?.trim() || "";
+    const g = (id) => document.getElementById(id)?.value?.trim() || "";
 
-    // common context fields (stay as-is)
-    if (g('ctx_surv_place'))  q.set('surv_place', g('ctx_surv_place'));
-    if (g('ctx_surv_city'))   q.set('surv_city',  g('ctx_surv_city'));
-    if (g('ctx_injury_type')) q.set('injury_type', g('ctx_injury_type'));
+    // ====== Common context fields ======
+    if (g("ctx_surv_place")) q.set("surv_place", g("ctx_surv_place"));
+    if (g("ctx_surv_city")) q.set("surv_city", g("ctx_surv_city"));
 
-    // template
+    // injury type (life first, then general)
+    const injury = g("life_injury_type") || g("ctx_injury_type");
+    if (injury) q.set("injury_type", injury);
+
+    // ====== Menora Life Follow-Up (אכע) fields ======
+    if (g("db_background")) q.set("background", g("db_background"));
+    if (g("db_occupation")) q.set("occupation", g("db_occupation"));
+    if (g("db_authorities_1")) q.set("authorities_1", g("db_authorities_1"));
+    if (g("db_authorities_2")) q.set("authorities_2", g("db_authorities_2"));
+    if (g("db_social_media")) q.set("social_media", g("db_social_media"));
+    if (g("db_social_media_identification"))
+      q.set("social_media_identification", g("db_social_media_identification"));
+    if (g("db_tracking_date")) q.set("tracking_date", g("db_tracking_date"));
+    if (g("db_start_time")) q.set("start_time", g("db_start_time"));
+    if (g("db_end_time")) q.set("end_time", g("db_end_time"));
+    if (g("db_summary")) q.set("summary", g("db_summary"));
+
+    // ====== Template selection ======
     const tmplKey = selectedTemplateKey();
-    q.set('template', tmplKey);
+    q.set("template", tmplKey);
 
-    // report-type specific
-    const rt = (document.getElementById('reportType')?.value || '').toUpperCase();
+    // ====== Report type specific handling ======
+    const rt = (document.getElementById("reportType")?.value || "").toUpperCase();
 
-    if (rt === 'ID_PHOTOS') {
-      q.set('template_file', 'menora_photo_id.docx'); // explicit file hint
+    // Photo ID reports
+    if (rt === "ID_PHOTOS" || rt === "MENORA_LIFE_PHOTOID") {
+      q.set("template_file", "menora_photo_id.docx"); // explicit file hint
     }
 
-    // ===== Siudi Invoice (fixed 1-line item "מעקב סיעודי") =====
-    if (rt === 'SIUDI_INVOICE') {
-      q.set('template_file', 'invoice_monora_siudi.docx');
+    // Siudi Invoice (unchanged logic)
+    if (rt === "SIUDI_INVOICE" || rt === "MENORA_LIFE_INVOICE") {
+      q.set("template_file", "invoice_monora_siudi.docx");
 
-      // typed on the invoice card
-      // inv_date is hidden ISO (yyyy-mm-dd); inv_date_dmy is UI only
-      q.set('inv_date',          g('inv_date') || "");      // e.g. 2025-09-30
-      q.set('inv_number',        g('inv_number') || "");
-      q.set('totals_subtotal',   g('inv_subtotal') || "");
-      q.set('totals_vat_rate',   g('inv_vat_rate') || "");
-      q.set('totals_vat_amount', g('inv_vat_amount') || "");
-      q.set('totals_total',      g('inv_total') || "");
+      q.set("inv_date", g("inv_date") || "");
+      q.set("inv_number", g("inv_number") || "");
+      q.set("totals_subtotal", g("inv_subtotal") || "");
+      q.set("totals_vat_rate", g("inv_vat_rate") || "");
+      q.set("totals_vat_amount", g("inv_vat_amount") || "");
+      q.set("totals_total", g("inv_total") || "");
 
-      // pulled from existing insured/context (no need to retype)
-      const invRef        = (state.ref_number || state.reference_no || "").toString();  // "תיקנו"
-      const claimNumber   = (state.db?.claim_number || "").toString();
-      const claimSubject  = (state.db?.full_name || "").toString();
-      const idNumber      = (state.db?.id_number || "").toString();
+      const invRef = (state.ref_number || state.reference_no || "").toString();
+      const claimNumber = (state.db?.claim_number || "").toString();
+      const claimSubject = (state.db?.full_name || "").toString();
+      const idNumber = (state.db?.id_number || "").toString();
 
-      if (invRef)       q.set('inv_ref', invRef);
-      if (claimNumber)  q.set('claim.number', claimNumber);
-      if (claimSubject) q.set('claim.subject', claimSubject);
-      if (idNumber)     q.set('insured.id_number', idNumber);
+      if (invRef) q.set("inv_ref", invRef);
+      if (claimNumber) q.set("claim.number", claimNumber);
+      if (claimSubject) q.set("claim.subject", claimSubject);
+      if (idNumber) q.set("insured.id_number", idNumber);
     }
 
-    // photo selection (kept for other report types)
-    const names = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
-    for (const n of names) q.append('selected_photos[]', n);
+    // ====== Photo selections (kept generic) ======
+    const names =
+      typeof window.selectedPhotoNames === "function"
+        ? window.selectedPhotoNames()
+        : [];
+    for (const n of names) q.append("selected_photos[]", n);
 
-    q.set('ts', Date.now());
+    q.set("ts", Date.now());
     return q.toString();
   }
+
+
   window.buildQuery = buildQuery;
 
 
