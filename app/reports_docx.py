@@ -685,14 +685,11 @@ def preview_docx_as_pdf(report_id: int):
 
     insured_id = request.args.get("insured_id", type=int)
 
-    # ---- collect overrides from the query (including background) ----
     overrides = {
         "activity_date": (request.args.get("activity_date") or "").strip(),
         "surv_place":    (request.args.get("surv_place") or "").strip(),
         "surv_city":     (request.args.get("surv_city")  or "").strip(),
         "injury_type":   (request.args.get("injury_type") or "").strip(),
-
-        # Menora Life follow-up fields (we care about background here)
         "background":    (request.args.get("background") or "").strip(),
         "occupation":    (request.args.get("occupation") or "").strip(),
         "social_media":  (request.args.get("social_media") or "").strip(),
@@ -704,11 +701,10 @@ def preview_docx_as_pdf(report_id: int):
         "summary":       (request.args.get("summary") or "").strip(),
         "authorities_1": (request.args.get("authorities_1") or "").strip(),
         "authorities_2": (request.args.get("authorities_2") or "").strip(),
-        "phone": (request.args.get("phone") or "").strip(),
-        "dnb": (request.args.get("dnb") or "").strip(),
+        "phone":         (request.args.get("phone") or "").strip(),
+        "dnb":           (request.args.get("dnb") or "").strip(),
     }
 
-    # 🔹 DEBUG: raw value arriving from the client
     try:
         current_app.logger.info(
             "[CTX][preview] query.background=%r (report_id=%s, insured_id=%s)",
@@ -723,7 +719,7 @@ def preview_docx_as_pdf(report_id: int):
 
     # --- template path ---
     tmpl_key = (request.args.get("template", "siudi") or "siudi").strip().lower()
-    template_path = load_template_docx(map_template_key(tmpl_key))  # full path
+    template_path = load_template_docx(map_template_key(tmpl_key))
     current_app.logger.info("[DOCX] Using template: %s", template_path)
 
     tpl = DocxTemplate(template_path)
@@ -731,25 +727,57 @@ def preview_docx_as_pdf(report_id: int):
     # --- Menora life follow-up: tracking activities table ---
     if tmpl_key == "menora_life_followup":
         raw = (request.args.get("tracking_raw") or "").strip()
-        if raw:
-            ctx["tracking_rows"] = _parse_tracking_rows(raw)
-        else:
-            ctx["tracking_rows"] = []
+        ctx["tracking_rows"] = _parse_tracking_rows(raw) if raw else []
 
+    # --- common media root + resolver (also used for photos + 'טבלת רשויות') ---
+    case_id = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
+    rep_id = str(report_id)
+    media_root = current_app.config.get(
+        "REPORT_MEDIA_DIR",
+        os.path.join(current_app.instance_path, "report_media"),
+    )
+
+    def resolve_one(name: str) -> str | None:
+        """Resolve a basename to a real file under REPORT_MEDIA_DIR."""
+        if not name:
+            return None
+        name = os.path.basename(name)
+
+        exact = os.path.join(media_root, case_id, rep_id, name)
+        if os.path.isfile(exact):
+            return exact
+
+        case_root = os.path.join(media_root, case_id)
+        if os.path.isdir(case_root):
+            for root, _dirs, files in os.walk(case_root):
+                if name in files:
+                    return os.path.join(root, name)
+
+        current_app.logger.warning("[PHOTOS] not found: %s", name)
+        return None
+
+    # --- Menora Life: single authorities-table image placeholder {{ authorities_table_photo }} ---
+    if tmpl_key == "menora_life_followup":
+        tbl_name = (request.args.get("authorities_table") or "").strip()
+        img_path = resolve_one(tbl_name) if tbl_name else None
+        if img_path:
+            ctx["authorities_table_photo"] = InlineImage(tpl, img_path, width=Mm(120))
+        else:
+            ctx["authorities_table_photo"] = ""
 
     # ===================== SIUDI INVOICE (no photos) ======================
     if tmpl_key == "siudi_invoice":
         g = request.args.get
         inv_date_iso = (g("inv_date") or "").strip()
-        # ensure nested dicts exist
+
         ctx.setdefault("insured", {})
         ctx.setdefault("claim", {})
         ctx.setdefault("totals", {})
 
         ctx.update({
-            "inv_date":    ddmmyyyy(inv_date_iso),
-            "inv_number":  (g("inv_number") or "").strip(),
-            "inv_ref":     (g("inv_ref") or "").strip(),
+            "inv_date":   ddmmyyyy(inv_date_iso),
+            "inv_number": (g("inv_number") or "").strip(),
+            "inv_ref":    (g("inv_ref") or "").strip(),
         })
         ctx["insured"]["id_number"] = (g("insured.id_number") or "").strip()
         ctx["claim"]["number"]      = (g("claim.number") or "").strip()
@@ -761,28 +789,36 @@ def preview_docx_as_pdf(report_id: int):
             "total":      (g("totals_total") or "").strip(),
         })
 
-        # render -> pdf
         buf = io.BytesIO()
         tpl.render(ctx)
         tpl.save(buf)
         pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
-        return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
+        return send_file(io.BytesIO(pdf_bytes),
+                         mimetype="application/pdf",
+                         download_name="preview.pdf")
     # =====================================================================
 
     # --- collect selected files (names) -> absolute paths ---
+    # --- collect selected files (names) -> absolute paths ---
     selected = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos")
     selected = [os.path.basename(n) for n in selected if n]
+
     case_id   = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
     rep_id    = str(report_id)
-    media_root = current_app.config.get("REPORT_MEDIA_DIR", os.path.join(current_app.instance_path, "report_media"))
+    media_root = current_app.config.get(
+        "REPORT_MEDIA_DIR",
+        os.path.join(current_app.instance_path, "report_media")
+    )
 
     def resolve_one(name: str) -> str | None:
         p = os.path.join(media_root, case_id, rep_id, name)
-        if os.path.isfile(p): return p
+        if os.path.isfile(p):
+            return p
         root_case = os.path.join(media_root, case_id)
-        for root, _d, files in os.walk(root_case):
-            if name in files:
-                return os.path.join(root, name)
+        if os.path.isdir(root_case):
+            for root, _d, files in os.walk(root_case):
+                if name in files:
+                    return os.path.join(root, name)
         current_app.logger.warning("[PHOTOS] not found: %s", name)
         return None
 
@@ -824,6 +860,16 @@ def preview_docx_as_pdf(report_id: int):
 
     gap = "\u00A0" * 8
 
+    # --- Menora Life: single authorities-table image placeholder ---
+    authorities_img = None
+    if tmpl_key == "menora_life_followup":
+        tbl_name = (request.args.get("authorities_table") or "").strip()
+        if tbl_name:
+            img_path = resolve_one(os.path.basename(tbl_name))
+            if img_path:
+                authorities_img = InlineImage(tpl, img_path, width=Mm(120))
+        ctx["authorities_table_photo"] = authorities_img or ""
+
     ctx.update({
         "land_images": land_images,
         "port_rows":   port_rows,
@@ -839,6 +885,16 @@ def preview_docx_as_pdf(report_id: int):
     return send_file(io.BytesIO(pdf_bytes), mimetype="application/pdf", download_name="preview.pdf")
 
 
+    buf = io.BytesIO()
+    tpl.render(ctx)
+    tpl.save(buf)
+    docx_bytes = buf.getvalue()
+
+    pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+    return send_file(io.BytesIO(pdf_bytes),
+                     mimetype="application/pdf",
+                     download_name="preview.pdf")
+
 
 @reports_docx_bp.route("/<int:report_id>/render-docx", methods=["POST"])
 def render_docx_download(report_id: int):
@@ -852,7 +908,7 @@ def render_docx_download(report_id: int):
 
     insured_id = payload.get("insured_id")
 
-    # ---- collect overrides from JSON (including background) ----
+    # ---- collect overrides from JSON (including background / dnb / phone) ----
     overrides = {
         "activity_date": payload.get("activity_date", "").strip(),
         "surv_place":    payload.get("surv_place", "").strip(),
@@ -871,8 +927,8 @@ def render_docx_download(report_id: int):
         "summary":       payload.get("summary", "").strip(),
         "authorities_1": payload.get("authorities_1", "").strip(),
         "authorities_2": payload.get("authorities_2", "").strip(),
-        "phone": payload.get("phone", "").strip(),
-        "dnb": payload.get("dnb", "").strip(),
+        "phone":         payload.get("phone", "").strip(),
+        "dnb":           payload.get("dnb", "").strip(),
     }
 
     # 🔹 DEBUG: raw value from download POST
@@ -895,12 +951,46 @@ def render_docx_download(report_id: int):
 
     tpl = DocxTemplate(template_path)
 
+    # --- Menora life follow-up: tracking activities table ---
     if tmpl_key == "menora_life_followup":
         raw = (payload.get("tracking_raw") or "").strip()
-        if raw:
-            ctx["tracking_rows"] = _parse_tracking_rows(raw)
+        ctx["tracking_rows"] = _parse_tracking_rows(raw) if raw else []
+
+    # --- common media root + resolver (photos + 'טבלת רשויות') ---
+    case_id = str(insured_id or payload.get("case_id", "")).strip()
+    rep_id = str(report_id)
+    media_root = current_app.config.get(
+        "REPORT_MEDIA_DIR",
+        os.path.join(current_app.instance_path, "report_media"),
+    )
+
+    def resolve_one(name: str) -> str | None:
+        """Resolve a basename to a real file under REPORT_MEDIA_DIR."""
+        if not name:
+            return None
+        name = os.path.basename(name)
+
+        exact = os.path.join(media_root, case_id, rep_id, name)
+        if os.path.isfile(exact):
+            return exact
+
+        case_root = os.path.join(media_root, case_id)
+        if os.path.isdir(case_root):
+            for root, _dirs, files in os.walk(case_root):
+                if name in files:
+                    return os.path.join(root, name)
+
+        current_app.logger.warning("[PHOTOS] not found: %s", name)
+        return None
+
+    # --- Menora Life: single authorities-table image placeholder {{ authorities_table_photo }} ---
+    if tmpl_key == "menora_life_followup":
+        tbl_name = (payload.get("authorities_table") or "").strip()
+        img_path = resolve_one(tbl_name) if tbl_name else None
+        if img_path:
+            ctx["authorities_table_photo"] = InlineImage(tpl, img_path, width=Mm(120))
         else:
-            ctx.setdefault("tracking_rows", [])
+            ctx["authorities_table_photo"] = ""
 
     # ===================== SIUDI INVOICE (no photos) ======================
     if tmpl_key == "siudi_invoice":
@@ -943,6 +1033,7 @@ def render_docx_download(report_id: int):
     # =====================================================================
 
     # --- collect selected names from payload ---
+    # --- collect selected names from payload ---
     names = payload.get("selected_photos") or []
     if not names and isinstance(payload.get("photos"), list):
         names = [os.path.basename(p.get("name", "")) for p in payload["photos"] if p.get("name")]
@@ -958,7 +1049,8 @@ def render_docx_download(report_id: int):
 
     def resolve_one(name: str) -> str | None:
         exact = os.path.join(media_root, case_id, rep_id, name)
-        if os.path.isfile(exact): return exact
+        if os.path.isfile(exact):
+            return exact
         case_root = os.path.join(media_root, case_id)
         if os.path.isdir(case_root):
             for root, _dirs, files in os.walk(case_root):
@@ -1007,6 +1099,16 @@ def render_docx_download(report_id: int):
 
     gap = "\u00A0" * 8
 
+    # --- Menora Life: single authorities-table image placeholder ---
+    authorities_img = None
+    if tmpl_key == "menora_life_followup":
+        tbl_name = (payload.get("authorities_table") or "").strip()
+        if tbl_name:
+            img_path = resolve_one(os.path.basename(tbl_name))
+            if img_path:
+                authorities_img = InlineImage(tpl, img_path, width=Mm(120))
+        ctx["authorities_table_photo"] = authorities_img or ""
+
     ctx.update({
         "land_images": land_images,
         "port_rows":   port_rows,
@@ -1026,6 +1128,8 @@ def render_docx_download(report_id: int):
 
     docx_url = url_for("generated_reports", filename=filename)
     return jsonify({"ok": True, "docx_url": docx_url})
+
+
 
 
 

@@ -255,7 +255,39 @@
                   class="form-control template-ph"
                   rows="3"
                   placeholder="למשל: בחקירה שערכנו הוברר כי לנפגע לא קיים תיק עוסק מורשה במס ערך מוסף."></textarea>
+
+        <!-- כפתור וצילום טבלה -->
+        <div class="mt-2 d-flex align-items-center gap-2">
+          <button type="button"
+                  id="btn_authorities_table"
+                  class="btn btn-outline-primary btn-sm">
+            צרף טבלה
+          </button>
+
+          <!-- קלט קובץ (מוסתר) -->
+          <input type="file"
+                 id="authorities_table_file"
+                 accept="image/*"
+                 style="display:none">
+
+          <!-- תצוגה מקדימה + צ'קבוקס -->
+          <div id="authorities_table_thumb_wrap"
+               class="d-flex align-items-center gap-2"
+               style="display:none;">
+            <input type="checkbox"
+                   id="authorities_table_use"
+                   class="form-check-input"
+                   checked>
+            <img id="authorities_table_thumb"
+                 alt="תמונת טבלה"
+                 style="max-width:120px; max-height:80px; border-radius:6px; border:1px solid #dee2e6;">
+          </div>
+
+          <!-- ערך גולמי שיוחזר לשרת -->
+          <input type="hidden" id="authorities_table_src">
+        </div>
       </div>
+
 
             <!-- בדיקת דן אנד ברדסטריט -->
       <div class="col-12">
@@ -660,7 +692,7 @@ window.safeUUID = (function () {
     const m = s.match(/[^/\\]+$/);
     return m ? m[0] : s.slice(0, 120);
   }
-
+  window.shortenPhotoSrc = shortenPhotoSrc;
 
   // === Photo-ID: resolve *only* the image chosen in the "תמונת זיהוי" card ===
 
@@ -1203,9 +1235,19 @@ function computeTemplateName() {
 
     if (g('life_tracking_raw'))             q.set('tracking_raw', g('life_tracking_raw'));
 
-    // ====== Template selection ======
+    // === תמונת טבלה עבור "חקירת רשויות" (Menora Life Follow-up בלבד) ===
+
     const tmplKey = selectedTemplateKey();
+    if (tmplKey === 'menora_life_followup' && typeof window.getAuthoritiesTableImage === 'function') {
+      const tbl = window.getAuthoritiesTableImage();
+      if (tbl && tbl.short) {
+        q.set('authorities_table', tbl.short);   // basename only
+      }
+    }
+
+    // ====== Template selection ======
     q.set("template", tmplKey);
+
 
     // ====== Report type specific handling ======
     const rt = (document.getElementById("reportType")?.value || "").toUpperCase();
@@ -1391,6 +1433,7 @@ function computeTemplateName() {
           };
 
           // 🔹 Menora Life Follow-up extra fields (including tracking_raw)
+                    // 🔹 Menora Life Follow-up extra fields (including tracking_raw & table image)
           if (tmplKey === 'menora_life_followup') {
             payload.background                   = val('db_background');
             payload.occupation                   = val('db_occupation');
@@ -1403,8 +1446,18 @@ function computeTemplateName() {
             payload.authorities_1                = val('db_authorities_1');
             payload.dnb                          = val('db_dnb');
             payload.authorities_2                = val('db_authorities_2');
-            payload.tracking_raw                 = val('life_tracking_raw');  // 👈 NEW
+            payload.tracking_raw                 = val('life_tracking_raw');
+
+            // תמונת טבלה לחקירת רשויות
+            if (typeof window.getAuthoritiesTableImage === 'function') {
+              const tbl = window.getAuthoritiesTableImage();
+              if (tbl && tbl.short) {
+                payload.authorities_table = tbl.short;   // basename only
+              }
+            }
           }
+
+
         }
 
         // ---- DEBUG LOGS ----
@@ -1484,6 +1537,89 @@ function computeTemplateName() {
 
 
   });
+
+  /* === "חקירת רשויות" – תמונת טבלה בודדת === */
+(function () {
+  const btn   = document.getElementById('btn_authorities_table');
+  const file  = document.getElementById('authorities_table_file');
+  const src   = document.getElementById('authorities_table_src');
+  const wrap  = document.getElementById('authorities_table_thumb_wrap');
+  const thumb = document.getElementById('authorities_table_thumb');
+  const useCb = document.getElementById('authorities_table_use');
+
+  if (!btn || !file || !src || !wrap || !thumb || !useCb) {
+    return;
+  }
+
+  function showThumb(url) {
+    thumb.src = url;
+    wrap.style.display = 'flex';
+    useCb.checked = true;
+  }
+
+  async function uploadAuthoritiesTable(fileObj) {
+    const fd = new FormData();
+    fd.append('files[]', fileObj, fileObj.name);
+
+    const caseId = (window.state?.insured_id ?? '').toString() || 'no_case';
+    const repId  = (window.state?.report_id ?? 1).toString();
+    fd.append('case_id',   caseId);
+    fd.append('report_id', repId);
+
+    const res = await fetch('/reports/import_local_dropbox', {
+      method: 'POST',
+      body: fd
+    });
+    if (!res.ok) throw new Error('Upload failed (HTTP ' + res.status + ')');
+    const j = await res.json();
+    if (!j || j.status !== 'ok' || !Array.isArray(j.saved) || !j.saved.length) {
+      throw new Error('Upload failed (bad JSON)');
+    }
+    // {name, url}
+    return j.saved[0];
+  }
+
+  // when user selects local file
+  file.addEventListener('change', async function () {
+    const f = this.files && this.files[0];
+    if (!f) return;
+
+    // local preview
+    const reader = new FileReader();
+    reader.onload = function (e) { showThumb(e.target.result); };
+    reader.readAsDataURL(f);
+
+    try {
+      const saved = await uploadAuthoritiesTable(f);
+      // store URL or name; shortenPhotoSrc() will later pull the basename
+      src.value = saved.url || saved.name || f.name;
+      console.log('[AuthoritiesTable][client] uploaded =>', saved);
+    } catch (err) {
+      console.error('[AuthoritiesTable][client] upload failed:', err);
+      alert('שגיאה בהעלאת צילום הטבלה לשרת');
+    }
+  });
+
+  // open file explorer
+  btn.addEventListener('click', function () {
+    file.click();
+  });
+
+  // expose a small helper for preview/download builders
+  window.getAuthoritiesTableImage = function () {
+    if (!useCb.checked) return null;     // user unchecked => ignore
+    const raw = (src.value || '').trim();
+    if (!raw) return null;
+
+    // use the shared helper that extracts ?name=... or basename
+    const short = (typeof shortenPhotoSrc === 'function')
+      ? shortenPhotoSrc(raw)
+      : raw;
+
+    return { raw, short };
+  };
+
+})();
 
   /* ============================== 8) PHOTO-ID MINI BLOCK ============================== */
   (function(){
