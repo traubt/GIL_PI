@@ -73,6 +73,40 @@ def pick_template_for_report(report_id: int) -> str:
     # Phase-1: always use the Menora 'Siudi' template
     return "menora_siudi.docx"
 
+def _parse_tracking_rows(raw: str):
+    """
+    Parse lines like '06:00 - הגיע לכתובת...' into
+    [{'time': '06:00', 'text': 'הגיע לכתובת...'}, ...]
+    """
+    rows = []
+    if not raw:
+        return rows
+
+    for line in raw.splitlines():
+        line = (line or "").strip()
+        if not line:
+            continue
+
+        time_part = ""
+        text_part = ""
+
+        # Accept 'HH:MM - text' or 'HH:MM text'
+        # First try a dash close to the start
+        dash_idx = line.find("-")
+        if 0 <= dash_idx <= 6:
+            time_part = line[:dash_idx].strip()
+            text_part = line[dash_idx + 1 :].strip()
+        else:
+            parts = line.split(None, 1)
+            if len(parts) == 2:
+                time_part, text_part = parts[0].strip(), parts[1].strip()
+            else:
+                # no clear time, treat entire line as text
+                text_part = line
+
+        rows.append({"time": time_part, "text": text_part})
+
+    return rows
 
 # ---- context builder (KEEP THIS VERSION) ----
 from datetime import datetime, date
@@ -232,6 +266,10 @@ def get_report_context(report_id: int, *, insured_id: int | None = None, overrid
         "authorities_1": authorities_1,
         "authorities_2": authorities_2,
     })
+
+    phone_override = overrides.get("phone", "")
+    if phone_override:
+        db_fields["phone"] = phone_override
 
     # 🔹 DEBUG: what’s going into db.background?
     try:
@@ -663,6 +701,7 @@ def preview_docx_as_pdf(report_id: int):
         "summary":       (request.args.get("summary") or "").strip(),
         "authorities_1": (request.args.get("authorities_1") or "").strip(),
         "authorities_2": (request.args.get("authorities_2") or "").strip(),
+        "phone": (request.args.get("phone") or "").strip(),
     }
 
     # 🔹 DEBUG: raw value arriving from the client
@@ -684,6 +723,15 @@ def preview_docx_as_pdf(report_id: int):
     current_app.logger.info("[DOCX] Using template: %s", template_path)
 
     tpl = DocxTemplate(template_path)
+
+    # --- Menora life follow-up: tracking activities table ---
+    if tmpl_key == "menora_life_followup":
+        raw = (request.args.get("tracking_raw") or "").strip()
+        if raw:
+            ctx["tracking_rows"] = _parse_tracking_rows(raw)
+        else:
+            ctx["tracking_rows"] = []
+
 
     # ===================== SIUDI INVOICE (no photos) ======================
     if tmpl_key == "siudi_invoice":
@@ -819,6 +867,7 @@ def render_docx_download(report_id: int):
         "summary":       payload.get("summary", "").strip(),
         "authorities_1": payload.get("authorities_1", "").strip(),
         "authorities_2": payload.get("authorities_2", "").strip(),
+        "phone": payload.get("phone", "").strip(),
     }
 
     # 🔹 DEBUG: raw value from download POST
@@ -840,6 +889,13 @@ def render_docx_download(report_id: int):
     current_app.logger.info("[DOCX] Using template: %s", template_path)
 
     tpl = DocxTemplate(template_path)
+
+    if tmpl_key == "menora_life_followup":
+        raw = (payload.get("tracking_raw") or "").strip()
+        if raw:
+            ctx["tracking_rows"] = _parse_tracking_rows(raw)
+        else:
+            ctx.setdefault("tracking_rows", [])
 
     # ===================== SIUDI INVOICE (no photos) ======================
     if tmpl_key == "siudi_invoice":

@@ -309,6 +309,20 @@
                class="form-control template-ph">
       </div>
 
+            <!-- פעילויות במהלך המעקב -->
+      <div class="col-12">
+        <label class="form-label label-strong">פעילויות במהלך המעקב</label>
+        <textarea id="life_tracking_raw"
+                  class="form-control template-ph"
+                  rows="6"
+                  placeholder="דוגמה:
+06:00 - הגיע לכתובת הנפגע ברחוב ...
+07:15 - הנפגע יצא מהבית ..."></textarea>
+        <div class="form-text text-muted small">
+          כל שורה בפורמט <code>HH:MM - תיאור הפעילות</code>.
+        </div>
+      </div>
+
       <!-- סיכום -->
       <div class="col-12">
         <label class="form-label">סיכום</label>
@@ -1174,6 +1188,9 @@ function computeTemplateName() {
     if (g("db_start_time")) q.set("start_time", g("db_start_time"));
     if (g("db_end_time")) q.set("end_time", g("db_end_time"));
     if (g("db_summary")) q.set("summary", g("db_summary"));
+    if (g("db_phone")) q.set("phone", g("db_phone"));
+
+    if (g('life_tracking_raw'))             q.set('tracking_raw', g('life_tracking_raw'));
 
     // ====== Template selection ======
     const tmplKey = selectedTemplateKey();
@@ -1233,46 +1250,46 @@ function computeTemplateName() {
     if (window.state && Number(window.state.report_id) > 0) return Number(window.state.report_id);
     return 1;
   }
-if (refreshBtn && frame) {
-  refreshBtn.addEventListener('click', async function () {
-      const rt = document.getElementById('reportType')?.value || "";
-      if (!rt) {
-        alert('נא לבחור דוח מהרשימה');
-        return;
-      }
+  if (refreshBtn && frame) {
+    refreshBtn.addEventListener('click', async function () {
+        const rt = document.getElementById('reportType')?.value || "";
+        if (!rt) {
+          alert('נא לבחור דוח מהרשימה');
+          return;
+        }
 
-    const tmplKey   = selectedTemplateKey();
-    const tmplLabel = document.querySelector('#reportType option:checked')?.textContent?.trim() || 'התבנית הנבחרת';
+      const tmplKey   = selectedTemplateKey();
+      const tmplLabel = document.querySelector('#reportType option:checked')?.textContent?.trim() || 'התבנית הנבחרת';
 
-    // show spinner first and keep it until the *real* PDF loads
-    showBusy(`מכין תצוגה עבור ${tmplLabel}`);
+      // show spinner first and keep it until the *real* PDF loads
+      showBusy(`מכין תצוגה עבור ${tmplLabel}`);
 
-    const id  = currentReportId();
-    const url = (tmplKey === 'id_photos')
-      ? `/reports/${id}/photo-id/preview-pdf?` + buildPhotoIdQuery()
-      : `/reports/${id}/preview-pdf?`           + buildQuery();
+      const id  = currentReportId();
+      const url = (tmplKey === 'id_photos')
+        ? `/reports/${id}/photo-id/preview-pdf?` + buildPhotoIdQuery()
+        : `/reports/${id}/preview-pdf?`           + buildQuery();
 
-    // --- debug ---
-    console.log('[Preview] tmplKey:', tmplKey);
-    console.log('[Preview] GET =>', url);
+      // --- debug ---
+      console.log('[Preview] tmplKey:', tmplKey);
+      console.log('[Preview] GET =>', url);
 
-    // clean any srcdoc and attach one-time listeners
-    frame.removeAttribute('srcdoc');
-    const tidy = () => {
-      frame.removeEventListener('load', tidy);
-      frame.removeEventListener('error', tidy);
-      hideBusy();
-    };
-    frame.addEventListener('load',  tidy, { once:true });
-    frame.addEventListener('error', tidy, { once:true });
+      // clean any srcdoc and attach one-time listeners
+      frame.removeAttribute('srcdoc');
+      const tidy = () => {
+        frame.removeEventListener('load', tidy);
+        frame.removeEventListener('error', tidy);
+        hideBusy();
+      };
+      frame.addEventListener('load',  tidy, { once:true });
+      frame.addEventListener('error', tidy, { once:true });
 
-    // safety timeout (20s) so the overlay can’t get stuck
-    setTimeout(() => { hideBusy(); }, 20000);
+      // safety timeout (20s) so the overlay can’t get stuck
+      setTimeout(() => { hideBusy(); }, 20000);
 
-    // IMPORTANT: set the real URL directly (no 'about:blank' in between)
-    frame.src = url;
-  });
-}
+      // IMPORTANT: set the real URL directly (no 'about:blank' in between)
+      frame.src = url;
+    });
+  }
 
   if (downloadBtn) {
     downloadBtn.addEventListener('click', async function(){
@@ -1292,75 +1309,91 @@ if (refreshBtn && frame) {
         const photos = (typeof window.getSelectedReportImages === 'function') ? window.getSelectedReportImages() : [];
 
         // choose endpoint + payload by template
+        let endpoint, payload;
 
-      let endpoint, payload;
+        if (tmplKey === 'id_photos') {
+          endpoint = `/reports/${id}/photo-id/render-docx`;
+          const g = id => document.getElementById(id)?.value?.trim() || "";
+          const one = getPhotoIdServerName && getPhotoIdServerName(); // single server-side image name
 
-      if (tmplKey === 'id_photos') {
-        endpoint = `/reports/${id}/photo-id/render-docx`;
-        const g = id => document.getElementById(id)?.value?.trim() || "";
-        const one = getPhotoIdServerName && getPhotoIdServerName(); // single server-side image name
+          payload = {
+            insured_id: state.insured_id || null,
+            id_photo_date_text: g('id_photo_date_dmy'),
+            id_photo_date:      g('id_photo_date'),
+            id_photo_time:      g('id_photo_time'),
+            id_photo_city:      g('id_photo_city'),
+            id_photo_place:     g('id_photo_place'),
+            id_photo_src:       g('id_photo_src'),
+            selected_photos:    one ? [one] : []
+          };
 
-        payload = {
-          insured_id: state.insured_id || null,
-          id_photo_date_text: g('id_photo_date_dmy'),
-          id_photo_date:      g('id_photo_date'),
-          id_photo_time:      g('id_photo_time'),
-          id_photo_city:      g('id_photo_city'),
-          id_photo_place:     g('id_photo_place'),
-          id_photo_src:       g('id_photo_src'),
-          selected_photos:    one ? [one] : []
-        };
+        } else if (tmplKey === 'siudi_invoice') {
+          // ✅ Siudi Invoice (single fixed line "מעקב סיעודי")
+          endpoint = `/reports/${id}/render-docx`;
+          const g = id => document.getElementById(id)?.value?.trim() || "";
 
-      } else if (tmplKey === 'siudi_invoice') {
-        // ✅ Siudi Invoice (single fixed line "מעקב סיעודי")
-        endpoint = `/reports/${id}/render-docx`;
-        const g = id => document.getElementById(id)?.value?.trim() || "";
+          payload = {
+            template:      'siudi_invoice',
+            template_file: 'invoice_monora_siudi.docx',
 
-        payload = {
-          template:      'siudi_invoice',
-          template_file: 'invoice_monora_siudi.docx',
+            // typed on the invoice card
+            inv_date:     g('inv_date'),      // ISO yyyy-mm-dd (hidden field)
+            inv_number:   g('inv_number'),
+            totals: {
+              subtotal:   g('inv_subtotal'),
+              vat_rate:   g('inv_vat_rate'),
+              vat_amount: g('inv_vat_amount'),
+              total:      g('inv_total')
+            },
 
-          // typed on the invoice card
-          inv_date:     g('inv_date'),      // ISO yyyy-mm-dd (hidden field)
-          inv_number:   g('inv_number'),
-          totals: {
-            subtotal:   g('inv_subtotal'),
-            vat_rate:   g('inv_vat_rate'),
-            vat_amount: g('inv_vat_amount'),
-            total:      g('inv_total')
-          },
+            // pulled from state / insured card (no need to re-enter)
+            insured_id: state.insured_id || null,
+            inv_ref:    (state.ref_number || state.reference_no || "").toString(),
+            claim: {
+              number:  (state.db?.claim_number || "").toString(),
+              subject: (state.db?.full_name    || "").toString()
+            },
+            insured: {
+              id_number: (state.db?.id_number  || "").toString()
+            }
+          };
 
-          // pulled from state / insured card (no need to re-enter)
-          insured_id: state.insured_id || null,
-          inv_ref:    (state.ref_number || state.reference_no || "").toString(),
-          claim: {
-            number:  (state.db?.claim_number || "").toString(),
-            subject: (state.db?.full_name    || "").toString()
-          },
-          insured: {
-            id_number: (state.db?.id_number  || "").toString()
+        } else {
+          // default (other report types)
+          endpoint = `/reports/${id}/render-docx`;
+
+          const names  = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
+          const photos = (typeof window.getSelectedReportImages === 'function') ? window.getSelectedReportImages() : [];
+
+          const val = id => document.getElementById(id)?.value?.trim() || "";
+
+          payload = {
+            insured_id:      state.insured_id || null,
+            activity_date:   state.ctx.activity_date || "",
+            surv_place:      val('ctx_surv_place'),
+            surv_city:       val('ctx_surv_city'),
+            template:        tmplKey,
+            injury_type:     val('ctx_injury_type'),
+            phone:           val('db_phone'),
+            selected_photos: names,
+            photos:          photos
+          };
+
+          // 🔹 Menora Life Follow-up extra fields (including tracking_raw)
+          if (tmplKey === 'menora_life_followup') {
+            payload.background                   = val('db_background');
+            payload.occupation                   = val('db_occupation');
+            payload.social_media                 = val('db_social_media');
+            payload.social_media_identification  = val('db_social_media_identification');
+            payload.tracking_date                = val('db_tracking_date');
+            payload.start_time                   = val('db_start_time');
+            payload.end_time                     = val('db_end_time');
+            payload.summary                      = val('db_summary');
+            payload.authorities_1                = val('db_authorities_1');
+            payload.authorities_2                = val('db_authorities_2');
+            payload.tracking_raw                 = val('life_tracking_raw');  // 👈 NEW
           }
-        };
-
-      } else {
-        // default (other report types)
-        endpoint = `/reports/${id}/render-docx`;
-
-        const names  = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
-        const photos = (typeof window.getSelectedReportImages === 'function') ? window.getSelectedReportImages() : [];
-
-        payload = {
-          insured_id:    state.insured_id || null,
-          activity_date: state.ctx.activity_date || "",
-          surv_place:    val('ctx_surv_place'),
-          surv_city:     val('ctx_surv_city'),
-          template:      tmplKey,
-          injury_type:   val('ctx_injury_type'),
-          selected_photos: names,
-          photos: photos
-        };
-      }
-
+        }
 
         // ---- DEBUG LOGS ----
         console.log('[Download] tmplKey:', tmplKey);
@@ -1385,7 +1418,6 @@ if (refreshBtn && frame) {
         alert(e.message || e);
       }
     });
-
   }
 
   /* ============================== 7) DATEPICKER FOR "תאריך פעילות" ============================== */
