@@ -121,6 +121,7 @@
                       data-claim-number="{{ ins.claim_number or '' }}"
                       data-insurance="{{ ins.insurance or '' }}"
                       data-claim-type="{{ ins.claim_type or '' }}"
+                      data-phone="{{ ins.phone or '' }}"
                     >
                       {{ (ins.last_name ~ ' ' ~ ins.first_name)|trim }}
                       · רפרנס {{ ins.ref_number or ins.ref or '—' }}
@@ -171,6 +172,10 @@
                       <div class="col-md-4">
                         <label class="form-label">מס' תביעה</label>
                         <input id="db_claim_number" type="text" class="form-control" disabled>
+                      </div>
+                      <div class="col-md-4">
+                        <label class="form-label">טלפון</label>
+                        <input id="db_phone" type="text" class="form-control">
                       </div>
                     </div>
                   </div>
@@ -592,7 +597,7 @@ window.safeUUID = (function () {
     version_no: 0,
     status_str: "Draft",
     reference_no: "—",
-    db: { ref_number: "", full_name: "", birth_date: "", gender: "", id_number: "", claim_number: "" },
+    db: { ref_number: "", full_name: "", birth_date: "", gender: "", id_number: "", claim_number: "" , phone: ""},
     ctx: { activity_date: "", surv_place: "", surv_city: "", injury_type: "" },
     photos: []
   };
@@ -800,6 +805,7 @@ function computeTemplateName() {
       db_gender:       gender,
       db_id_number:    get('idNumber'),
       db_claim_number: get('claimNumber'),
+      db_phone:        get('phone'),
     };
     for (const [id,val] of Object.entries(map)){
       const el = document.getElementById(id);
@@ -811,7 +817,8 @@ function computeTemplateName() {
     birth_date: birthIso          || "",
     gender:     gender            || "",
     id_number:  map.db_id_number  || "",
-    claim_number: map.db_claim_number || ""
+    claim_number: map.db_claim_number || "",
+    phone:        map.db_phone      || "" 
   };
 
   // 🔹 NEW: use ref_number as the base for "מספרנו"
