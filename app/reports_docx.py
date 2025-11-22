@@ -252,6 +252,7 @@ def get_report_context(report_id: int, *, insured_id: int | None = None, overrid
     end_time        = overrides.get("end_time", "")
     summary         = overrides.get("summary", "")
     authorities_1   = overrides.get("authorities_1", "")
+    dnb             = overrides.get("dnb", "")          # 👈 NEW
     authorities_2   = overrides.get("authorities_2", "")
 
     db_fields.update({
@@ -264,6 +265,7 @@ def get_report_context(report_id: int, *, insured_id: int | None = None, overrid
         "end_time": end_time,
         "summary": summary,
         "authorities_1": authorities_1,
+        "dnb": dnb,
         "authorities_2": authorities_2,
     })
 
@@ -322,6 +324,7 @@ def _collect_overrides_from_query(args) -> dict:
         "summary": "case.summary",
         "authorities_1": "case.authorities_1",
         "authorities_2": "case.authorities_2",
+        "dnb": "db.dnb",
     }
 
     out = {}
@@ -702,6 +705,7 @@ def preview_docx_as_pdf(report_id: int):
         "authorities_1": (request.args.get("authorities_1") or "").strip(),
         "authorities_2": (request.args.get("authorities_2") or "").strip(),
         "phone": (request.args.get("phone") or "").strip(),
+        "dnb": (request.args.get("dnb") or "").strip(),
     }
 
     # 🔹 DEBUG: raw value arriving from the client
@@ -868,6 +872,7 @@ def render_docx_download(report_id: int):
         "authorities_1": payload.get("authorities_1", "").strip(),
         "authorities_2": payload.get("authorities_2", "").strip(),
         "phone": payload.get("phone", "").strip(),
+        "dnb": payload.get("dnb", "").strip(),
     }
 
     # 🔹 DEBUG: raw value from download POST

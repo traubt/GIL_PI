@@ -227,7 +227,7 @@
         <textarea id="life_injury_type"
                   class="form-control template-ph"
                   rows="2"
-                  placeholder="למשל: מסרטן הערמונית"></textarea>
+                  placeholder="למשל: סרטן הערמונית"></textarea>
       </div>
 
       <!-- רקע המבוטח -->
@@ -254,8 +254,18 @@
         <textarea id="db_authorities_1"
                   class="form-control template-ph"
                   rows="3"
-                  placeholder="למשל: בחקירה שערכנו הוברר כי לנפגע קיים תיק עוסק מורשה במס ערך מוסף. (אם אין השאירי שדה זה ריק)"></textarea>
+                  placeholder="למשל: בחקירה שערכנו הוברר כי לנפגע לא קיים תיק עוסק מורשה במס ערך מוסף."></textarea>
       </div>
+
+            <!-- בדיקת דן אנד ברדסטריט -->
+      <div class="col-12">
+        <label class="form-label label-strong">בדיקת דן אנד ברדסטריט</label>
+        <textarea id="db_dnb"
+                  class="form-control template-ph"
+                  rows="3"
+                  placeholder="למשל: בבדיקתנו בדן אנד ברדסטריט נמצא כי ..."></textarea>
+      </div>
+
 
       <!-- חקירת רשויות 2 -->
       <div class="col-12">
@@ -263,7 +273,7 @@
         <textarea id="db_authorities_2"
                   class="form-control template-ph"
                   rows="3"
-                  placeholder="למשל: בחקירה שערכנו הוברר כי לנפגע קיים תיק עוסק מורשה במס ערך מוסף. (אם אין השאירי שדה זה ריק)"></textarea>
+                  placeholder="למשל: בחקירה שערכנו הוברר כי לנפגע לא קיים תיק עוסק מורשה במס ערך מוסף."></textarea>
       </div>
 
       <!-- חקירה במדיה החברתית -->
@@ -286,7 +296,7 @@
 
       <!-- תאריך פעילות -->
       <div class="col-md-4">
-        <label class="form-label">תאריך פעילות</label>
+        <label class="form-label">תאריך מעקב</label>
         <input id="db_tracking_date"
                type="text"
                class="form-control template-ph"
@@ -295,7 +305,7 @@
 
       <!-- התחלת פעילות -->
       <div class="col-md-4">
-        <label class="form-label">התחלת פעילות</label>
+        <label class="form-label">זמן תחילת פעילות</label>
         <input id="db_start_time"
                type="time"
                class="form-control template-ph">
@@ -303,7 +313,7 @@
 
       <!-- סיום פעילות -->
       <div class="col-md-4">
-        <label class="form-label">סיום פעילות</label>
+        <label class="form-label">זמן סיום פעילות</label>
         <input id="db_end_time"
                type="time"
                class="form-control template-ph">
@@ -1180,6 +1190,7 @@ function computeTemplateName() {
     if (g("db_background")) q.set("background", g("db_background"));
     if (g("db_occupation")) q.set("occupation", g("db_occupation"));
     if (g("db_authorities_1")) q.set("authorities_1", g("db_authorities_1"));
+    if (g("db_dnb")) q.set("dnb", g("db_dnb"));
     if (g("db_authorities_2")) q.set("authorities_2", g("db_authorities_2"));
     if (g("db_social_media")) q.set("social_media", g("db_social_media"));
     if (g("db_social_media_identification"))
@@ -1390,6 +1401,7 @@ function computeTemplateName() {
             payload.end_time                     = val('db_end_time');
             payload.summary                      = val('db_summary');
             payload.authorities_1                = val('db_authorities_1');
+            payload.dnb                          = val('db_dnb');
             payload.authorities_2                = val('db_authorities_2');
             payload.tracking_raw                 = val('life_tracking_raw');  // 👈 NEW
           }
@@ -1460,6 +1472,17 @@ function computeTemplateName() {
         }
       });
     }
+
+    // 👇 NEW: same style date-picker for life follow-up tracking date
+    const trackingEl = document.getElementById('db_tracking_date');
+    if (trackingEl && window.flatpickr) {
+      flatpickr(trackingEl, {
+        dateFormat: "d/m/Y",
+        allowInput: true
+      });
+    }
+
+
   });
 
   /* ============================== 8) PHOTO-ID MINI BLOCK ============================== */
