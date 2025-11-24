@@ -53,18 +53,21 @@
     <!-- Top toolbar -->
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
       <div class="d-flex align-items-center flex-wrap gap-2">
-        <span id="templateBadge" class="badge bg-light text-dark border px-3 py-2 shadow-sm">
-          <i class="bi bi-file-earmark-text me-1"></i> תבנית: —
-        </span>
-        <span id="refBadge" class="badge bg-primary px-3 py-2 shadow-sm">
-          <i class="bi bi-hash me-1"></i> מספרנו: —
-        </span>
-        <span id="versionBadge" class="badge bg-info text-dark px-3 py-2 shadow-sm">
-          <i class="bi bi-git me-1"></i> גרסה: 0
-        </span>
-        <span id="statusBadge" class="badge bg-secondary px-3 py-2 shadow-sm">
-          <i class="bi bi-clipboard-check me-1"></i> סטטוס: טיוטה
-        </span>
+      <span id="templateBadge" class="badge bg-light text-dark border px-3 py-2 shadow-sm">
+        <i class="bi bi-file-earmark-text me-1"></i> תבנית: —
+      </span>
+      <!-- NEW: shows current מספרנו -->
+      <span id="refBadge" class="badge bg-light text-dark px-3 py-2 shadow-sm">
+        <i class="bi bi-hash me-1"></i> מספרנו: —
+      </span>
+
+      <span id="versionBadge" class="badge bg-info text-dark px-3 py-2 shadow-sm">
+        <i class="bi bi-git me-1"></i> גרסה: 0
+      </span>
+      <span id="statusBadge" class="badge bg-secondary px-3 py-2 shadow-sm">
+        <i class="bi bi-clipboard-check me-1"></i> סטטוס: טיוטה
+      </span>
+
       </div>
 
 
@@ -700,6 +703,19 @@ window.safeUUID = (function () {
   const $  = (sel)=>document.querySelector(sel);
   function val(id){ return document.getElementById(id)?.value?.trim() || ""; }
 
+    // Attach reference + version to any JSON payload we send to the server
+  function attachRefAndVersion(payload) {
+    if (!payload) payload = {};
+    if (!window.state) return payload;
+
+    payload.ref_number   = window.state.ref_number   || "";
+    payload.version_no   = (window.state.version_no ?? 0);
+    payload.reference_no = window.state.reference_no || "";
+
+    return payload;
+  }
+
+
   function showBusy(text){
     const o = document.getElementById('busyOverlay');
     const t = document.getElementById('busyText');
@@ -1297,6 +1313,18 @@ function computeTemplateName() {
     // ====== Template selection ======
     q.set("template", tmplKey);
 
+    // ====== Reference + version (for מספרנו) ======
+    if (state.ref_number) {
+      q.set("ref_number", state.ref_number);
+    }
+    if (state.reference_no) {
+      q.set("reference_no", state.reference_no);
+    }
+    if (typeof state.version_no === "number") {
+      q.set("version_no", String(state.version_no));
+    }
+
+
 
     // ====== Report type specific handling ======
     const rt = (document.getElementById("reportType")?.value || "").toUpperCase();
@@ -1512,15 +1540,22 @@ function computeTemplateName() {
         }
 
         // ---- DEBUG LOGS ----
+        // ---- DEBUG LOGS ----
         console.log('[Download] tmplKey:', tmplKey);
         console.log('[Download] POST =>', endpoint);
-        console.log('[Download] payload:', payload);
+        console.log('[Download] payload BEFORE attachRefAndVersion:', payload);
+
+        // 🔹 Add reference + version once for ALL report types
+        payload = attachRefAndVersion(payload);
+
+        console.log('[Download] payload AFTER attachRefAndVersion:', payload);
 
         const resp = await fetch(endpoint, {
           method: 'POST',
           headers: {'Content-Type':'application/json'},
           body: JSON.stringify(payload)
         });
+
         const data = await resp.json();
 
         // ---- DEBUG LOGS ----
@@ -1912,6 +1947,47 @@ function computeTemplateName() {
   // keep state.insured_id in sync
   if (window.state) window.state.insured_id = insuredId;
 })();
+
+
+/* ======================  גרסה (Version) Button ====================== */
+(function () {
+  const verBadge = document.getElementById('versionBadge');
+  if (!verBadge || !window.state) return;
+
+  // default version number
+  state.version_no = state.version_no || 0;
+
+  // helper to recompute מספרנו and refresh badges
+  function applyVersion(n) {
+    state.version_no = n;
+    if (typeof window.recomputeReferenceNow === 'function') {
+      window.recomputeReferenceNow();   // ✅ actually call the exported function
+    }
+    verBadge.innerHTML = `<i class="bi bi-git me-1"></i> גרסה: ${n}`;
+  }
+
+
+  // initial display
+  applyVersion(state.version_no);
+
+  // make the badge clickable
+  verBadge.style.cursor = 'pointer';
+  verBadge.title = 'לחץ כדי לשנות גרסה';
+  verBadge.addEventListener('click', () => {
+    const current = state.version_no || 0;
+    const input = prompt('בחר גרסה (0, 1, 2, 3):', current);
+    if (input === null) return;
+
+    const n = parseInt(input, 10);
+    if (!Number.isInteger(n) || n < 0 || n > 3) {
+      alert('ערך לא תקין. נא להזין מספר בין 0 ל-3');
+      return;
+    }
+    applyVersion(n);
+  });
+})();
+
+
 
 </script>
 

@@ -685,6 +685,11 @@ def preview_docx_as_pdf(report_id: int):
 
     insured_id = request.args.get("insured_id", type=int)
 
+    # NEW: reference + version from query
+    ref_number   = (request.args.get("ref_number") or "").strip()
+    reference_no = (request.args.get("reference_no") or "").strip()
+    version_no   = request.args.get("version_no", type=int)
+
     # ---- collect overrides from query ----
     overrides = {
         "activity_date": (request.args.get("activity_date") or "").strip(),
@@ -717,6 +722,23 @@ def preview_docx_as_pdf(report_id: int):
         pass
 
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
+
+    # expose them to templates (מספרנו etc.)
+    # --- reference / version for "מספרנו" ---
+    # version_no may be None, "", or an int from query
+    v = int(version_no or 0) if version_no is not None else 0
+
+    if reference_no:
+        # if the client explicitly sent a full reference string (e.g. "67590.1") – trust it
+        ctx["reference_no"] = reference_no
+    else:
+        # otherwise build it from the insured's ref_number + version
+        base = ctx.get("db", {}).get("ref_number", "") or ref_number
+        if base:
+            padded = str(base).strip().zfill(5)  # 5-digit, like JS padStart(5,"0")
+            ctx["reference_no"] = f"{padded}.{v}" if v > 0 else padded
+
+    ctx["version_no"] = v
 
     # --- template path ---
     tmpl_key = (request.args.get("template", "siudi") or "siudi").strip().lower()
@@ -810,12 +832,16 @@ def preview_docx_as_pdf(report_id: int):
     selected = [os.path.basename(n) for n in selected if n]
 
     paths = [p for n in selected if (p := resolve_one(n))]
-    if not paths:
+
+    # Only auto-include all photos for legacy templates (tracking/siudi/etc.),
+    # NOT for Menora Life follow-up.
+    if not paths and tmpl_key not in {"menora_life_followup"}:
         folder = os.path.join(media_root, case_id, rep_id)
         if os.path.isdir(folder):
             for fn in sorted(os.listdir(folder)):
                 if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
                     paths.append(os.path.join(folder, fn))
+
 
     # --- Social media photos for Menora Life follow-up ---
     if tmpl_key == "menora_life_followup":
@@ -882,6 +908,12 @@ def render_docx_download(report_id: int):
 
     insured_id = payload.get("insured_id")
 
+    # NEW: reference + version from client
+    ref_number   = (payload.get("ref_number") or "").strip()
+    reference_no = (payload.get("reference_no") or "").strip()
+    version_no   = payload.get("version_no")
+
+
     # ---- collect overrides from JSON (including background / dnb / phone) ----
     overrides = {
         "activity_date": payload.get("activity_date", "").strip(),
@@ -916,6 +948,8 @@ def render_docx_download(report_id: int):
         pass
 
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
+
+
 
     # --- template path ---
     tmpl_key = (payload.get("template") or "siudi").strip().lower()
@@ -1015,16 +1049,16 @@ def render_docx_download(report_id: int):
         names = [os.path.basename(p.get("name", "")) for p in payload["photos"] if p.get("name")]
     names = [os.path.basename(n) for n in names if n]
 
-    # --- resolve to absolute paths ---
     paths = [p for n in names if (p := resolve_one(n))]
 
-    # fallback: include all images in the report folder if none selected
-    if not paths:
+    # disable fallback for Menora Life follow-up
+    if not paths and tmpl_key not in {"menora_life_followup"}:
         folder = os.path.join(media_root, case_id, rep_id)
         if os.path.isdir(folder):
             for fn in sorted(os.listdir(folder)):
                 if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
                     paths.append(os.path.join(folder, fn))
+
 
     # --- Social media photos for Menora Life follow-up (download) ---
     if tmpl_key == "menora_life_followup":
@@ -1060,6 +1094,21 @@ def render_docx_download(report_id: int):
         port_rows.append((left, right))
 
     gap = "\u00A0" * 8
+
+    # expose them to templates (if you want to print them in Word)
+    # --- reference / version for "מספרנו" ---
+    v = int(version_no or 0) if version_no is not None else 0
+
+    if reference_no:
+        ctx["reference_no"] = reference_no
+    else:
+        base = ctx.get("db", {}).get("ref_number", "") or ref_number
+        if base:
+            padded = str(base).strip().zfill(5)
+            ctx["reference_no"] = f"{padded}.{v}" if v > 0 else padded
+
+    ctx["version_no"] = v
+
 
     ctx.update({
         "land_images": land_images,
@@ -1153,10 +1202,16 @@ def _resolve_photo_id_image(insured_id, report_id, name_or_path):
 def photo_id_preview_pdf(report_id: int):
     insured_id = request.args.get("insured_id", type=int) or 0
 
+    # NEW: reference + version from query
+    ref_number   = (request.args.get("ref_number") or "").strip()
+    reference_no = (request.args.get("reference_no") or "").strip()
+    version_no   = request.args.get("version_no", type=int)
+
     id_date  = request.args.get("id_photo_date_text", "") or request.args.get("id_photo_date", "")
     id_time  = request.args.get("id_photo_time", "")
     id_city  = (request.args.get("id_photo_city") or "").strip()
     id_place = (request.args.get("id_photo_place") or "").strip()
+
 
     # Source selected in the "תמונת זיהוי" widget (now usually a short name)
     id_src = (request.args.get("id_photo_src") or "").strip()
@@ -1181,6 +1236,21 @@ def photo_id_preview_pdf(report_id: int):
 
     # build context
     ctx = get_report_context(report_id, insured_id=insured_id)
+
+    # --- reference / version for "מספרנו" on photo-ID ---
+    v = int(version_no or 0) if version_no is not None else 0
+
+    if reference_no:
+        ctx["reference_no"] = reference_no
+    else:
+        base = ctx.get("db", {}).get("ref_number", "") or ref_number
+        if base:
+            padded = str(base).strip().zfill(5)
+            ctx["reference_no"] = f"{padded}.{v}" if v > 0 else padded
+
+    ctx["version_no"] = v
+
+
     place_str = ", ".join(v for v in (id_place, id_city) if v)
     ctx.update({
         "id_date":  id_date or _iso_to_dots(ctx.get("ctx", {}).get("activity_date", "")),
@@ -1210,6 +1280,13 @@ def photo_id_render_docx(report_id: int):
     payload    = request.get_json(silent=True) or {}
     insured_id = payload.get("insured_id") or 0
 
+    # NEW: reference + version from client
+    ref_number   = (payload.get("ref_number") or "").strip()
+    reference_no = (payload.get("reference_no") or "").strip()
+    version_no   = payload.get("version_no")
+
+
+
     id_date  = (payload.get("id_photo_date_text") or payload.get("id_photo_date") or "").strip()
     id_time  = (payload.get("id_photo_time") or "").strip()
     id_city  = (payload.get("id_photo_city") or "").strip()
@@ -1237,6 +1314,12 @@ def photo_id_render_docx(report_id: int):
     )
 
     ctx = get_report_context(report_id, insured_id=insured_id)
+
+    # expose them to templates (if you want to print them in Word)
+    ctx["ref_number"]   = ref_number
+    ctx["reference_no"] = reference_no
+    ctx["version_no"]   = version_no
+
     place_str = ", ".join(v for v in (id_place, id_city) if v)
     ctx.update({
         "id_date":  id_date or _iso_to_dots(ctx.get("ctx", {}).get("activity_date", "")),
