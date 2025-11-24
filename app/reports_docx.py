@@ -817,6 +817,12 @@ def preview_docx_as_pdf(report_id: int):
                 if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
                     paths.append(os.path.join(folder, fn))
 
+    # --- Social media photos for Menora Life follow-up ---
+    if tmpl_key == "menora_life_followup":
+        # flat list, no portrait/landscape logic – used by {{ social_photos }} in the DOCX
+        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in paths]
+
+
     # --- classify by orientation ---
     lands, ports = [], []
     for p in paths:
@@ -1019,6 +1025,11 @@ def render_docx_download(report_id: int):
             for fn in sorted(os.listdir(folder)):
                 if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
                     paths.append(os.path.join(folder, fn))
+
+    # --- Social media photos for Menora Life follow-up (download) ---
+    if tmpl_key == "menora_life_followup":
+        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in paths]
+
 
     # --- orientation split using real pixel sizes ---
     lands, ports = [], []

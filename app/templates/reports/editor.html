@@ -341,14 +341,56 @@
 
 
 
-      <!-- חקירה במדיה החברתית -->
+      <!-- חקירה במדיה החברתית + תמונות -->
       <div class="col-12">
         <label class="form-label label-strong">חקירה במדיה החברתית</label>
         <textarea id="db_social_media"
                   class="form-control template-ph"
                   rows="3"
                   placeholder="למשל: בסריקה ברשת האינטרנט ובמדיה החברתית אותר דף פייסבוק..."></textarea>
+
+        <!-- NEW: social-media photos picker (reuses תמונות לדו"ח widget) -->
+        <div class="mt-3 border rounded p-2 bg-light-subtle">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold text-muted">
+              תמונות ממדיה חברתית לדו"ח
+            </span>
+
+            <div>
+              <button id="btnImportLocalDropbox"
+                      type="button"
+                      class="btn btn-outline-primary btn-sm">
+                ייבוא מדרופבוקס מקומי
+              </button>
+
+              <!-- same inputs as before, just moved here -->
+              <input id="localDropboxPicker"
+                     type="file"
+                     name="files[]"
+                     accept="image/*,video/*"
+                     multiple
+                     style="display:none;">
+
+              <!-- reserved for future (as היה קודם) -->
+              <input id="filepicker"
+                     type="file"
+                     accept="image/*"
+                     multiple
+                     style="display:none;">
+            </div>
+          </div>
+
+          <input type="hidden" id="localToken" value="">
+          <div id="localImportStatus"
+               class="small text-muted mb-2"
+               style="white-space:pre-line;"></div>
+
+          <!-- one grid for all thumbnails; JS will send everything here -->
+          <div id="group-landscape" class="thumb-grid"></div>
+          <!-- group-portrait is no longer needed visually -->
+        </div>
       </div>
+
 
       <!-- זיהוי במדיה החברתית -->
       <div class="col-12">
@@ -412,43 +454,6 @@
 </div>
 
 
-
-
-
-
-              <!-- Section 4: תמונות -->
-              <div class="col-12 section-block" data-section="photos">
-                <div class="card mt-1">
-                  <div class="card-header d-flex justify-content-between align-items-center">
-                    <strong>תמונות לדו"ח</strong>
-                    <div>
-                      <button id="btnImportLocalDropbox" type="button" class="btn btn-outline-primary btn-sm">
-                        ייבוא מדרופבוקס מקומי
-                      </button>
-                      <input id="localDropboxPicker"
-                             type="file"
-                             name="files[]"
-                             accept="image/*,video/*"
-                             multiple
-                             style="display:none;">
-                      <div id="localImportStatus" class="mt-2 small text-muted" style="white-space:pre-line;"></div>
-                      <!-- future options kept commented -->
-                      <!-- <button id="btn-import-dropbox" type="button" class="btn btn-sm btn-outline-primary">ייבוא מ-Dropbox</button> -->
-                      <!-- <button id="btn-upload-local"  type="button" class="btn btn-sm btn-outline-secondary">העלאת תמונות מהמחשב</button> -->
-                      <input id="filepicker" type="file" accept="image/*" multiple style="display:none">
-                    </div>
-                  </div>
-                  <div class="card-body">
-                    <input type="hidden" id="localToken" value="">
-                    <div class="small text-muted mb-2">בחר/י תמונות שיופיעו בדו"ח. התמונות מחולקות לפי תצורה.</div>
-                    <div class="mb-2 fw-bold text-muted">(Landscape) תמונות לרוחב</div>
-                    <div id="group-landscape" class="thumb-grid"></div>
-                    <div class="mb-2 mt-4 fw-bold text-muted">(Portrait) תמונות לאורך</div>
-                    <div id="group-portrait" class="thumb-grid"></div>
-                  </div>
-                </div>
-              </div>
-              <!-- /PHOTOS -->
 
 <!-- ===================== תמונת זיהוי (תבנית ייעודית) ===================== -->
 <div id="id-photo-card" class="card mt-3 d-none" dir="rtl" style="border-radius:14px;">
@@ -1063,10 +1068,19 @@ function computeTemplateName() {
       wrap.appendChild(meta); wrap.insertBefore(box, wrap.firstChild);
       return wrap;
     }
+
     function addItemToGrid(item){
       const card = makeThumbCard(item);
-      (item.orientation === 'portrait' ? gridP : gridL)?.appendChild(card);
+
+      // If only one grid exists (our social-media section), drop everything there.
+      // If both exist (old layout), keep the portrait/landscape split.
+      const target = (item.orientation === 'portrait'
+                      ? (gridP || gridL)
+                      : (gridL || gridP));
+
+      if (target) target.appendChild(card);
     }
+
 
     async function handleFiles(fileList){
       if (!fileList || !fileList.length) return;
