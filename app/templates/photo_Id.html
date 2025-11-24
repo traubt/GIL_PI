@@ -1,0 +1,72 @@
+<!-- ===================== תמונת זיהוי (תבנית ייעודית) ===================== -->
+<div id="id-photo-card" class="card mt-3" dir="rtl" style="border-radius:14px;">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-person-badge"></i>
+      <strong>תמונת זיהוי</strong>
+    </div>
+    <small class="text-muted">תבנית ייעודית (תמונה אחת בלבד)</small>
+  </div>
+
+  <div class="card-body">
+    <div class="row g-3 align-items-end">
+      <!-- תאריך (DD/MM/YYYY UI + hidden ISO like activity date) -->
+      <div class="col-12 col-md-3">
+        <label for="id_photo_date_dmy" class="form-label">תאריך</label>
+        <input type="text" class="form-control" id="id_photo_date_dmy" placeholder="dd/mm/yyyy">
+        <input type="hidden" id="id_photo_date" name="id_photo_date"> <!-- ISO yyyy-mm-dd -->
+      </div>
+
+      <!-- שעה -->
+      <div class="col-12 col-md-3">
+        <label for="id_photo_time" class="form-label">שעה</label>
+        <input type="time" class="form-control" id="id_photo_time" name="id_photo_time">
+      </div>
+
+      <!-- עיר -->
+      <div class="col-12 col-md-3">
+        <label for="id_photo_city" class="form-label">עיר</label>
+        <input type="text" class="form-control" id="id_photo_city" name="id_photo_city" placeholder="לדוגמה: באר שבע">
+      </div>
+
+      <!-- מקום צילום -->
+      <div class="col-12 col-md-3">
+        <label for="id_photo_place" class="form-label">מקום צילום</label>
+        <input type="text" class="form-control" id="id_photo_place" name="id_photo_place" placeholder="לדוגמה: סורוקה / קניון">
+      </div>
+    </div>
+
+    <hr class="my-3">
+
+    <div class="row g-3">
+      <!-- בחר תמונה (כפתור כמו menora_siudi) -->
+      <div class="col-12 col-lg-6">
+        <label class="form-label d-block">בחר תמונה (תמונה אחת)</label>
+
+        <!-- primary: local dropbox picker (single) -->
+        <button type="button" id="btn_idphoto_from_dropbox" class="btn btn-outline-primary btn-sm">
+          <i class="bi bi-folder2-open"></i> ייבא מדרופבוקס מקומי
+        </button>
+
+        <!-- fallback: native file input (hidden; triggered if picker not available) -->
+        <input type="file" id="id_photo_file_fallback" accept="image/*" style="display:none;">
+
+        <!-- store the chosen path/filename for backend -->
+        <input type="hidden" id="id_photo_src" name="id_photo_src"> <!-- path/url or dataURL -->
+        <div class="form-text mt-1">תמונה אחת מזוהה (פנים ברורות). יוצג ממוזער בצד ימין.</div>
+      </div>
+
+      <!-- תצוגה מקדימה (thumbnail) -->
+      <div class="col-12 col-lg-6">
+        <label class="form-label d-block">תצוגה מקדימה</label>
+        <div id="id_photo_preview_box"
+             class="border rounded p-2 d-flex align-items-center justify-content-center"
+             style="min-height:220px; background:#fafafa;">
+          <img id="id_photo_thumb" alt="ID Photo" style="max-width:100%; max-height:200px; display:none; border-radius:8px;">
+          <span id="id_photo_empty" class="text-muted">לא נבחרה תמונה</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- =================== /תמונת זיהוי (תבנית ייעודית) ==================== -->

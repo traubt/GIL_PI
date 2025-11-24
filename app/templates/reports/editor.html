@@ -456,80 +456,8 @@
   </div>
 </div>
 
+{% include 'photo_id.html' %}
 
-
-<!-- ===================== תמונת זיהוי (תבנית ייעודית) ===================== -->
-<div id="id-photo-card" class="card mt-3 d-none" dir="rtl" style="border-radius:14px;">
-  <div class="card-header d-flex align-items-center justify-content-between">
-    <div class="d-flex align-items-center gap-2">
-      <i class="bi bi-person-badge"></i>
-      <strong>תמונת זיהוי</strong>
-    </div>
-    <small class="text-muted">תבנית ייעודית (תמונה אחת בלבד)</small>
-  </div>
-
-  <div class="card-body">
-    <div class="row g-3 align-items-end">
-      <!-- תאריך (DD/MM/YYYY UI + hidden ISO like activity date) -->
-      <div class="col-12 col-md-3">
-        <label for="id_photo_date_dmy" class="form-label">תאריך</label>
-        <input type="text" class="form-control" id="id_photo_date_dmy" placeholder="dd/mm/yyyy">
-        <input type="hidden" id="id_photo_date" name="id_photo_date"> <!-- ISO yyyy-mm-dd -->
-      </div>
-
-      <!-- שעה -->
-      <div class="col-12 col-md-3">
-        <label for="id_photo_time" class="form-label">שעה</label>
-        <input type="time" class="form-control" id="id_photo_time" name="id_photo_time">
-      </div>
-
-      <!-- עיר -->
-      <div class="col-12 col-md-3">
-        <label for="id_photo_city" class="form-label">עיר</label>
-        <input type="text" class="form-control" id="id_photo_city" name="id_photo_city" placeholder="לדוגמה: באר שבע">
-      </div>
-
-      <!-- מקום צילום -->
-      <div class="col-12 col-md-3">
-        <label for="id_photo_place" class="form-label">מקום צילום</label>
-        <input type="text" class="form-control" id="id_photo_place" name="id_photo_place" placeholder="לדוגמה: סורוקה / קניון">
-      </div>
-    </div>
-
-    <hr class="my-3">
-
-    <div class="row g-3">
-      <!-- בחר תמונה (כפתור כמו menora_siudi) -->
-      <div class="col-12 col-lg-6">
-        <label class="form-label d-block">בחר תמונה (תמונה אחת)</label>
-
-        <!-- primary: local dropbox picker (single) -->
-        <button type="button" id="btn_idphoto_from_dropbox" class="btn btn-outline-primary btn-sm">
-          <i class="bi bi-folder2-open"></i> ייבא מדרופבוקס מקומי
-        </button>
-
-        <!-- fallback: native file input (hidden; triggered if picker not available) -->
-        <input type="file" id="id_photo_file_fallback" accept="image/*" style="display:none;">
-
-        <!-- store the chosen path/filename for backend -->
-        <input type="hidden" id="id_photo_src" name="id_photo_src"> <!-- path/url or dataURL -->
-        <div class="form-text mt-1">תמונה אחת מזוהה (פנים ברורות). יוצג ממוזער בצד ימין.</div>
-      </div>
-
-      <!-- תצוגה מקדימה (thumbnail) -->
-      <div class="col-12 col-lg-6">
-        <label class="form-label d-block">תצוגה מקדימה</label>
-        <div id="id_photo_preview_box"
-             class="border rounded p-2 d-flex align-items-center justify-content-center"
-             style="min-height:220px; background:#fafafa;">
-          <img id="id_photo_thumb" alt="ID Photo" style="max-width:100%; max-height:200px; display:none; border-radius:8px;">
-          <span id="id_photo_empty" class="text-muted">לא נבחרה תמונה</span>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-<!-- =================== /תמונת זיהוי (תבנית ייעודית) ==================== -->
 <!-- ===================== חשבונית סיעודי ===================== -->
 <div id="invoice-siudi-card" class="card mt-3 d-none" dir="rtl" style="border-radius:14px;">
   <div class="card-header d-flex align-items-center justify-content-between">
@@ -609,7 +537,8 @@
     <select id="reportType"
             class="form-select form-select-sm w-auto"
             style="min-width:220px"
-            aria-label="בחר דו&quot;ח">
+            aria-label="בחר דו&quot;ח"
+            data-initial="{{ selected_report_type or '' }}">
       <option value="" {% if not selected_report_type %}selected{% endif %}>
         בחר דו"ח
       </option>
@@ -813,45 +742,59 @@ function computeTemplateName() {
   return filename;
 }
 
-  function applyTemplateSections() {
-    const rtSel = document.getElementById('reportType');
-    const rt    = (rtSel && rtSel.value ? rtSel.value.trim() : '');
-    const rtUpper = rt.toUpperCase();
+function applyTemplateSections() {
+  const rtSel   = document.getElementById('reportType');
+  const rt      = (rtSel && rtSel.value ? rtSel.value.trim() : '');
+  const initial = (rtSel && rtSel.dataset.initial ? rtSel.dataset.initial.trim() : '');
+  const rtUpper = rt.toUpperCase();
 
-    // cards
-    const genericCard = document.querySelector('[data-section="report-fields"]');
-    const lifeCard    = document.getElementById('lifeFollowupFields');
-    const idPhotoCard = document.getElementById('id-photo-card');
-    const invoiceCard = document.getElementById('invoice-siudi-card');
+  // Are we in the Menora Life profile?
+  const isLifeProfile = initial && initial.startsWith('menora_life_');
 
-    // 1) reset: show generic, hide all special cards
-    if (genericCard) genericCard.style.display = '';
-    if (lifeCard)    lifeCard.classList.add('d-none');
-    if (idPhotoCard) idPhotoCard.classList.add('d-none');
-    if (invoiceCard) invoiceCard.classList.add('d-none');
+  // cards
+  const genericCard = document.querySelector('[data-section="report-fields"]');
+  const lifeCard    = document.getElementById('lifeFollowupFields');
+  const idPhotoCard = document.getElementById('id-photo-card');
+  const invoiceCard = document.getElementById('invoice-siudi-card');
 
-    // 2) Menora Life follow-up – show the dedicated card instead of generic
+  // 1) reset
+  if (genericCard) genericCard.style.display = '';
+  if (lifeCard)    lifeCard.classList.add('d-none');
+
+  // 🔹 Important: only auto-hide the Photo-ID card for NON-LIFE profiles.
+  if (!isLifeProfile && idPhotoCard) idPhotoCard.classList.add('d-none');
+
+  if (invoiceCard) invoiceCard.classList.add('d-none');
+
+  // 2) Menora LIFE profile – fixed layout, independent of dropdown
+  if (isLifeProfile) {
+    // hide generic context card, show LIFE follow-up card
+    if (genericCard) genericCard.style.display = 'none';
+    if (lifeCard)    lifeCard.classList.remove('d-none');
+
+    // Photo-ID card is part of the LIFE editor – always visible
+    if (idPhotoCard) idPhotoCard.classList.remove('d-none');
+
+    // Invoice card: also always visible in LIFE editor
+    if (invoiceCard) invoiceCard.classList.remove('d-none');
+
+  } else {
+    // 3) Menora Life follow-up when used outside the LIFE profile (safety)
     if (rt === 'menora_life_followup') {
       if (genericCard) genericCard.style.display = 'none';
       if (lifeCard)    lifeCard.classList.remove('d-none');
     }
 
-    // 3) PHOTO ID card:
-    //    - classic SIUDI bundle
-    //    - standalone ID_PHOTOS
-    //    - Menora Life photo-id
+    // 4) PHOTO-ID card (SIUDI / standalone)
     if (
       rtUpper === 'SIUDI' ||
       rtUpper === 'ID_PHOTOS' ||
-      rt === 'menora_life_photoid'
+      rtUpper === 'MENORA_LIFE_PHOTOID'
     ) {
       if (idPhotoCard) idPhotoCard.classList.remove('d-none');
     }
 
-    // 4) INVOICE card:
-    //    - classic SIUDI bundle
-    //    - standalone SIUDI_INVOICE
-    //    - Menora Life invoice
+    // 5) INVOICE card (SIUDI + Menora Life invoice template)
     if (
       rtUpper === 'SIUDI' ||
       rtUpper === 'SIUDI_INVOICE' ||
@@ -859,14 +802,16 @@ function computeTemplateName() {
     ) {
       if (invoiceCard) invoiceCard.classList.remove('d-none');
     }
-
-    // 5) update badge with the resolved DOCX file name
-    const badge = document.getElementById('templateBadge');
-    if (badge) {
-      badge.innerHTML =
-        `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
-    }
   }
+
+  // 6) update badge with the resolved DOCX file name (always)
+  const badge = document.getElementById('templateBadge');
+  if (badge) {
+    badge.innerHTML =
+      `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
+  }
+}
+
 
 
 
@@ -954,11 +899,26 @@ function computeTemplateName() {
 
   const reportTypeSel = $('#reportType');
   if (reportTypeSel){
+    const initial = reportTypeSel.dataset.initial || '';
+    const isLifeProfile = initial && initial.startsWith('menora_life_');
+
     reportTypeSel.addEventListener('change', e=>{
       state.report_type = e.target.value;
-      applyTemplateSections();
+
+      if (!isLifeProfile) {
+        // SIUDI / other profiles: editor layout still depends on selected template
+        applyTemplateSections();
+      } else {
+        // LIFE profile: only update the template badge (editor stays as-is)
+        const badge = document.getElementById('templateBadge');
+        if (badge) {
+          badge.innerHTML =
+            `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
+        }
+      }
     });
   }
+
   // Context inputs
   $('#ctx_activity_date')?.addEventListener('change', e=> state.ctx.activity_date = e.target.value);
   $('#ctx_surv_place')?.addEventListener('input',  e=> state.ctx.surv_place = e.target.value);
@@ -1191,14 +1151,22 @@ function computeTemplateName() {
       return 'tracking';
     }
 
-    const v  = String(raw).trim();
-    const up = v.toUpperCase();
+  const v  = String(raw).trim();
+  const up = v.toUpperCase();
 
-    // --- Menora Life reports: use the explicit keys we defined on the server ---
-    if (v === 'menora_life_followup') return 'menora_life_followup';
-    if (v === 'menora_life_photos')   return 'tracking';        // placeholder for now
-    if (v === 'menora_life_photoid')  return 'id_photos';       // reuse Photo-ID flow
-    if (v === 'menora_life_invoice')  return 'siudi_invoice';   // reuse invoice flow
+  // --- Menora Life reports ---
+  if (v === 'menora_life_followup' || up === 'MENORA_LIFE_FOLLOWUP')
+    return 'menora_life_followup';
+
+  if (v === 'menora_life_photos'   || up === 'MENORA_LIFE_PHOTOS')
+    return 'tracking';             // placeholder
+
+  if (v === 'menora_life_photoid'  || up === 'MENORA_LIFE_PHOTOID')
+    return 'id_photos';            // ✅ reuse Photo-ID endpoints/template
+
+  if (v === 'menora_life_invoice'  || up === 'MENORA_LIFE_INVOICE')
+    return 'siudi_invoice';
+
 
     // --- Classic סיעודי bundle ---
     if (up === 'ID_PHOTOS' || up === 'PHOTO_ID')   return 'id_photos';
