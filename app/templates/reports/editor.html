@@ -473,66 +473,8 @@
 
 {% include 'photo_id.html' %}
 
-<!-- ===================== חשבונית סיעודי ===================== -->
-<div id="invoice-siudi-card" class="card mt-3 d-none" dir="rtl" style="border-radius:14px;">
-  <div class="card-header d-flex align-items-center justify-content-between">
-    <div class="d-flex align-items-center gap-2">
-      <i class="bi bi-receipt"></i>
-      <strong>חשבונית סיעודי</strong>
-    </div>
-<!--    <small class="text-muted">שדהי המינימום ליצירת חשבונית מנורה</small>-->
-  </div>
-
-  <div class="card-body">
-    <div class="row g-3">
-
-      <!-- תאריך חשבונית (DD/MM/YYYY UI + ISO חבוי) -->
-      <div class="col-12 col-md-3">
-        <label for="inv_date_dmy" class="form-label">תאריך</label>
-        <input type="text" class="form-control" id="inv_date_dmy" placeholder="dd/mm/yyyy">
-        <input type="hidden" id="inv_date" name="inv_date"> <!-- yyyy-mm-dd -->
-      </div>
-
-      <!-- מספר חשבונית -->
-      <div class="col-12 col-md-3">
-        <label for="inv_number" class="form-label">מס' חשבונית</label>
-        <input type="text" class="form-control" id="inv_number" placeholder="לדוגמה: 164772">
-        <div class="form-text">תוצג בתוך המסגרת</div>
-      </div>
-
-      <!-- סכום לפני מע"מ -->
-      <div class="col-12 col-md-3">
-        <label for="inv_subtotal" class="form-label">סכום לפני מע״מ</label>
-        <input type="number" step="0.01" class="form-control" id="inv_subtotal" placeholder="לדוגמה: 2200.00">
-      </div>
-
-      <!-- אחוז מע״מ -->
-      <div class="col-12 col-md-3">
-        <label for="inv_vat_rate" class="form-label">% מע״מ</label>
-        <input type="number" step="0.01" class="form-control" id="inv_vat_rate" value="18.00">
-      </div>
-
-      <!-- חישוב אוטומטי -->
-      <div class="col-12 col-md-3">
-        <label for="inv_vat_amount" class="form-label">סכום מע״מ</label>
-        <input type="text" class="form-control" id="inv_vat_amount" readonly>
-      </div>
-
-      <div class="col-12 col-md-3">
-        <label for="inv_total" class="form-label">סכום כולל מע״מ</label>
-        <input type="text" class="form-control" id="inv_total" readonly>
-      </div>
-
-<!--      <div class="col-12">-->
-<!--        <div class="small text-muted">-->
-<!--          * אין צורך להזין שוב: <strong>תיקנו</strong> (inv_ref), <strong>הנדון</strong> (claim.subject) ו<strong>ת״ז</strong> – נלקחים אוטומטית מפרטי המבוטח.-->
-<!--          סעיף הפריטים הוא שורה אחת קבועה: <em>מעקב סיעודי</em>.-->
-<!--        </div>-->
-<!--      </div>-->
-    </div>
-  </div>
-</div>
-<!-- =================== /חשבונית סיעודי ==================== -->
+{% include 'reports/_invoice_siudi.html' %}
+{% include 'reports/_invoice_menora_life.html' %}
 
 
 
@@ -734,7 +676,7 @@ function computeTemplateName() {
     menora_life_followup: "menora_life_followup.docx",
     menora_life_photos:   "menora_photos.docx",
     menora_life_photoid:  "menora_photo_id.docx",
-    menora_life_invoice:  "menora_life_invoice.docx",
+    menora_life_invoice:  "invoice_menora_life.docx",
 
     // --- Classic Siudi (סיעודי) ---
     SIUDI:           "menora_siudi.docx",
@@ -763,44 +705,37 @@ function applyTemplateSections() {
   const initial = (rtSel && rtSel.dataset.initial ? rtSel.dataset.initial.trim() : '');
   const rtUpper = rt.toUpperCase();
 
-  // Are we in the Menora Life profile?
+  // Are we in the Menora Life editor profile?
   const isLifeProfile = initial && initial.startsWith('menora_life_');
 
   // cards
-  const genericCard = document.querySelector('[data-section="report-fields"]');
-  const lifeCard    = document.getElementById('lifeFollowupFields');
-  const idPhotoCard = document.getElementById('id-photo-card');
-  const invoiceCard = document.getElementById('invoice-siudi-card');
+  const genericCard      = document.querySelector('[data-section="report-fields"]');
+  const lifeCard         = document.getElementById('lifeFollowupFields');
+  const idPhotoCard      = document.getElementById('id-photo-card');
+  const invoiceSiudiCard = document.getElementById('invoice-siudi-card');
+  const invoiceLifeCard  = document.getElementById('invoice-life-card');
 
-  // 1) reset
-  if (genericCard) genericCard.style.display = '';
-  if (lifeCard)    lifeCard.classList.add('d-none');
-
-  // 🔹 Important: only auto-hide the Photo-ID card for NON-LIFE profiles.
+  // 1) reset visibility
+  if (genericCard)      genericCard.style.display = '';
+  if (lifeCard)         lifeCard.classList.add('d-none');
+  if (invoiceSiudiCard) invoiceSiudiCard.classList.add('d-none');
+  if (invoiceLifeCard)  invoiceLifeCard.classList.add('d-none');
   if (!isLifeProfile && idPhotoCard) idPhotoCard.classList.add('d-none');
 
-  if (invoiceCard) invoiceCard.classList.add('d-none');
-
-  // 2) Menora LIFE profile – fixed layout, independent of dropdown
+  // 2) LIFE profile editor: fixed layout
   if (isLifeProfile) {
-    // hide generic context card, show LIFE follow-up card
-    if (genericCard) genericCard.style.display = 'none';
-    if (lifeCard)    lifeCard.classList.remove('d-none');
-
-    // Photo-ID card is part of the LIFE editor – always visible
-    if (idPhotoCard) idPhotoCard.classList.remove('d-none');
-
-    // Invoice card: also always visible in LIFE editor
-    if (invoiceCard) invoiceCard.classList.remove('d-none');
-
+    if (genericCard)      genericCard.style.display = 'none';
+    if (lifeCard)         lifeCard.classList.remove('d-none');
+    if (idPhotoCard)      idPhotoCard.classList.remove('d-none');
+    if (invoiceLifeCard)  invoiceLifeCard.classList.remove('d-none');   // <-- LIFE invoice here
   } else {
-    // 3) Menora Life follow-up when used outside the LIFE profile (safety)
+    // 3) Menora Life follow-up template loaded via normal dropdown (safety)
     if (rt === 'menora_life_followup') {
       if (genericCard) genericCard.style.display = 'none';
       if (lifeCard)    lifeCard.classList.remove('d-none');
     }
 
-    // 4) PHOTO-ID card (SIUDI / standalone)
+    // 4) show Photo-ID card for both Siudi & Life photo-ID
     if (
       rtUpper === 'SIUDI' ||
       rtUpper === 'ID_PHOTOS' ||
@@ -809,25 +744,24 @@ function applyTemplateSections() {
       if (idPhotoCard) idPhotoCard.classList.remove('d-none');
     }
 
-    // 5) INVOICE card (SIUDI + Menora Life invoice template)
-    if (
-      rtUpper === 'SIUDI' ||
-      rtUpper === 'SIUDI_INVOICE' ||
-      rt === 'menora_life_invoice'
-    ) {
-      if (invoiceCard) invoiceCard.classList.remove('d-none');
+    // 5) Invoice cards:
+    //    - Siudi editor → Siudi invoice card
+    //    - Life editor/template → Life invoice card
+    if (rtUpper === 'SIUDI_INVOICE' || rtUpper === 'SIUDI') {
+      if (invoiceSiudiCard) invoiceSiudiCard.classList.remove('d-none');
+    }
+    if (rt === 'menora_life_invoice') {
+      if (invoiceLifeCard) invoiceLifeCard.classList.remove('d-none');
     }
   }
 
-  // 6) update badge with the resolved DOCX file name (always)
+  // 6) update “תבנית” badge as before
   const badge = document.getElementById('templateBadge');
   if (badge) {
     badge.innerHTML =
       `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
   }
 }
-
-
 
 
   function updateMetaBadges() {
@@ -1195,7 +1129,7 @@ function applyTemplateSections() {
     return 'id_photos';            // ✅ reuse Photo-ID endpoints/template
 
   if (v === 'menora_life_invoice'  || up === 'MENORA_LIFE_INVOICE')
-    return 'siudi_invoice';
+    return 'menora_life_invoice';
 
 
     // --- Classic סיעודי bundle ---
@@ -1340,26 +1274,71 @@ function applyTemplateSections() {
 
 
     // Siudi Invoice (unchanged logic)
-    if (rt === "SIUDI_INVOICE" || rt === "MENORA_LIFE_INVOICE") {
-      q.set("template_file", "invoice_monora_siudi.docx");
+// ====== INVOICE HANDLING ======
+if (rt === "SIUDI_INVOICE") {
+    // ---- SIUDI invoice (existing logic) ----
+    q.set("template_file", "invoice_monora_siudi.docx");
 
-      q.set("inv_date", g("inv_date") || "");
-      q.set("inv_number", g("inv_number") || "");
-      q.set("totals_subtotal", g("inv_subtotal") || "");
-      q.set("totals_vat_rate", g("inv_vat_rate") || "");
-      q.set("totals_vat_amount", g("inv_vat_amount") || "");
-      q.set("totals_total", g("inv_total") || "");
+    q.set("inv_date",       g("inv_date") || "");
+    q.set("inv_number",     g("inv_number") || "");
+    q.set("totals_subtotal", g("inv_subtotal") || "");
+    q.set("totals_vat_rate", g("inv_vat_rate") || "");
+    q.set("totals_vat_amount", g("inv_vat_amount") || "");
+    q.set("totals_total",   g("inv_total") || "");
 
-      const invRef = (state.ref_number || state.reference_no || "").toString();
-      const claimNumber = (state.db?.claim_number || "").toString();
-      const claimSubject = (state.db?.full_name || "").toString();
-      const idNumber = (state.db?.id_number || "").toString();
+    const invRef      = (state.ref_number || state.reference_no || "").toString();
+    const claimNumber = (state.db?.claim_number || "").toString();
+    const claimName   = (state.db?.full_name || "").toString();
+    const idNumber    = (state.db?.id_number || "").toString();
 
-      if (invRef) q.set("inv_ref", invRef);
-      if (claimNumber) q.set("claim.number", claimNumber);
-      if (claimSubject) q.set("claim.subject", claimSubject);
-      if (idNumber) q.set("insured.id_number", idNumber);
+    if (invRef)      q.set("inv_ref", invRef);
+    if (claimNumber) q.set("claim.number", claimNumber);
+    if (claimName)   q.set("claim.subject", claimName);
+    if (idNumber)    q.set("insured.id_number", idNumber);
+}
+
+
+// ====== MENORA LIFE INVOICE ======
+if (rt === "MENORA_LIFE_INVOICE") {
+    q.set("template_file", "invoice_menora_life.docx");
+
+    // header
+    q.set("life_inv_date",       g("life_inv_date") || "");
+    q.set("life_inv_number",     g("life_inv_number") || "");
+    q.set("inv_number",          g("life_inv_number") || "");
+
+
+    // 🔥 THE FIELD YOU ASKED ABOUT:
+    q.set("life_followup_date",  g("life_followup_date") || "");
+
+    // line items (5 possible items)
+    for (let i = 1; i <= 5; i++) {
+        const text   = g(`life_item${i}_final`);
+        const amount = g(`life_item${i}_total`);
+        if (text || amount) {
+            q.append(`life_items[${i}][text]`, text);
+            q.append(`life_items[${i}][amount]`, amount);
+        }
     }
+
+    // totals
+    q.set("life_subtotal",   g("life_subtotal") || "");
+    q.set("life_vat_percent", g("life_vat_percent") || "");
+    q.set("life_vat_amount",  g("life_vat_amount") || "");
+    q.set("life_total",       g("life_total") || "");
+
+    // insured data
+    const invRef      = (state.ref_number || state.reference_no || "").toString();
+    const claimNumber = (state.db?.claim_number || "").toString();
+    const claimName   = (state.db?.full_name || "").toString();
+    const idNumber    = (state.db?.id_number || "").toString();
+
+    if (invRef)      q.set("inv_ref", invRef);
+    if (claimNumber) q.set("claim.number", claimNumber);
+    if (claimName)   q.set("claim.subject", claimName);
+    if (idNumber)    q.set("insured.id_number", idNumber);
+}
+
 
     // ====== Photo selections (kept generic) ======
     const names =
@@ -1427,7 +1406,7 @@ function applyTemplateSections() {
   }
 
   if (downloadBtn) {
-    downloadBtn.addEventListener('click', async function(){
+    downloadBtn.addEventListener('click', async function () {
       try {
         const rt = document.getElementById('reportType')?.value || "";
         if (!rt) {
@@ -1436,23 +1415,27 @@ function applyTemplateSections() {
         }
 
         showBusy("מכין קובץ Word...");
+
         const id      = currentReportId();
         const tmplKey = selectedTemplateKey();
 
-        // common bits
-        const names  = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
-        const photos = (typeof window.getSelectedReportImages === 'function') ? window.getSelectedReportImages() : [];
+        // common bits for photos (used in the generic branch)
+        const namesFn  = (typeof window.selectedPhotoNames === 'function') ?
+                          window.selectedPhotoNames : () => [];
+        const photosFn = (typeof window.getSelectedReportImages === 'function') ?
+                          window.getSelectedReportImages : () => [];
 
-        // choose endpoint + payload by template
-        let endpoint, payload;
+        let endpoint = '';
+        let payload  = {};
 
+        // ---------- 1. Photo-ID ----------
         if (tmplKey === 'id_photos') {
           endpoint = `/reports/${id}/photo-id/render-docx`;
           const g = id => document.getElementById(id)?.value?.trim() || "";
           const one = getPhotoIdServerName && getPhotoIdServerName(); // single server-side image name
 
           payload = {
-            insured_id: state.insured_id || null,
+            insured_id:         state.insured_id || null,
             id_photo_date_text: g('id_photo_date_dmy'),
             id_photo_date:      g('id_photo_date'),
             id_photo_time:      g('id_photo_time'),
@@ -1462,8 +1445,8 @@ function applyTemplateSections() {
             selected_photos:    one ? [one] : []
           };
 
+        // ---------- 2. Siudi invoice (existing behaviour) ----------
         } else if (tmplKey === 'siudi_invoice') {
-          // ✅ Siudi Invoice (single fixed line "מעקב סיעודי")
           endpoint = `/reports/${id}/render-docx`;
           const g = id => document.getElementById(id)?.value?.trim() || "";
 
@@ -1471,9 +1454,8 @@ function applyTemplateSections() {
             template:      'siudi_invoice',
             template_file: 'invoice_monora_siudi.docx',
 
-            // typed on the invoice card
-            inv_date:     g('inv_date'),      // ISO yyyy-mm-dd (hidden field)
-            inv_number:   g('inv_number'),
+            inv_date:   g('inv_date'),
+            inv_number: g('inv_number'),
             totals: {
               subtotal:   g('inv_subtotal'),
               vat_rate:   g('inv_vat_rate'),
@@ -1481,7 +1463,6 @@ function applyTemplateSections() {
               total:      g('inv_total')
             },
 
-            // pulled from state / insured card (no need to re-enter)
             insured_id: state.insured_id || null,
             inv_ref:    (state.ref_number || state.reference_no || "").toString(),
             claim: {
@@ -1493,94 +1474,129 @@ function applyTemplateSections() {
             }
           };
 
-        } else {
-          // default (other report types)
+        // ---------- 3. Menora LIFE invoice (new) ----------
+        } else if (tmplKey === 'menora_life_invoice') {
           endpoint = `/reports/${id}/render-docx`;
+          const g = id => document.getElementById(id)?.value?.trim() || "";
 
-          const names  = (typeof window.selectedPhotoNames === 'function') ? window.selectedPhotoNames() : [];
-          const photos = (typeof window.getSelectedReportImages === 'function') ? window.getSelectedReportImages() : [];
+          const life_items = [];
+          for (let i = 1; i <= 5; i++) {
+            const text   = g(`life_item${i}_final`);
+            const amount = g(`life_item${i}_total`);
+            if (text || amount) {
+              life_items.push({ text, amount });
+            }
+          }
 
-          const val = id => document.getElementById(id)?.value?.trim() || "";
+          payload = {
+            template:      'menora_life_invoice',
+            template_file: 'invoice_menora_life.docx',
+
+            // header
+            inv_date:           g('life_inv_date'),
+            inv_number:         g('life_inv_number'),
+            life_followup_date: g('life_followup_date'),
+
+            // line items
+            life_items: life_items,
+
+            // totals
+            totals: {
+              subtotal:   g('life_subtotal'),
+              vat_rate:   g('life_vat_percent'),
+              vat_amount: g('life_vat_amount'),
+              total:      g('life_total')
+            },
+
+            // pulled from state / insured card
+            insured_id: state.insured_id || null,
+            inv_ref:    (state.ref_number || state.reference_no || "").toString(),
+            claim: {
+              number:  (state.db?.claim_number || "").toString(),
+              subject: (state.db?.full_name    || "").toString()
+            },
+            insured: {
+              id_number: (state.db?.id_number  || "").toString()
+            }
+          };
+
+        // ---------- 4. All other reports ----------
+        } else {
+          endpoint = `/reports/${id}/render-docx`;
+          const v = id => document.getElementById(id)?.value?.trim() || "";
 
           payload = {
             insured_id:      state.insured_id || null,
             activity_date:   state.ctx.activity_date || "",
-            surv_place:      val('ctx_surv_place'),
-            surv_city:       val('ctx_surv_city'),
+            surv_place:      v('ctx_surv_place'),
+            surv_city:       v('ctx_surv_city'),
             template:        tmplKey,
-            injury_type:     val('ctx_injury_type'),
-            phone:           val('db_phone'),
-            selected_photos: names,
-            photos:          photos
+            injury_type:     v('ctx_injury_type'),
+            phone:           v('db_phone'),
+            selected_photos: namesFn(),
+            photos:          photosFn()
           };
 
-          if (tmplKey === "menora_life_photos") {
-              const iso = document.getElementById("photos_date")?.value || "";
-              if (iso) payload.photo_date = iso;
+          // Menora Life – photos report: extra date
+          if (tmplKey === 'menora_life_photos') {
+            const iso = document.getElementById("photos_date")?.value || "";
+            if (iso) payload.photo_date = iso;
           }
 
-
+          // Menora Life – follow-up report: extra narrative fields
           if (tmplKey === 'menora_life_followup') {
-            payload.background                   = val('db_background');
-            payload.occupation                   = val('db_occupation');
-            payload.social_media                 = val('db_social_media');
-            payload.social_media_identification  = val('db_social_media_identification');
-            payload.tracking_date                = val('db_tracking_date');
-            payload.start_time                   = val('db_start_time');
-            payload.end_time                     = val('db_end_time');
-            payload.summary                      = val('db_summary');
-            payload.authorities_1                = val('db_authorities_1');
-            payload.dnb                          = val('db_dnb');
-            payload.authorities_2                = val('db_authorities_2');
-            payload.tracking_raw                 = val('life_tracking_raw');
+            payload.background                  = v('db_background');
+            payload.occupation                  = v('db_occupation');
+            payload.social_media                = v('db_social_media');
+            payload.social_media_identification = v('db_social_media_identification');
+            payload.tracking_date               = v('db_tracking_date');
+            payload.start_time                  = v('db_start_time');
+            payload.end_time                    = v('db_end_time');
+            payload.summary                     = v('db_summary');
+            payload.authorities_1               = v('db_authorities_1');
+            payload.dnb                         = v('db_dnb');
+            payload.authorities_2               = v('db_authorities_2');
+            payload.tracking_raw                = v('life_tracking_raw');
 
-            // שתי טבלאות הרשויות – אותו קוד
             if (typeof window.getAuthoritiesTablesForPayload === 'function') {
               const tbls = window.getAuthoritiesTablesForPayload();
-              if (tbls.authorities_table) {
-                payload.authorities_table = tbls.authorities_table;
-              }
-              if (tbls.authorities_table_2) {
-                payload.authorities_table_2 = tbls.authorities_table_2;
-              }
+              if (tbls.authorities_table)   payload.authorities_table   = tbls.authorities_table;
+              if (tbls.authorities_table_2) payload.authorities_table_2 = tbls.authorities_table_2;
             }
           }
-
-
-
         }
 
-        // ---- DEBUG LOGS ----
-        // ---- DEBUG LOGS ----
+        // ---- add ref/version to every payload ----
         console.log('[Download] tmplKey:', tmplKey);
-        console.log('[Download] POST =>', endpoint);
+        console.log('[Download] endpoint before:', endpoint);
         console.log('[Download] payload BEFORE attachRefAndVersion:', payload);
 
-        // 🔹 Add reference + version once for ALL report types
         payload = attachRefAndVersion(payload);
 
         console.log('[Download] payload AFTER attachRefAndVersion:', payload);
 
         const resp = await fetch(endpoint, {
-          method: 'POST',
+          method:  'POST',
           headers: {'Content-Type':'application/json'},
-          body: JSON.stringify(payload)
+          body:    JSON.stringify(payload)
         });
 
         const data = await resp.json();
-
-        // ---- DEBUG LOGS ----
         console.log('[Download] response:', data);
 
         hideBusy();
         if (!data.ok) throw new Error(data.error || 'Docx generation failed');
+
+        // trigger download
         window.location.href = data.docx_url;
+
       } catch (e) {
         hideBusy();
         alert(e.message || e);
       }
     });
   }
+
 
   /* ============================== 7) DATEPICKER FOR "תאריך פעילות" ============================== */
   function isoToDmy(iso){

@@ -1,5 +1,6 @@
 # app/reports_docx.py
 import io
+import json
 import os
 import datetime
 from flask import Blueprint, request, send_file, abort, jsonify, render_template_string, current_app, url_for
@@ -34,7 +35,7 @@ TEMPLATE_MAP = {
     "menora_life_followup": "menora_life_followup.docx",
     "menora_life_photos": "menora_photos.docx",  # placeholder until you build it
     "menora_life_photoid": "menora_photo_id.docx",  # reuse Siudi photo ID
-    "menora_life_invoice": "menora_life_invoice.docx",  # placeholder until ready
+    "menora_life_invoice": "invoice_menora_life.docx",  # placeholder until ready
 }
 
 from datetime import datetime, date
@@ -435,51 +436,51 @@ def render_docx_bytes(template_path: str, context: dict) -> bytes:
 
 # app/reports_docx.py  (updated routes)
 
-@reports_docx_bp.route("/<int:report_id>/preview", methods=["GET"])
-def preview_docx_as_html(report_id: int):
-    """
-    Generate-on-the-fly DOCX and convert to HTML for preview (Mammoth) with style mapping.
-    Note: Word headers/footers are not rendered by Mammoth.
-    """
-    template_path = load_template_docx("menora_siudi.docx")
-
-    # allow activity date injection for your test
-    activity_date = request.args.get("activity_date", "").strip()
-    context = get_report_context(report_id, overrides={"activity_date": activity_date} if activity_date else None)
-    data = render_docx_bytes(template_path, context)
-
-    # Map Word styles -> HTML classes we can style
-    # Adjust names to your template’s styles if needed (Normal, Heading 1, Heading 2, Caption, Quote, Table Grid, etc.)
-    style_map = """
-    p[style-name='Normal'] => p.normal
-    p[style-name='Heading 1'] => h1.h1
-    p[style-name='Heading 2'] => h2.h2
-    p[style-name='Heading 3'] => h3.h3
-    p[style-name='Caption'] => p.caption
-    r[style-name='Strong'] => b
-    table => table.word
-    table > tr => tr
-    table > tr > td => td
-    """
-
-    result = mammoth.convert_to_html(io.BytesIO(data), style_map=style_map)
-    html = result.value
-
-    base = f"""<!doctype html>
-<html lang="he" dir="rtl">
-  <head>
-    <meta charset="utf-8">
-    <link rel="stylesheet" href="/static/css/word_preview.css">
-  </head>
-  <body>
-    <div class="a4">
-      <div class="page">
-        {html}
-      </div>
-    </div>
-  </body>
-</html>"""
-    return render_template_string(base)
+# @reports_docx_bp.route("/<int:report_id>/preview", methods=["GET"])
+# def preview_docx_as_html(report_id: int):
+#     """
+#     Generate-on-the-fly DOCX and convert to HTML for preview (Mammoth) with style mapping.
+#     Note: Word headers/footers are not rendered by Mammoth.
+#     """
+#     template_path = load_template_docx("menora_siudi.docx")
+#
+#     # allow activity date injection for your test
+#     activity_date = request.args.get("activity_date", "").strip()
+#     context = get_report_context(report_id, overrides={"activity_date": activity_date} if activity_date else None)
+#     data = render_docx_bytes(template_path, context)
+#
+#     # Map Word styles -> HTML classes we can style
+#     # Adjust names to your template’s styles if needed (Normal, Heading 1, Heading 2, Caption, Quote, Table Grid, etc.)
+#     style_map = """
+#     p[style-name='Normal'] => p.normal
+#     p[style-name='Heading 1'] => h1.h1
+#     p[style-name='Heading 2'] => h2.h2
+#     p[style-name='Heading 3'] => h3.h3
+#     p[style-name='Caption'] => p.caption
+#     r[style-name='Strong'] => b
+#     table => table.word
+#     table > tr => tr
+#     table > tr > td => td
+#     """
+#
+#     result = mammoth.convert_to_html(io.BytesIO(data), style_map=style_map)
+#     html = result.value
+#
+#     base = f"""<!doctype html>
+# <html lang="he" dir="rtl">
+#   <head>
+#     <meta charset="utf-8">
+#     <link rel="stylesheet" href="/static/css/word_preview.css">
+#   </head>
+#   <body>
+#     <div class="a4">
+#       <div class="page">
+#         {html}
+#       </div>
+#     </div>
+#   </body>
+# </html>"""
+#     return render_template_string(base)
 
 
 @reports_docx_bp.route("/<int:report_id>/download/<path:filename>", methods=["GET"])
@@ -856,6 +857,43 @@ def preview_docx_as_pdf(report_id: int):
                          download_name="preview.pdf")
     # =====================================================================
 
+    # ===================== MENORA LIFE INVOICE (preview) ======================
+    if tmpl_key == "menora_life_invoice":
+        g = request.args.get
+
+        # create dicts if missing
+        ctx.setdefault("insured", {})
+        ctx.setdefault("claim", {})
+
+        # Base minimal context
+        ctx["inv_date"] = ddmmyyyy(g("inv_date") or "")
+        ctx["inv_number"] = (g("inv_number") or "").strip()
+        ctx["inv_ref"] = (g("inv_ref") or "").strip()
+
+        # DEBUG LOGS (add these)
+        print("DEBUG LIFE-INVOICE inv_number =", ctx["inv_number"])
+        print("DEBUG LIFE-INVOICE inv_date   =", ctx["inv_date"])
+
+        # Claim & insured
+        ctx["insured"]["id_number"] = (g("insured.id_number") or "").strip()
+        ctx["claim"]["number"] = (g("claim.number") or "").strip()
+        ctx["claim"]["subject"] = (g("claim.subject") or "").strip()
+
+        # **** TEST PARAMETER ****
+        ctx["life_followup_date"] = ddmmyyyy(g("life_followup_date") or g("life_followup_date_text") or "")
+        print("DEBUG LIFE-INVOICE followup   =", ctx["life_followup_date"])
+
+        buf = io.BytesIO()
+        tpl.render(ctx)
+        tpl.save(buf)
+        pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
+        return send_file(io.BytesIO(pdf_bytes),
+                         mimetype="application/pdf",
+                         download_name="preview.pdf")
+
+    # =======================================================================
+
+
     # --- collect selected files (names) -> absolute paths ---
     selected = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos")
     selected = [os.path.basename(n) for n in selected if n]
@@ -942,7 +980,6 @@ def render_docx_download(report_id: int):
     reference_no = (payload.get("reference_no") or "").strip()
     version_no   = payload.get("version_no")
 
-
     # ---- collect overrides from JSON (including background / dnb / phone) ----
     overrides = {
         "activity_date": payload.get("activity_date", "").strip(),
@@ -976,8 +1013,10 @@ def render_docx_download(report_id: int):
     except Exception:
         pass
 
+    # base context (db + ctx + lex + now)
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
+    # normalise ref/version into ctx["db"]["ref_number"]
     ctx = _apply_ref_and_version(
         ctx,
         ref_number=ref_number,
@@ -988,7 +1027,7 @@ def render_docx_download(report_id: int):
     # --- template path ---
     tmpl_key = (payload.get("template") or "siudi").strip().lower()
     template_path = load_template_docx(map_template_key(tmpl_key))
-    current_app.logger.info("[DOCX] Using template: %s", template_path)
+    current_app.logger.info("[DOCX] Using template: %s (key=%s)", template_path, tmpl_key)
 
     tpl = DocxTemplate(template_path)
 
@@ -1002,7 +1041,6 @@ def render_docx_download(report_id: int):
         iso = (payload.get("photo_date") or "").strip()
         if iso:
             ctx.setdefault("db", {})["photo_date"] = ddmmyyyy(iso)
-
 
     # --- common media root + resolver (photos + 'טבלת רשויות') ---
     case_id = str(insured_id or payload.get("case_id", "")).strip()
@@ -1047,18 +1085,15 @@ def render_docx_download(report_id: int):
     # ===================== SIUDI INVOICE (no photos) ======================
     if tmpl_key == "siudi_invoice":
         inv_date_iso = (payload.get("inv_date") or "").strip()
-        # ensure nested dicts exist
         ctx.setdefault("insured", {})
         ctx.setdefault("claim", {})
         ctx.setdefault("totals", {})
 
-        # values typed in the invoice card
         ctx.update({
-            "inv_date":    ddmmyyyy(inv_date_iso),
-            "inv_number":  (payload.get("inv_number") or "").strip(),
-            "inv_ref":     (payload.get("inv_ref") or "").strip(),
+            "inv_date":   ddmmyyyy(inv_date_iso),
+            "inv_number": (payload.get("inv_number") or "").strip(),
+            "inv_ref":    (payload.get("inv_ref") or "").strip(),
         })
-        # pulled from state/client
         ctx["insured"]["id_number"] = (payload.get("insured", {}).get("id_number") or "").strip()
         ctx["claim"]["number"]      = (payload.get("claim",   {}).get("number")    or "").strip()
         ctx["claim"]["subject"]     = (payload.get("claim",   {}).get("subject")   or "").strip()
@@ -1069,7 +1104,6 @@ def render_docx_download(report_id: int):
             "total":      (payload.get("totals", {}).get("total")      or "").strip(),
         })
 
-        # --- render and save to instance/generated_reports ---
         out_dir = os.path.join(current_app.instance_path, "generated_reports")
         os.makedirs(out_dir, exist_ok=True)
 
@@ -1082,9 +1116,61 @@ def render_docx_download(report_id: int):
 
         docx_url = url_for("generated_reports", filename=filename)
         return jsonify({"ok": True, "docx_url": docx_url})
-    # =====================================================================
+    # =================== /SIUDI INVOICE ===================================
 
-    # --- collect selected names from payload ---
+    # ===================== MENORA LIFE INVOICE ============================
+    if tmpl_key == "menora_life_invoice":
+        # invoice + followup dates come from the LIFE invoice card
+        inv_date_str       = (payload.get("inv_date") or "").strip()
+        followup_date_text = (payload.get("life_followup_date") or "").strip()
+
+        # try to normalise invoice date like other reports:
+        inv_iso = _to_iso(inv_date_str) or inv_date_str
+        inv_date_dmy = ddmmyyyy(inv_iso) if "-" in (inv_iso or "") else inv_date_str
+
+        # line items (array of {text, amount})
+        life_items = payload.get("life_items") or []
+        if isinstance(life_items, str):
+            try:
+                life_items = json.loads(life_items)
+            except Exception:
+                life_items = []
+
+        totals = payload.get("totals") or {}
+
+        ctx.setdefault("insured", {})
+        ctx.setdefault("claim", {})
+
+        ctx.update({
+            "inv_date":          inv_date_dmy,
+            "inv_number":        (payload.get("inv_number") or "").strip(),
+            "inv_ref":           (payload.get("inv_ref") or "").strip(),
+            "life_followup_date": followup_date_text,
+            "life_items":        life_items,
+            "life_subtotal":     (totals.get("subtotal")   or "").strip(),
+            "life_vat_amount":   (totals.get("vat_amount") or "").strip(),
+            "life_total":        (totals.get("total")      or "").strip(),
+        })
+
+        # claim / insured ids already in ctx["db"], but client also sends them;
+        # we don't strictly need to override here, the template will use db.*
+        # if you ever want, you can update ctx["claim"] / ctx["insured"] too.
+
+        out_dir = os.path.join(current_app.instance_path, "generated_reports")
+        os.makedirs(out_dir, exist_ok=True)
+
+        stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"report_{report_id}_{stamp}.docx"
+        abs_path = os.path.join(out_dir, filename)
+
+        tpl.render(ctx)
+        tpl.save(abs_path)
+
+        docx_url = url_for("generated_reports", filename=filename)
+        return jsonify({"ok": True, "docx_url": docx_url})
+    # =================== /MENORA LIFE INVOICE =============================
+
+    # --- collect selected names from payload (for photo-based reports) ---
     names = payload.get("selected_photos") or []
     if not names and isinstance(payload.get("photos"), list):
         names = [os.path.basename(p.get("name", "")) for p in payload["photos"] if p.get("name")]
@@ -1100,11 +1186,9 @@ def render_docx_download(report_id: int):
                 if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
                     paths.append(os.path.join(folder, fn))
 
-
     # --- Social media photos for Menora Life follow-up (download) ---
     if tmpl_key == "menora_life_followup":
         ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in paths]
-
 
     # --- orientation split using real pixel sizes ---
     lands, ports = [], []
@@ -1116,7 +1200,6 @@ def render_docx_download(report_id: int):
         except Exception as e:
             current_app.logger.warning("[PHOTOS] open fail %s: %s", p, e)
 
-    # --- sizes (match preview) ---
     LAND_W = Mm(120)
     PORT_W = Mm(76)
 
@@ -1142,7 +1225,7 @@ def render_docx_download(report_id: int):
         "gap":         gap,
     })
 
-    # --- render and save to instance/generated_reports ---
+    # --- render and save to instance/generated_reports for all other reports ---
     out_dir = os.path.join(current_app.instance_path, "generated_reports")
     os.makedirs(out_dir, exist_ok=True)
 
@@ -1155,10 +1238,6 @@ def render_docx_download(report_id: int):
 
     docx_url = url_for("generated_reports", filename=filename)
     return jsonify({"ok": True, "docx_url": docx_url})
-
-
-
-
 
 
 # ===================== PHOTO ID: dedicated endpoints (server only) =====================

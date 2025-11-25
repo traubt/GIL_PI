@@ -1,0 +1,52 @@
+{# templates/reports/_invoice_siudi.html #}
+<!-- ===================== חשבונית סיעודי ===================== -->
+<div id="invoice-siudi-card" class="card mt-3 d-none" dir="rtl" style="border-radius:14px;">
+  <div class="card-header d-flex align-items-center justify-content-between">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-receipt"></i>
+      <strong>חשבונית סיעודי</strong>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <div class="row g-3">
+      <!-- תאריך חשבונית (DD/MM/YYYY UI + ISO חבוי) -->
+      <div class="col-12 col-md-3">
+        <label for="inv_date_dmy" class="form-label">תאריך</label>
+        <input type="text" class="form-control" id="inv_date_dmy" placeholder="dd/mm/yyyy">
+        <input type="hidden" id="inv_date" name="inv_date"> <!-- yyyy-mm-dd -->
+      </div>
+
+      <!-- מספר חשבונית -->
+      <div class="col-12 col-md-3">
+        <label for="inv_number" class="form-label">מס' חשבונית</label>
+        <input type="text" class="form-control" id="inv_number" placeholder="לדוגמה: 164772">
+        <div class="form-text">תוצג בתוך המסגרת</div>
+      </div>
+
+      <!-- סכום לפני מע"מ -->
+      <div class="col-12 col-md-3">
+        <label for="inv_subtotal" class="form-label">סכום לפני מע״מ</label>
+        <input type="number" step="0.01" class="form-control" id="inv_subtotal" placeholder="לדוגמה: 2200.00">
+      </div>
+
+      <!-- אחוז מע״מ -->
+      <div class="col-12 col-md-3">
+        <label for="inv_vat_rate" class="form-label">% מע״מ</label>
+        <input type="number" step="0.01" class="form-control" id="inv_vat_rate" value="18.00">
+      </div>
+
+      <!-- חישוב אוטומטי -->
+      <div class="col-12 col-md-3">
+        <label for="inv_vat_amount" class="form-label">סכום מע״מ</label>
+        <input type="text" class="form-control" id="inv_vat_amount" readonly>
+      </div>
+
+      <div class="col-12 col-md-3">
+        <label for="inv_total" class="form-label">סכום כולל מע״מ</label>
+        <input type="text" class="form-control" id="inv_total" readonly>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- =================== /חשבונית סיעודי ==================== -->

@@ -1,0 +1,228 @@
+{# templates/reports/_invoice_menora_life.html #}
+<div id="invoice-life-card" class="card mt-3 d-none" dir="rtl" style="border-radius:14px;">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <div class="d-flex align-items-center gap-2">
+      <i class="bi bi-receipt"></i>
+      <strong>חשבונית ביטוח חיים</strong>
+    </div>
+  </div>
+
+  <div class="card-body">
+    <!-- date + followup date + number -->
+    <div class="row g-3 mb-3">
+      <!-- invoice date -->
+      <div class="col-md-4">
+        <label for="life_inv_date" class="form-label">תאריך חשבונית</label>
+        <input type="text"
+               id="life_inv_date"
+               class="form-control"
+               placeholder="dd/mm/yyyy">
+      </div>
+
+      <!-- followup date -->
+      <div class="col-md-4">
+        <label for="life_followup_date" class="form-label">תאריך מעקב</label>
+        <input type="text"
+               id="life_followup_date"
+               class="form-control"
+               placeholder="dd/mm/yyyy">
+      </div>
+
+      <!-- invoice number -->
+      <div class="col-md-4">
+        <label for="life_inv_number" class="form-label">מספר חשבון עסקה</label>
+        <input type="text"
+               id="life_inv_number"
+               class="form-control">
+      </div>
+    </div>
+
+    <!-- line items with final line text -->
+    <div class="table-responsive mb-3">
+      <table class="table table-sm align-middle text-center">
+        <thead class="table-light">
+          <tr>
+            <th style="width:25%;">תיאור הפריט</th>
+            <th style="width:12%;">מחיר יחידה</th>
+            <th style="width:12%;">כמות</th>
+            <th style="width:16%;">סה&quot;כ</th>
+            <th style="width:35%;">שורת פריט סופית</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for i in range(1,6) %}
+          <tr>
+            <td>
+              <input type="text"
+                     class="form-control life-desc-input"
+                     id="life_item{{i}}_desc">
+            </td>
+            <td>
+              <input type="number"
+                     step="0.01"
+                     class="form-control life-line-input"
+                     id="life_item{{i}}_unit">
+            </td>
+            <td>
+              <input type="number"
+                     step="0.01"
+                     class="form-control life-line-input"
+                     id="life_item{{i}}_qty">
+            </td>
+            <td>
+              <input type="text"
+                     class="form-control"
+                     id="life_item{{i}}_total"
+                     readonly>
+            </td>
+            <td>
+              <input type="text"
+                     class="form-control life-final-input"
+                     id="life_item{{i}}_final">
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- totals (readonly subtotal) -->
+    <div class="row g-3 align-items-end">
+      <div class="col-md-3">
+        <label for="life_subtotal" class="form-label">סכום לפני מע&quot;מ</label>
+        <input type="text" id="life_subtotal" class="form-control" readonly>
+      </div>
+      <div class="col-md-2">
+        <label for="life_vat_percent" class="form-label">% מע&quot;מ</label>
+        <input type="number" id="life_vat_percent" class="form-control" value="18">
+      </div>
+      <div class="col-md-3">
+        <label for="life_vat_amount" class="form-label">סכום מע&quot;מ</label>
+        <input type="text" id="life_vat_amount" class="form-control" readonly>
+      </div>
+      <div class="col-md-4">
+        <label for="life_total" class="form-label">סכום כולל מע&quot;מ</label>
+        <input type="text" id="life_total" class="form-control" readonly>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  function lifeParseNumber(value) {
+    if (!value) return 0;
+    value = String(value).replace(",", ".");
+    var num = parseFloat(value);
+    return isNaN(num) ? 0 : num;
+  }
+
+  // Builds default "final line text" like: 13.5 שעות מעקב לפי 138 ש"ח
+  function buildLifeFinalText(desc, qty, unit) {
+    if (!desc || !qty || !unit) return "";
+    var unitStr = unit.toFixed(2).replace(/\.00$/, "");
+    return qty + " " + desc + " לפי " + unitStr + " ש\"ח";
+  }
+
+  function recalcLifeInvoice() {
+    var subtotal = 0;
+
+    for (var i = 1; i <= 5; i++) {
+      var unitEl  = document.getElementById("life_item" + i + "_unit");
+      var qtyEl   = document.getElementById("life_item" + i + "_qty");
+      var totalEl = document.getElementById("life_item" + i + "_total");
+      var descEl  = document.getElementById("life_item" + i + "_desc");
+      var finalEl = document.getElementById("life_item" + i + "_final");
+
+      if (!unitEl || !qtyEl || !totalEl) continue;
+
+      var unit = lifeParseNumber(unitEl.value);
+      var qty  = lifeParseNumber(qtyEl.value);
+      var desc = descEl ? descEl.value.trim() : "";
+
+      var lineTotal = unit * qty;
+
+      if (lineTotal > 0) {
+        totalEl.value = lineTotal.toFixed(2);
+      } else {
+        totalEl.value = "";
+      }
+
+      subtotal += lineTotal;
+
+      if (finalEl && (!finalEl.dataset.userEdited || finalEl.dataset.userEdited !== "1")) {
+        var autoText = buildLifeFinalText(desc, qty, unit);
+        finalEl.value = autoText;
+      }
+    }
+
+    var subtotalEl = document.getElementById("life_subtotal");
+    if (subtotalEl) {
+      subtotalEl.value = subtotal > 0 ? subtotal.toFixed(2) : "";
+    }
+
+    var vatPctEl = document.getElementById("life_vat_percent");
+    var vatPct = vatPctEl ? lifeParseNumber(vatPctEl.value) : 0;
+
+    var vatAmount = subtotal * vatPct / 100.0;
+    var totalIncl = subtotal + vatAmount;
+
+    var vatAmountEl = document.getElementById("life_vat_amount");
+    if (vatAmountEl) {
+      vatAmountEl.value = vatAmount > 0 ? vatAmount.toFixed(2) : "";
+    }
+
+    var totalEl = document.getElementById("life_total");
+    if (totalEl) {
+      totalEl.value = totalIncl > 0 ? totalIncl.toFixed(2) : "";
+    }
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    // datepickers for invoice & followup dates
+    if (window.flatpickr) {
+      var invDateEl = document.getElementById("life_inv_date");
+      if (invDateEl) {
+        flatpickr(invDateEl, { dateFormat: "d/m/Y" });
+      }
+
+      var followupDateEl = document.getElementById("life_followup_date");
+      if (followupDateEl) {
+        flatpickr(followupDateEl, { dateFormat: "d/m/Y" });
+      }
+    }
+
+    // unit / qty changes
+    var lifeInputs = document.querySelectorAll(".life-line-input");
+    lifeInputs.forEach(function (el) {
+      el.addEventListener("input", recalcLifeInvoice);
+    });
+
+    // description changes
+    var descInputs = document.querySelectorAll(".life-desc-input");
+    descInputs.forEach(function (el) {
+      el.addEventListener("input", recalcLifeInvoice);
+    });
+
+    // final text – mark as user-edited so we don't overwrite it later
+    var finalInputs = document.querySelectorAll(".life-final-input");
+    finalInputs.forEach(function (el) {
+      if (el.value) {
+        el.dataset.userEdited = "1";
+      }
+      el.addEventListener("input", function () {
+        el.dataset.userEdited = "1";
+      });
+    });
+
+    // VAT percent changes
+    var vatEl = document.getElementById("life_vat_percent");
+    if (vatEl) {
+      vatEl.addEventListener("input", recalcLifeInvoice);
+    }
+
+    // Initial calc for existing values
+    recalcLifeInvoice();
+  });
+})();
+</script>
