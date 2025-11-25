@@ -421,6 +421,16 @@
           <small class="text-muted">תמונות מהממצאים בשטח / מדיה חברתית</small>
         </div>
         <div class="card-body">
+          <!-- ===================== תמונות מתאריך ===================== -->
+          <div class="row g-3 mt-2" id="photos_date_row">
+            <div class="col-12 col-md-4">
+              <label for="photos_date_dmy" class="form-label">תמונות מתאריך</label>
+              <input type="text" id="photos_date_dmy" class="form-control" placeholder="dd/mm/yyyy">
+              <input type="hidden" id="photos_date" name="photos_date">
+            </div>
+          </div>
+          <!-- ======================================================= -->
+
           <div class="mb-2 small text-muted">
             בחר תמונות שיופיעו בדוח (סיעודי / דוח תמונות ביטוח חיים). התמונות נטענות מדרופבוקס המקומי.
           </div>
@@ -1307,6 +1317,13 @@ function applyTemplateSections() {
       q.set("template_file", "menora_photo_id.docx"); // explicit file hint
     }
 
+    // PHOTO REPORT (Menora Photos)
+    if (tmplKey === "menora_life_photos") {
+        const iso = document.getElementById("photos_date")?.value || "";
+        if (iso) q.set("photo_date", iso);
+    }
+
+
     // Siudi Invoice (unchanged logic)
     if (rt === "SIUDI_INVOICE" || rt === "MENORA_LIFE_INVOICE") {
       q.set("template_file", "invoice_monora_siudi.docx");
@@ -1481,6 +1498,12 @@ function applyTemplateSections() {
             selected_photos: names,
             photos:          photos
           };
+
+          if (tmplKey === "menora_life_photos") {
+              const iso = document.getElementById("photos_date")?.value || "";
+              if (iso) payload.photo_date = iso;
+          }
+
 
           if (tmplKey === 'menora_life_followup') {
             payload.background                   = val('db_background');
@@ -1839,6 +1862,27 @@ function applyTemplateSections() {
     }
   })();
 
+// --- תאריך תמונות לדוח (dd/mm/yyyy → ISO yyyy-mm-dd) ---
+  document.addEventListener("DOMContentLoaded", function() {
+      const el = document.getElementById("photos_date_dmy");
+      const hidden = document.getElementById("photos_date");
+      if (!el || !hidden) return;
+
+      flatpickr(el, {
+          dateFormat: "d/m/Y",
+          allowInput: true,
+          onChange: function(_, dateStr) {
+              hidden.value = dmyToIso(dateStr);
+          },
+          onClose: function(_, dateStr) {
+              hidden.value = dmyToIso(dateStr);
+          }
+      });
+
+      el.addEventListener("blur", function() {
+          hidden.value = dmyToIso(el.value);
+      });
+  });
 
 
 // ===== Invoice datepicker (mirrors to ISO) =====

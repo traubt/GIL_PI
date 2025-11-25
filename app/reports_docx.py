@@ -751,6 +751,14 @@ def preview_docx_as_pdf(report_id: int):
         raw = (request.args.get("tracking_raw") or "").strip()
         ctx["tracking_rows"] = _parse_tracking_rows(raw) if raw else []
 
+    if tmpl_key == "menora_life_photos":
+        # photo_date is sent in ISO (yyyy-mm-dd) from the hidden field
+        iso = (request.args.get("photo_date") or "").strip()
+        if iso:
+            # convert to dd/mm/yyyy for {{ db.photo_date }} in menora_photos.docx
+            ctx.setdefault("db", {})["photo_date"] = ddmmyyyy(iso)
+
+
     # --- common media root + resolver (photos + 'טבלת רשויות') ---
     case_id = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
     rep_id = str(report_id)
@@ -961,6 +969,13 @@ def render_docx_download(report_id: int):
     if tmpl_key == "menora_life_followup":
         raw = (payload.get("tracking_raw") or "").strip()
         ctx["tracking_rows"] = _parse_tracking_rows(raw) if raw else []
+
+    # Menora Life – Photos report: pass {{ db.photo_date }} as dd/mm/yyyy
+    if tmpl_key == "menora_life_photos":
+        iso = (payload.get("photo_date") or "").strip()
+        if iso:
+            ctx.setdefault("db", {})["photo_date"] = ddmmyyyy(iso)
+
 
     # --- common media root + resolver (photos + 'טבלת רשויות') ---
     case_id = str(insured_id or payload.get("case_id", "")).strip()
