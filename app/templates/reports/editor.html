@@ -343,54 +343,13 @@
       </div>
 
 
-      <!-- חקירה במדיה החברתית + תמונות -->
+            <!-- חקירה במדיה החברתית -->
       <div class="col-12">
         <label class="form-label label-strong">חקירה במדיה החברתית</label>
         <textarea id="db_social_media"
                   class="form-control template-ph"
                   rows="3"
                   placeholder="למשל: בסריקה ברשת האינטרנט ובמדיה החברתית אותר דף פייסבוק..."></textarea>
-
-        <!-- NEW: social-media photos picker (reuses תמונות לדו"ח widget) -->
-        <div class="mt-3 border rounded p-2 bg-light-subtle">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <span class="fw-semibold text-muted">
-              תמונות ממדיה חברתית לדו"ח
-            </span>
-
-            <div>
-              <button id="btnImportLocalDropbox"
-                      type="button"
-                      class="btn btn-outline-primary btn-sm">
-                ייבוא מדרופבוקס מקומי
-              </button>
-
-              <!-- same inputs as before, just moved here -->
-              <input id="localDropboxPicker"
-                     type="file"
-                     name="files[]"
-                     accept="image/*,video/*"
-                     multiple
-                     style="display:none;">
-
-              <!-- reserved for future (as היה קודם) -->
-              <input id="filepicker"
-                     type="file"
-                     accept="image/*"
-                     multiple
-                     style="display:none;">
-            </div>
-          </div>
-
-          <input type="hidden" id="localToken" value="">
-          <div id="localImportStatus"
-               class="small text-muted mb-2"
-               style="white-space:pre-line;"></div>
-
-          <!-- one grid for all thumbnails; JS will send everything here -->
-          <div id="group-landscape" class="thumb-grid"></div>
-          <!-- group-portrait is no longer needed visually -->
-        </div>
       </div>
 
 
@@ -454,6 +413,53 @@
     </div>
   </div>
 </div>
+
+      <!-- ===================== תמונות לדו"ח (משותף) ===================== -->
+      <div id="report-photos-card" class="card mt-3" dir="rtl">
+        <div class="card-header bg-light fw-bold d-flex justify-content-between align-items-center">
+          <span>תמונות לדוח</span>
+          <small class="text-muted">תמונות מהממצאים בשטח / מדיה חברתית</small>
+        </div>
+        <div class="card-body">
+          <div class="mb-2 small text-muted">
+            בחר תמונות שיופיעו בדוח (סיעודי / דוח תמונות ביטוח חיים). התמונות נטענות מדרופבוקס המקומי.
+          </div>
+
+          <div class="mb-2 d-flex justify-content-between align-items-center">
+            <span class="fw-semibold">ייבוא תמונות</span>
+            <div>
+              <button id="btnImportLocalDropbox"
+                      type="button"
+                      class="btn btn-outline-primary btn-sm">
+                ייבוא מדרופבוקס מקומי
+              </button>
+
+              <input id="localDropboxPicker"
+                     type="file"
+                     name="files[]"
+                     accept="image/*,video/*"
+                     multiple
+                     style="display:none;">
+
+              <!-- שמור לשימוש עתידי, כמו שהיה קודם -->
+              <input id="filepicker"
+                     type="file"
+                     accept="image/*"
+                     multiple
+                     style="display:none;">
+            </div>
+          </div>
+
+          <input type="hidden" id="localToken" value="">
+
+          <div id="localImportStatus"
+               class="small text-muted mb-2"
+               style="white-space:pre-line;"></div>
+
+          <!-- כל התמונות לתצוגת הדו"ח -->
+          <div id="group-landscape" class="thumb-grid"></div>
+        </div>
+      </div>
 
 {% include 'photo_id.html' %}
 
@@ -716,7 +722,7 @@ function computeTemplateName() {
   const templateMap = {
     // --- Menora Life Insurance (אכע) ---
     menora_life_followup: "menora_life_followup.docx",
-    menora_life_photos:   "menora_life_photos.docx",
+    menora_life_photos:   "menora_photos.docx",
     menora_life_photoid:  "menora_photo_id.docx",
     menora_life_invoice:  "menora_life_invoice.docx",
 
@@ -1158,7 +1164,7 @@ function applyTemplateSections() {
     return 'menora_life_followup';
 
   if (v === 'menora_life_photos'   || up === 'MENORA_LIFE_PHOTOS')
-    return 'tracking';             // placeholder
+    return 'menora_life_photos';            // placeholder
 
   if (v === 'menora_life_photoid'  || up === 'MENORA_LIFE_PHOTOID')
     return 'id_photos';            // ✅ reuse Photo-ID endpoints/template

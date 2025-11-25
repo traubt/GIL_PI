@@ -32,7 +32,7 @@ TEMPLATE_MAP = {
 
     # === new Menora Life insurance templates ===
     "menora_life_followup": "menora_life_followup.docx",
-    "menora_life_photos": "menora_life_photos.docx",  # placeholder until you build it
+    "menora_life_photos": "menora_photos.docx",  # placeholder until you build it
     "menora_life_photoid": "menora_photo_id.docx",  # reuse Siudi photo ID
     "menora_life_invoice": "menora_life_invoice.docx",  # placeholder until ready
 }
