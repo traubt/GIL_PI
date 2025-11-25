@@ -293,7 +293,38 @@ def get_report_context(report_id: int, *, insured_id: int | None = None, overrid
     }
 
 
+def _apply_ref_and_version(ctx, ref_number: str = "", reference_no: str = "", version_no=None):
+    """
+    Normalize 'מספרנו' across all reports.
 
+    Rule:
+      • version == 0  ->  base ref only   (e.g. 67590)
+      • version > 0   ->  base.version    (e.g. 67590.2)
+
+    base ref is taken from ctx['db']['ref_number'] or the explicit ref_number
+    parameter. The final value is written to BOTH:
+
+      ctx['reference_no']
+      ctx['db']['ref_number']      # used by {{ db.ref_number }} in templates
+    """
+    v = int(version_no or 0) if version_no is not None else 0
+    db = ctx.setdefault("db", {})
+
+    base = (db.get("ref_number") or ref_number or "").strip()
+
+    if reference_no:
+        final = reference_no.strip()
+    elif base:
+        final = f"{base}.{v}" if v > 0 else base
+    else:
+        final = ""
+
+    if final:
+        ctx["reference_no"] = final
+        db["ref_number"] = final
+
+    ctx["version_no"] = v
+    return ctx
 
 
 def _collect_overrides_from_query(args) -> dict:
@@ -722,22 +753,13 @@ def preview_docx_as_pdf(report_id: int):
 
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
-    # expose them to templates (מספרנו etc.)
-    # --- reference / version for "מספרנו" ---
-    # version_no may be None, "", or an int from query
-    v = int(version_no or 0) if version_no is not None else 0
+    ctx = _apply_ref_and_version(
+        ctx,
+        ref_number=ref_number,
+        reference_no=reference_no,
+        version_no=version_no,
+    )
 
-    if reference_no:
-        # if the client explicitly sent a full reference string (e.g. "67590.1") – trust it
-        ctx["reference_no"] = reference_no
-    else:
-        # otherwise build it from the insured's ref_number + version
-        base = ctx.get("db", {}).get("ref_number", "") or ref_number
-        if base:
-            padded = str(base).strip().zfill(5)  # 5-digit, like JS padStart(5,"0")
-            ctx["reference_no"] = f"{padded}.{v}" if v > 0 else padded
-
-    ctx["version_no"] = v
 
     # --- template path ---
     tmpl_key = (request.args.get("template", "siudi") or "siudi").strip().lower()
@@ -956,7 +978,12 @@ def render_docx_download(report_id: int):
 
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
-
+    ctx = _apply_ref_and_version(
+        ctx,
+        ref_number=ref_number,
+        reference_no=reference_no,
+        version_no=version_no,
+    )
 
     # --- template path ---
     tmpl_key = (payload.get("template") or "siudi").strip().lower()
@@ -1109,21 +1136,6 @@ def render_docx_download(report_id: int):
 
     gap = "\u00A0" * 8
 
-    # expose them to templates (if you want to print them in Word)
-    # --- reference / version for "מספרנו" ---
-    v = int(version_no or 0) if version_no is not None else 0
-
-    if reference_no:
-        ctx["reference_no"] = reference_no
-    else:
-        base = ctx.get("db", {}).get("ref_number", "") or ref_number
-        if base:
-            padded = str(base).strip().zfill(5)
-            ctx["reference_no"] = f"{padded}.{v}" if v > 0 else padded
-
-    ctx["version_no"] = v
-
-
     ctx.update({
         "land_images": land_images,
         "port_rows":   port_rows,
@@ -1251,19 +1263,12 @@ def photo_id_preview_pdf(report_id: int):
     # build context
     ctx = get_report_context(report_id, insured_id=insured_id)
 
-    # --- reference / version for "מספרנו" on photo-ID ---
-    v = int(version_no or 0) if version_no is not None else 0
-
-    if reference_no:
-        ctx["reference_no"] = reference_no
-    else:
-        base = ctx.get("db", {}).get("ref_number", "") or ref_number
-        if base:
-            padded = str(base).strip().zfill(5)
-            ctx["reference_no"] = f"{padded}.{v}" if v > 0 else padded
-
-    ctx["version_no"] = v
-
+    ctx = _apply_ref_and_version(
+        ctx,
+        ref_number=ref_number,
+        reference_no=reference_no,
+        version_no=version_no,
+    )
 
     place_str = ", ".join(v for v in (id_place, id_city) if v)
     ctx.update({
@@ -1329,10 +1334,13 @@ def photo_id_render_docx(report_id: int):
 
     ctx = get_report_context(report_id, insured_id=insured_id)
 
-    # expose them to templates (if you want to print them in Word)
-    ctx["ref_number"]   = ref_number
-    ctx["reference_no"] = reference_no
-    ctx["version_no"]   = version_no
+    ctx = _apply_ref_and_version(
+        ctx,
+        ref_number=ref_number,
+        reference_no=reference_no,
+        version_no=version_no,
+    )
+
 
     place_str = ", ".join(v for v in (id_place, id_city) if v)
     ctx.update({

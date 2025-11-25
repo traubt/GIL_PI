@@ -852,12 +852,24 @@ function applyTemplateSections() {
 
 
   function recomputeReferenceNow(){
-    const base = (state.ref_number && state.ref_number.toString().trim()) || "00000";
-    const padded = base.padStart(5, "0");
-    state.reference_no = (state.version_no > 0) ? `${padded}.${state.version_no}` : padded;
+    const base = (state.ref_number && state.ref_number.toString().trim()) || "";
+
+    if (!base) {
+      state.reference_no = "";
+    } else if (state.version_no > 0) {
+      // versioned: 67590.2
+      state.reference_no = `${base}.${state.version_no}`;
+    } else {
+      // naked reference: 67590
+      state.reference_no = base;
+    }
     updateMetaBadges();
   }
+
+
+
   function isoToYear(iso){ return iso ? iso.split("-")[0] : ""; }
+
   function fillInsuredCardFromOption(opt){
     const get = (k)=> (opt?.dataset?.[k] ?? '').trim();
     const full = get('fullName') || ((get('lastName') + ' ' + get('firstName')).trim());
@@ -894,6 +906,9 @@ function applyTemplateSections() {
 
     // expose for other scripts at bottom
   window.fillInsuredCardFromOption = fillInsuredCardFromOption;
+
+  window.recomputeReferenceNow = recomputeReferenceNow;
+
 
 
   /* ============================== 2) FORM BINDINGS ============================== */
