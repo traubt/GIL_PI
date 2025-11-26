@@ -1299,19 +1299,21 @@ if (rt === "SIUDI_INVOICE") {
 
 
 // ====== MENORA LIFE INVOICE ======
+// ====== MENORA LIFE INVOICE ======
 if (rt === "MENORA_LIFE_INVOICE") {
     q.set("template_file", "invoice_menora_life.docx");
 
-    // header
-    q.set("life_inv_date",       g("life_inv_date") || "");
-    q.set("life_inv_number",     g("life_inv_number") || "");
-    q.set("inv_number",          g("life_inv_number") || "");
+    // HEADER
+    // These MUST match the HTML input ids
+    q.set("inv_date",        g("life_inv_date") || "");
+    q.set("life_inv_date",   g("life_inv_date") || "");
+    q.set("inv_number",      g("life_inv_number") || "");
+    q.set("life_inv_number", g("life_inv_number") || "");
 
+    // FOLLOW-UP DATE (appears below)
+    q.set("life_followup_date", g("life_followup_date") || "");
 
-    // 🔥 THE FIELD YOU ASKED ABOUT:
-    q.set("life_followup_date",  g("life_followup_date") || "");
-
-    // line items (5 possible items)
+    // LINE ITEMS
     for (let i = 1; i <= 5; i++) {
         const text   = g(`life_item${i}_final`);
         const amount = g(`life_item${i}_total`);
@@ -1321,23 +1323,24 @@ if (rt === "MENORA_LIFE_INVOICE") {
         }
     }
 
-    // totals
-    q.set("life_subtotal",   g("life_subtotal") || "");
-    q.set("life_vat_percent", g("life_vat_percent") || "");
-    q.set("life_vat_amount",  g("life_vat_amount") || "");
-    q.set("life_total",       g("life_total") || "");
+    // TOTALS
+    q.set("life_subtotal",     g("life_subtotal") || "");
+    q.set("life_vat_rate",     g("life_vat_percent") || "");
+    q.set("life_vat_amount",   g("life_vat_amount") || "");
+    q.set("life_total",        g("life_total") || "");
 
-    // insured data
+    // INSURED DATA
     const invRef      = (state.ref_number || state.reference_no || "").toString();
     const claimNumber = (state.db?.claim_number || "").toString();
-    const claimName   = (state.db?.full_name || "").toString();
-    const idNumber    = (state.db?.id_number || "").toString();
+    const claimName   = (state.db?.full_name    || "").toString();
+    const idNumber    = (state.db?.id_number    || "").toString();
 
     if (invRef)      q.set("inv_ref", invRef);
     if (claimNumber) q.set("claim.number", claimNumber);
     if (claimName)   q.set("claim.subject", claimName);
     if (idNumber)    q.set("insured.id_number", idNumber);
 }
+
 
 
     // ====== Photo selections (kept generic) ======

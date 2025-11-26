@@ -858,19 +858,20 @@ def preview_docx_as_pdf(report_id: int):
     # =====================================================================
 
     # ===================== MENORA LIFE INVOICE (preview) ======================
+    # ===================== MENORA LIFE INVOICE (preview) ======================
     if tmpl_key == "menora_life_invoice":
         g = request.args.get
 
-        # create dicts if missing
+        # Ensure nested objects exist
         ctx.setdefault("insured", {})
         ctx.setdefault("claim", {})
+        ctx.setdefault("totals", {})
 
-        # Base minimal context
+        # Dates
         ctx["inv_date"] = ddmmyyyy(g("inv_date") or "")
         ctx["inv_number"] = (g("inv_number") or "").strip()
         ctx["inv_ref"] = (g("inv_ref") or "").strip()
 
-        # DEBUG LOGS (add these)
         print("DEBUG LIFE-INVOICE inv_number =", ctx["inv_number"])
         print("DEBUG LIFE-INVOICE inv_date   =", ctx["inv_date"])
 
@@ -879,9 +880,60 @@ def preview_docx_as_pdf(report_id: int):
         ctx["claim"]["number"] = (g("claim.number") or "").strip()
         ctx["claim"]["subject"] = (g("claim.subject") or "").strip()
 
-        # **** TEST PARAMETER ****
-        ctx["life_followup_date"] = ddmmyyyy(g("life_followup_date") or g("life_followup_date_text") or "")
+        # Follow-up date
+        ctx["life_followup_date"] = ddmmyyyy(
+            g("life_followup_date") or g("life_followup_date_text") or ""
+        )
         print("DEBUG LIFE-INVOICE followup   =", ctx["life_followup_date"])
+
+        # ---------------------------
+        # LIFE ITEMS: FIXED VERSION
+        # ---------------------------
+        # Parse array life_items[1][text], life_items[1][amount], life_items[2][text]...
+        life_items = []
+        for key in request.args:
+            if key.startswith("life_items["):
+                # Extract index and field name
+                # life_items[1][text] -> index=1, field='text'
+                import re
+                m = re.match(r"life_items\[(\d+)\]\[(\w+)\]", key)
+                if m:
+                    idx = int(m.group(1))
+                    field = m.group(2)
+                    value = request.args.get(key)
+
+                    # Ensure list is large enough
+                    while len(life_items) <= idx:
+                        life_items.append({"text": "", "amount": ""})
+
+                    life_items[idx][field] = value
+
+        # Remove empty or incomplete rows
+        life_items = [
+            row for row in life_items
+            if row.get("text") or row.get("amount")
+        ]
+
+        ctx["life_items"] = life_items
+
+        # ---------------------------
+        # TOTALS — map to top-level keys used in DOCX
+        # ---------------------------
+        ctx["life_subtotal"] = (g("life_subtotal") or "").strip()
+        ctx["life_vat_amount"] = (g("life_vat_amount") or "").strip()
+        ctx["life_total"] = (g("life_total") or "").strip()
+        ctx["life_vat_rate"] = (g("life_vat_rate") or "").strip()
+
+        # DEBUG
+        print("=== DEBUG LIFE INVOICE CTX PREVIEW ===")
+        print("inv_number =", ctx["inv_number"])
+        print("life_followup_date =", ctx["life_followup_date"])
+        print("life_items =", ctx["life_items"])
+        print("life_subtotal =", ctx["life_subtotal"])
+        print("life_vat_rate =", ctx["life_vat_rate"])
+        print("life_vat_amount =", ctx["life_vat_amount"])
+        print("life_total =", ctx["life_total"])
+        print("=====================================")
 
         buf = io.BytesIO()
         tpl.render(ctx)
