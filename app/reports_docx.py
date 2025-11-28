@@ -1125,7 +1125,7 @@ def render_docx_download(report_id: int):
     # --- Social media photos for Menora Life follow-up (download) ---
     if tmpl_key == "menora_life_followup":
         # life-followup uses ONLY selected_life_photos[] for the social media block
-        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in resolved_paths]
+        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in paths]
 
         # --- Authorities 1 + 2 (must not depend on active_list!) ---
         for key, placeholder in [
