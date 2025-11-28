@@ -707,6 +707,8 @@ def _report_media_root() -> str:
 
 # ====== FULL ROUTE: /reports/<id>/preview-pdf  ===============================
 
+# ====== FULL ROUTE: /reports/<id>/preview-pdf  ===============================
+
 @reports_docx_bp.route("/<int:report_id>/preview-pdf", methods=["GET"])
 def preview_docx_as_pdf(report_id: int):
     import io, os
@@ -815,13 +817,10 @@ def preview_docx_as_pdf(report_id: int):
     #            Decide which photo list to use
     # ------------------------------------------------------------
     if tmpl_key == "menora_life_followup":
-        current_app.logger.info("[DEBUG][PHOTOS] Using FOLLOW-UP photo set.")
         active_list = photos_life
     elif tmpl_key == "menora_life_photos":
-        current_app.logger.info("[DEBUG][PHOTOS] Using PHOTO-REPORT photo set.")
         active_list = photos_generic
     else:
-        current_app.logger.info("[DEBUG][PHOTOS] Using DEFAULT photo set.")
         active_list = photos_generic
 
     # ------------------------------------------------------------
@@ -836,23 +835,19 @@ def preview_docx_as_pdf(report_id: int):
         else:
             resolved_paths.append(path)
 
-    current_app.logger.info("[DEBUG][PHOTOS] Final resolved list = %s", resolved_paths)
-
     # ------------------------------------------------------------
     #      FOLLOW-UP: flat list goes to {{ social_photos }}
     # ------------------------------------------------------------
     if tmpl_key == "menora_life_followup":
-        # life-followup uses ONLY selected_life_photos[] for the social media block
         ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in resolved_paths]
 
-        # --- Authorities 1 + 2 (must not depend on active_list!) ---
+        # Authorities tables
         for key, placeholder in [
             ("authorities_table", "authorities_table_photo"),
             ("authorities_table_2", "authorities_table_photo_2"),
         ]:
             name = (request.args.get(key) or "").strip()
             img_path = resolve_one(name)
-            current_app.logger.info("[AUTH] key=%s name=%s resolved=%s", key, name, img_path)
             ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(120)) if img_path else ""
 
     # ------------------------------------------------------------
@@ -886,6 +881,48 @@ def preview_docx_as_pdf(report_id: int):
     ctx["gap"]         = "\u00A0" * 8
 
     # ------------------------------------------------------------
+    #   🔥🔥🔥 FIXED BLOCK: MENORA LIFE INVOICE MUST HAVE claim+insured
+    # ------------------------------------------------------------
+    # ------------------------------------------------------------
+    #     MENORA LIFE INVOICE — populate invoice fields (PREVIEW)
+    # ------------------------------------------------------------
+    if tmpl_key == "menora_life_invoice":
+        ctx.setdefault("claim", {})
+        ctx.setdefault("insured", {})
+
+        # Parse invoice date
+        inv_date_str = (request.args.get("inv_date") or "").strip()
+        inv_iso = _to_iso(inv_date_str) or inv_date_str
+        ctx["inv_date"] = ddmmyyyy(inv_iso) if "-" in (inv_iso or "") else inv_date_str
+
+        # Simple scalar fields
+        ctx["inv_number"] = (request.args.get("inv_number") or "").strip()
+        ctx["inv_ref"] = (request.args.get("inv_ref") or "").strip()
+        ctx["life_followup_date"] = (request.args.get("life_followup_date") or "").strip()
+
+        # Claim / insured (needed for header)
+        ctx["claim"]["number"] = request.args.get("claim.number", "") or ctx["db"].get("claim_number", "")
+        ctx["claim"]["subject"] = request.args.get("claim.subject", "") or ctx["db"].get("full_name", "")
+        ctx["insured"]["id_number"] = request.args.get("insured.id_number", "") or ctx["db"].get("id_number", "")
+
+        # Totals
+        ctx["life_subtotal"] = (request.args.get("life_subtotal") or "").strip()
+        ctx["life_vat_amount"] = (request.args.get("life_vat_amount") or "").strip()
+        ctx["life_total"] = (request.args.get("life_total") or "").strip()
+
+        # Items (life_items[1][text] etc)
+        life_items = []
+        for i in range(1, 50):
+            text = request.args.get(f"life_items[{i}][text]")
+            amount = request.args.get(f"life_items[{i}][amount]")
+            if text or amount:
+                life_items.append({
+                    "text": text or "",
+                    "amount": amount or "",
+                })
+        ctx["life_items"] = life_items
+
+    # ------------------------------------------------------------
     # GENERATE PDF
     # ------------------------------------------------------------
     buf = io.BytesIO()
@@ -895,7 +932,6 @@ def preview_docx_as_pdf(report_id: int):
     return send_file(io.BytesIO(pdf_bytes),
                      mimetype="application/pdf",
                      download_name="preview.pdf")
-
 
 
 
@@ -1056,15 +1092,12 @@ def render_docx_download(report_id: int):
 
     # ===================== MENORA LIFE INVOICE ============================
     if tmpl_key == "menora_life_invoice":
-        # invoice + followup dates come from the LIFE invoice card
-        inv_date_str       = (payload.get("inv_date") or "").strip()
+        inv_date_str = (payload.get("inv_date") or "").strip()
         followup_date_text = (payload.get("life_followup_date") or "").strip()
 
-        # try to normalise invoice date like other reports:
         inv_iso = _to_iso(inv_date_str) or inv_date_str
         inv_date_dmy = ddmmyyyy(inv_iso) if "-" in (inv_iso or "") else inv_date_str
 
-        # line items (array of {text, amount})
         life_items = payload.get("life_items") or []
         if isinstance(life_items, str):
             try:
@@ -1078,20 +1111,22 @@ def render_docx_download(report_id: int):
         ctx.setdefault("claim", {})
 
         ctx.update({
-            "inv_date":          inv_date_dmy,
-            "inv_number":        (payload.get("inv_number") or "").strip(),
-            "inv_ref":           (payload.get("inv_ref") or "").strip(),
+            "inv_date": inv_date_dmy,
+            "inv_number": (payload.get("inv_number") or "").strip(),
+            "inv_ref": (payload.get("inv_ref") or "").strip(),
             "life_followup_date": followup_date_text,
-            "life_items":        life_items,
-            "life_subtotal":     (totals.get("subtotal")   or "").strip(),
-            "life_vat_amount":   (totals.get("vat_amount") or "").strip(),
-            "life_total":        (totals.get("total")      or "").strip(),
+            "life_items": life_items,
+            "life_subtotal": (totals.get("subtotal") or "").strip(),
+            "life_vat_amount": (totals.get("vat_amount") or "").strip(),
+            "life_total": (totals.get("total") or "").strip(),
         })
 
-        # claim / insured ids already in ctx["db"], but client also sends them;
-        # we don't strictly need to override here, the template will use db.*
-        # if you ever want, you can update ctx["claim"] / ctx["insured"] too.
+        # 🔥 FIX: ensure claim + insured objects exist
+        ctx["claim"]["number"] = payload.get("claim", {}).get("number") or ctx["db"].get("claim_number", "")
+        ctx["claim"]["subject"] = payload.get("claim", {}).get("subject") or ctx["db"].get("full_name", "")
+        ctx["insured"]["id_number"] = payload.get("insured", {}).get("id_number") or ctx["db"].get("id_number", "")
 
+        # Save DOCX
         out_dir = os.path.join(current_app.instance_path, "generated_reports")
         os.makedirs(out_dir, exist_ok=True)
 
@@ -1104,6 +1139,7 @@ def render_docx_download(report_id: int):
 
         docx_url = url_for("generated_reports", filename=filename)
         return jsonify({"ok": True, "docx_url": docx_url})
+
     # =================== /MENORA LIFE INVOICE =============================
 
     # --- collect selected names from payload (for photo-based reports) ---
