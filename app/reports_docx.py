@@ -716,12 +716,12 @@ def preview_docx_as_pdf(report_id: int):
 
     insured_id = request.args.get("insured_id", type=int)
 
-    # NEW: reference + version from query
+    # NEW: reference + version
     ref_number   = (request.args.get("ref_number") or "").strip()
     reference_no = (request.args.get("reference_no") or "").strip()
     version_no   = request.args.get("version_no", type=int)
 
-    # ---- collect overrides from query ----
+    # ---- collect overrides ----
     overrides = {
         "activity_date": (request.args.get("activity_date") or "").strip(),
         "surv_place":    (request.args.get("surv_place") or "").strip(),
@@ -742,16 +742,6 @@ def preview_docx_as_pdf(report_id: int):
         "dnb":           (request.args.get("dnb") or "").strip(),
     }
 
-    try:
-        current_app.logger.info(
-            "[CTX][preview] query.background=%r (report_id=%s, insured_id=%s)",
-            overrides["background"],
-            report_id,
-            insured_id,
-        )
-    except Exception:
-        pass
-
     ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
 
     ctx = _apply_ref_and_version(
@@ -761,28 +751,30 @@ def preview_docx_as_pdf(report_id: int):
         version_no=version_no,
     )
 
-
-    # --- template path ---
+    # ------------------------------------------------------------
+    #          TEMPLATE DETECTION
+    # ------------------------------------------------------------
     tmpl_key = (request.args.get("template", "siudi") or "siudi").strip().lower()
     template_path = load_template_docx(map_template_key(tmpl_key))
-    current_app.logger.info("[DOCX] Using template: %s", template_path)
+    current_app.logger.info("[DEBUG][PHOTOS] Using template key=%s -> %s", tmpl_key, template_path)
 
     tpl = DocxTemplate(template_path)
 
-    # --- Menora life follow-up: tracking activities table ---
+    # ------------------------------------------------------------
+    #            FOLLOW-UP specific fields
+    # ------------------------------------------------------------
     if tmpl_key == "menora_life_followup":
         raw = (request.args.get("tracking_raw") or "").strip()
         ctx["tracking_rows"] = _parse_tracking_rows(raw) if raw else []
 
     if tmpl_key == "menora_life_photos":
-        # photo_date is sent in ISO (yyyy-mm-dd) from the hidden field
         iso = (request.args.get("photo_date") or "").strip()
         if iso:
-            # convert to dd/mm/yyyy for {{ db.photo_date }} in menora_photos.docx
             ctx.setdefault("db", {})["photo_date"] = ddmmyyyy(iso)
 
-
-    # --- common media root + resolver (photos + 'טבלת רשויות') ---
+    # ------------------------------------------------------------
+    #              RESOLVE PHOTO FILENAMES
+    # ------------------------------------------------------------
     case_id = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
     rep_id = str(report_id)
     media_root = current_app.config.get(
@@ -791,197 +783,80 @@ def preview_docx_as_pdf(report_id: int):
     )
 
     def resolve_one(name: str) -> str | None:
-        """Resolve a basename to a real file under REPORT_MEDIA_DIR."""
         if not name:
             return None
-        name = os.path.basename(name)
+        base = os.path.basename(name)
 
-        exact = os.path.join(media_root, case_id, rep_id, name)
+        # try exact under report folder
+        exact = os.path.join(media_root, case_id, rep_id, base)
         if os.path.isfile(exact):
             return exact
 
+        # walk entire case folder
         case_root = os.path.join(media_root, case_id)
         if os.path.isdir(case_root):
-            for root, _dirs, files in os.walk(case_root):
-                if name in files:
-                    return os.path.join(root, name)
+            for root, dirs, files in os.walk(case_root):
+                if base in files:
+                    return os.path.join(root, base)
 
-        current_app.logger.warning("[PHOTOS] not found: %s", name)
         return None
 
-    # --- Menora Life: two authorities-table images ---
+    # ------------------------------------------------------------
+    #            DEBUG: which photo sets received?
+    # ------------------------------------------------------------
+    photos_generic = request.args.getlist("selected_photos[]")
+    photos_life    = request.args.getlist("selected_life_photos[]")
+
+    current_app.logger.info("[DEBUG][PHOTOS] tmpl_key=%s", tmpl_key)
+    current_app.logger.info("[DEBUG][PHOTOS] selected_photos[]       = %s", photos_generic)
+    current_app.logger.info("[DEBUG][PHOTOS] selected_life_photos[] = %s", photos_life)
+
+    # ------------------------------------------------------------
+    #            Decide which photo list to use
+    # ------------------------------------------------------------
     if tmpl_key == "menora_life_followup":
-        def _add_table(param_name: str, placeholder: str):
-            tbl_name = (request.args.get(param_name) or "").strip()
-            img_path = resolve_one(tbl_name) if tbl_name else None
-            if img_path:
-                ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(120))
-            else:
-                ctx[placeholder] = ""
+        current_app.logger.info("[DEBUG][PHOTOS] Using FOLLOW-UP photo set.")
+        active_list = photos_life
+    elif tmpl_key == "menora_life_photos":
+        current_app.logger.info("[DEBUG][PHOTOS] Using PHOTO-REPORT photo set.")
+        active_list = photos_generic
+    else:
+        current_app.logger.info("[DEBUG][PHOTOS] Using DEFAULT photo set.")
+        active_list = photos_generic
 
-        # first table: uses existing param name
-        _add_table("authorities_table", "authorities_table_photo")
-        # second table
-        _add_table("authorities_table_2", "authorities_table_photo_2")
+    # ------------------------------------------------------------
+    #            Resolve paths + debug log each
+    # ------------------------------------------------------------
+    resolved_paths = []
+    for fn in active_list:
+        path = resolve_one(fn)
+        current_app.logger.info("[DEBUG][PHOTOS] resolve_one('%s') -> %s", fn, path)
+        if not path:
+            current_app.logger.warning("[PHOTOS] not found: %s", fn)
+        else:
+            resolved_paths.append(path)
 
-    # ===================== SIUDI INVOICE (no photos) ======================
-    if tmpl_key == "siudi_invoice":
-        g = request.args.get
-        inv_date_iso = (g("inv_date") or "").strip()
+    current_app.logger.info("[DEBUG][PHOTOS] Final resolved list = %s", resolved_paths)
 
-        ctx.setdefault("insured", {})
-        ctx.setdefault("claim", {})
-        ctx.setdefault("totals", {})
-
-        ctx.update({
-            "inv_date":   ddmmyyyy(inv_date_iso),
-            "inv_number": (g("inv_number") or "").strip(),
-            "inv_ref":    (g("inv_ref") or "").strip(),
-        })
-        ctx["insured"]["id_number"] = (g("insured.id_number") or "").strip()
-        ctx["claim"]["number"]      = (g("claim.number") or "").strip()
-        ctx["claim"]["subject"]     = (g("claim.subject") or "").strip()
-        ctx["totals"].update({
-            "subtotal":   (g("totals_subtotal") or "").strip(),
-            "vat_rate":   (g("totals_vat_rate") or "").strip(),
-            "vat_amount": (g("totals_vat_amount") or "").strip(),
-            "total":      (g("totals_total") or "").strip(),
-        })
-
-        buf = io.BytesIO()
-        tpl.render(ctx)
-        tpl.save(buf)
-        pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
-        return send_file(io.BytesIO(pdf_bytes),
-                         mimetype="application/pdf",
-                         download_name="preview.pdf")
-    # =====================================================================
-
-    # ===================== MENORA LIFE INVOICE (preview) ======================
-    # ===================== MENORA LIFE INVOICE (preview) ======================
-    if tmpl_key == "menora_life_invoice":
-        g = request.args.get
-
-        # Ensure nested objects exist
-        ctx.setdefault("insured", {})
-        ctx.setdefault("claim", {})
-        ctx.setdefault("totals", {})
-
-        # Dates
-        ctx["inv_date"] = ddmmyyyy(g("inv_date") or "")
-        ctx["inv_number"] = (g("inv_number") or "").strip()
-        ctx["inv_ref"] = (g("inv_ref") or "").strip()
-
-        print("DEBUG LIFE-INVOICE inv_number =", ctx["inv_number"])
-        print("DEBUG LIFE-INVOICE inv_date   =", ctx["inv_date"])
-
-        # Claim & insured
-        ctx["insured"]["id_number"] = (g("insured.id_number") or "").strip()
-        ctx["claim"]["number"] = (g("claim.number") or "").strip()
-        ctx["claim"]["subject"] = (g("claim.subject") or "").strip()
-
-        # Follow-up date
-        ctx["life_followup_date"] = ddmmyyyy(
-            g("life_followup_date") or g("life_followup_date_text") or ""
-        )
-        print("DEBUG LIFE-INVOICE followup   =", ctx["life_followup_date"])
-
-        # ---------------------------
-        # LIFE ITEMS: FIXED VERSION
-        # ---------------------------
-        # Parse array life_items[1][text], life_items[1][amount], life_items[2][text]...
-        life_items = []
-        for key in request.args:
-            if key.startswith("life_items["):
-                # Extract index and field name
-                # life_items[1][text] -> index=1, field='text'
-                import re
-                m = re.match(r"life_items\[(\d+)\]\[(\w+)\]", key)
-                if m:
-                    idx = int(m.group(1))
-                    field = m.group(2)
-                    value = request.args.get(key)
-
-                    # Ensure list is large enough
-                    while len(life_items) <= idx:
-                        life_items.append({"text": "", "amount": ""})
-
-                    life_items[idx][field] = value
-
-        # Remove empty or incomplete rows
-        life_items = [
-            row for row in life_items
-            if row.get("text") or row.get("amount")
-        ]
-
-        ctx["life_items"] = life_items
-
-        # ---------------------------
-        # TOTALS — map to top-level keys used in DOCX
-        # ---------------------------
-        ctx["life_subtotal"] = (g("life_subtotal") or "").strip()
-        ctx["life_vat_amount"] = (g("life_vat_amount") or "").strip()
-        ctx["life_total"] = (g("life_total") or "").strip()
-        ctx["life_vat_rate"] = (g("life_vat_rate") or "").strip()
-
-        # DEBUG
-        print("=== DEBUG LIFE INVOICE CTX PREVIEW ===")
-        print("inv_number =", ctx["inv_number"])
-        print("life_followup_date =", ctx["life_followup_date"])
-        print("life_items =", ctx["life_items"])
-        print("life_subtotal =", ctx["life_subtotal"])
-        print("life_vat_rate =", ctx["life_vat_rate"])
-        print("life_vat_amount =", ctx["life_vat_amount"])
-        print("life_total =", ctx["life_total"])
-        print("=====================================")
-
-        buf = io.BytesIO()
-        tpl.render(ctx)
-        tpl.save(buf)
-        pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
-        return send_file(io.BytesIO(pdf_bytes),
-                         mimetype="application/pdf",
-                         download_name="preview.pdf")
-
-    # =======================================================================
-
-
-    # --- collect selected files (names) -> absolute paths ---
-    selected = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos")
-    selected = [os.path.basename(n) for n in selected if n]
-
-    paths = [p for n in selected if (p := resolve_one(n))]
-
-    # Only auto-include all photos for legacy templates (tracking/siudi/etc.),
-    # NOT for Menora Life follow-up.
-    if not paths and tmpl_key not in {"menora_life_followup"}:
-        folder = os.path.join(media_root, case_id, rep_id)
-        if os.path.isdir(folder):
-            for fn in sorted(os.listdir(folder)):
-                if fn.lower().endswith((".jpg", ".jpeg", ".png", ".webp", ".bmp", ".gif")):
-                    paths.append(os.path.join(folder, fn))
-
-
-    # --- Social media photos for Menora Life follow-up ---
+    # ------------------------------------------------------------
+    #      FOLLOW-UP: flat list goes to {{ social_photos }}
+    # ------------------------------------------------------------
     if tmpl_key == "menora_life_followup":
-        # flat list, no portrait/landscape logic – used by {{ social_photos }} in the DOCX
-        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in paths]
+        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in resolved_paths]
 
-
-    # --- classify by orientation ---
+    # ------------------------------------------------------------
+    # NORMAL photo reports: landscape/portrait separation
+    # ------------------------------------------------------------
     lands, ports = [], []
-    for p in paths:
+    for p in resolved_paths:
         try:
             with Image.open(p) as im:
                 w, h = im.size
             (lands if w >= h else ports).append(p)
         except Exception as e:
-            current_app.logger.warning("[PHOTOS] failed to open %s: %s", p, e)
+            current_app.logger.warning("[PHOTOS] Failed to open %s: %s", p, e)
 
-    LAND_W = Mm(120)
-    PORT_W = Mm(76)
-
-    land_images = [InlineImage(tpl, p, width=LAND_W) for p in lands]
+    land_images = [InlineImage(tpl, p, width=Mm(120)) for p in lands]
 
     def chunk2(items):
         it = iter(items)
@@ -989,29 +864,27 @@ def preview_docx_as_pdf(report_id: int):
             b = next(it, None)
             yield a, b
 
-    port_rows = []
-    for l, r in chunk2(ports):
-        left  = InlineImage(tpl, l, width=PORT_W)
-        right = InlineImage(tpl, r, width=PORT_W) if r else None
-        port_rows.append((left, right))
+    port_rows = [
+        (InlineImage(tpl, l, width=Mm(76)),
+         InlineImage(tpl, r, width=Mm(76)) if r else None)
+        for l, r in chunk2(ports)
+    ]
 
-    gap = "\u00A0" * 8
+    ctx["land_images"] = land_images
+    ctx["port_rows"]   = port_rows
+    ctx["gap"]         = "\u00A0" * 8
 
-    ctx.update({
-        "land_images": land_images,
-        "port_rows":   port_rows,
-        "gap":         gap,
-    })
-
+    # ------------------------------------------------------------
+    # GENERATE PDF
+    # ------------------------------------------------------------
     buf = io.BytesIO()
     tpl.render(ctx)
     tpl.save(buf)
-    docx_bytes = buf.getvalue()
-
-    pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
+    pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
     return send_file(io.BytesIO(pdf_bytes),
                      mimetype="application/pdf",
                      download_name="preview.pdf")
+
 
 
 

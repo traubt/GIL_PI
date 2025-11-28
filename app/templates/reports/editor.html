@@ -352,6 +352,7 @@
                   placeholder="למשל: בסריקה ברשת האינטרנט ובמדיה החברתית אותר דף פייסבוק..."></textarea>
       </div>
 
+      {% include 'photo_id_life_followup.html' %}
 
       <!-- זיהוי במדיה החברתית -->
       <div class="col-12">
@@ -1241,6 +1242,16 @@ function applyTemplateSections() {
       }
     }
 
+    // === Life Follow-up selected photos ===
+    if (tmplKey === 'menora_life_followup') {
+        if (typeof window.collectLifeFollowupPhotos === 'function') {
+            const p = window.collectLifeFollowupPhotos();
+            for (const file of p) {
+                q.append("selected_life_photos[]", file);
+            }
+        }
+    }
+
 
     // ====== Template selection ======
     q.set("template", tmplKey);
@@ -1896,27 +1907,127 @@ if (rt === "MENORA_LIFE_INVOICE") {
     }
   })();
 
-// --- תאריך תמונות לדוח (dd/mm/yyyy → ISO yyyy-mm-dd) ---
-  document.addEventListener("DOMContentLoaded", function() {
-      const el = document.getElementById("photos_date_dmy");
-      const hidden = document.getElementById("photos_date");
-      if (!el || !hidden) return;
+  /* ============================================================
+     LIFE FOLLOW-UP PHOTOS — FIXED FULL VERSION
+     ============================================================ */
+  document.addEventListener("DOMContentLoaded", function () {
 
-      flatpickr(el, {
-          dateFormat: "d/m/Y",
-          allowInput: true,
-          onChange: function(_, dateStr) {
-              hidden.value = dmyToIso(dateStr);
-          },
-          onClose: function(_, dateStr) {
-              hidden.value = dmyToIso(dateStr);
+      const btn       = document.getElementById("btnLoadLifeFollowupPhotos");
+      const input     = document.getElementById("lifeFollowupLocalInput");
+      const container = document.getElementById("lifeFollowupPhotoContainer");
+
+      // Selected follow-up items
+      let lfPicked = [];   // [{file, name, url, selected, serverUrl, serverName}]
+
+      function renderLifeFollowupGrid() {
+          container.innerHTML = "";
+
+          if (!lfPicked.length) {
+              container.innerHTML = `<div class="text-muted small">לא נבחרו תמונות</div>`;
+              return;
           }
-      });
 
-      el.addEventListener("blur", function() {
-          hidden.value = dmyToIso(el.value);
-      });
+          const grid = document.createElement("div");
+          grid.className = "thumb-grid";
+
+          lfPicked.forEach(item => {
+              const wrap = document.createElement("div");
+
+              wrap.className =
+                  `thumb life-followup-photo ${item.selected ? 'selected' : ''}`;
+
+              wrap.dataset.name = item.serverName || "";   // 🔥 critical
+
+              wrap.style.cursor = "pointer";
+              wrap.addEventListener("click", () => {
+                  item.selected = !item.selected;
+                  wrap.classList.toggle("selected", item.selected);
+              });
+
+              const img = document.createElement("img");
+              img.src = item.serverUrl || item.url;
+              img.alt = item.serverName || item.name;
+
+              const name = document.createElement("div");
+              name.innerHTML = `<span class="name">${item.serverName || item.name}</span>`;
+
+              wrap.appendChild(img);
+              wrap.appendChild(name);
+
+              grid.appendChild(wrap);
+          });
+
+          container.appendChild(grid);
+      }
+
+      async function uploadFollowupImages(files) {
+          const fd = new FormData();
+          for (const f of files) fd.append('files[]', f, f.name);
+
+          const caseId = (window.state?.insured_id ?? '').toString() || 'no_case';
+          const reportId = (window.state?.report_id ?? 1).toString();
+
+          fd.append("case_id", caseId);
+          fd.append("report_id", reportId);
+
+          const res = await fetch("/reports/import_local_dropbox", {
+              method: "POST",
+              body: fd
+          });
+
+          if (!res.ok) throw new Error("Upload failed");
+          return res.json();
+      }
+
+      async function handleLifeFollowupFiles(fileList) {
+          lfPicked = [];
+
+          const localOnly = [];
+          for (const f of fileList) {
+              if (!/^image\//.test(f.type)) continue;
+              const url = URL.createObjectURL(f);
+              localOnly.push({ file: f, url, name: f.name });
+          }
+
+          // Upload to server and match results
+          const uploadResult = await uploadFollowupImages(fileList);
+          const saved = uploadResult.saved || [];
+
+          saved.forEach((srv, idx) => {
+              const loc = localOnly[idx];
+
+              lfPicked.push({
+                  file: loc.file,
+                  url: loc.url,
+                  name: loc.name,
+                  serverUrl: srv.url,
+                  serverName: srv.name,
+                  selected: true
+              });
+          });
+
+          renderLifeFollowupGrid();
+      }
+
+      if (btn && input) {
+          btn.addEventListener("click", () => input.click());
+          input.addEventListener("change", () => {
+              if (input.files && input.files.length) {
+                  handleLifeFollowupFiles(input.files);
+              }
+          });
+      }
+
+      // RETURN SANITIZED NAMES TO SERVER
+      window.collectLifeFollowupPhotos = function () {
+          return lfPicked
+              .filter(x => x.selected && x.serverName)
+              .map(x => x.serverName);
+      };
+
   });
+
+
 
 
 // ===== Invoice datepicker (mirrors to ISO) =====
