@@ -842,7 +842,18 @@ def preview_docx_as_pdf(report_id: int):
     #      FOLLOW-UP: flat list goes to {{ social_photos }}
     # ------------------------------------------------------------
     if tmpl_key == "menora_life_followup":
+        # life-followup uses ONLY selected_life_photos[] for the social media block
         ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in resolved_paths]
+
+        # --- Authorities 1 + 2 (must not depend on active_list!) ---
+        for key, placeholder in [
+            ("authorities_table", "authorities_table_photo"),
+            ("authorities_table_2", "authorities_table_photo_2"),
+        ]:
+            name = (request.args.get(key) or "").strip()
+            img_path = resolve_one(name)
+            current_app.logger.info("[AUTH] key=%s name=%s resolved=%s", key, name, img_path)
+            ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(120)) if img_path else ""
 
     # ------------------------------------------------------------
     # NORMAL photo reports: landscape/portrait separation
@@ -1113,7 +1124,18 @@ def render_docx_download(report_id: int):
 
     # --- Social media photos for Menora Life follow-up (download) ---
     if tmpl_key == "menora_life_followup":
-        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in paths]
+        # life-followup uses ONLY selected_life_photos[] for the social media block
+        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in resolved_paths]
+
+        # --- Authorities 1 + 2 (must not depend on active_list!) ---
+        for key, placeholder in [
+            ("authorities_table", "authorities_table_photo"),
+            ("authorities_table_2", "authorities_table_photo_2"),
+        ]:
+            name = (request.args.get(key) or "").strip()
+            img_path = resolve_one(name)
+            current_app.logger.info("[AUTH] key=%s name=%s resolved=%s", key, name, img_path)
+            ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(120)) if img_path else ""
 
     # --- orientation split using real pixel sizes ---
     lands, ports = [], []
