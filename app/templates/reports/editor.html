@@ -978,18 +978,33 @@ function applyTemplateSections() {
         width: x.width, height: x.height, type: x.type
       }));
     };
-    window.selectedPhotoNames = function(){
-      const out = [];
-      for (const p of window.getSelectedReportImages()){
-        if (p.serverName) { out.push(p.serverName); continue; }
-        const u = p.url || '';
-        const m = u.match(/[?&]name=([^&#]+)/);
-        if (m) { out.push(decodeURIComponent(m[1])); continue; }
-        const n = (p.name || '').split(/[\\/]/).pop();
-        if (n) out.push(n);
-      }
-      return out;
-    };
+
+window.selectedPhotoNames = function() {
+    const out = [];
+    for (const p of window.getSelectedReportImages()) {
+
+        // 1) Full correctness: use serverName if exists (production)
+        if (p.serverName) {
+            out.push(p.serverName);
+            continue;
+        }
+
+        // 2) On local machine, URL is like C:\... or /home/... → extract basename
+        let url = p.url || "";
+
+        // Remove ?name=... because it is FAKE
+        if (url.includes("?")) {
+            url = url.split("?")[0];
+        }
+
+        // Extract filename from either C:\path or /unix/path
+        const base = decodeURIComponent(url).split(/[\\/]/).pop();
+        if (base) out.push(base);
+    }
+    return out;
+};
+
+
 
     function setStatus(msg){ if(statusEl) statusEl.textContent = msg || ''; }
     function clearGrids(){ if(gridL) gridL.innerHTML=''; if(gridP) gridP.innerHTML=''; }
