@@ -568,9 +568,14 @@ def _docx_to_pdf_bytes(docx_bytes: bytes) -> bytes:
                 "--outdir", str(tmp),
                 str(docx_path),
             ]
+
+            env = os.environ.copy()
+            env["SAL_DISABLE_OPENCL"] = "true"
+            env["LO_JAVA_ENABLED"] = "false"
+
             proc = subprocess.run(
                 cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                text=True, cwd=str(tmp)
+                text=True, cwd=str(tmp), env=env
             )
             # wait up to 15s for *any* PDF to appear
             deadline = time.time() + 15.0
