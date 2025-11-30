@@ -418,8 +418,8 @@
       <!-- ===================== תמונות לדו"ח (משותף) ===================== -->
       <div id="report-photos-card" class="card mt-3" dir="rtl">
         <div class="card-header bg-light fw-bold d-flex justify-content-between align-items-center">
-          <span>דוח תמונות</span>
-<!--          <small class="text-muted">תמונות מהממצאים בשטח / מדיה חברתית</small>-->
+          <span>תמונות לדוח</span>
+          <small class="text-muted">תמונות מהממצאים בשטח / מדיה חברתית</small>
         </div>
         <div class="card-body">
           <!-- ===================== תמונות מתאריך ===================== -->
@@ -614,28 +614,25 @@ window.safeUUID = (function () {
     if (o) o.style.display = 'none';
   }
 
-  // Always return the correct basename, even for encoded URLs or relative paths
+  // Keep GET URLs short: turn data URLs or long paths into a short basename
   function shortenPhotoSrc(val){
-      if (!val) return "";
+    if (!val) return "";
+    const s = String(val).trim();
 
-      // Convert to string and decode any encoded characters
-      const s = decodeURIComponent(String(val).trim());
+    // If it's a data URL, don't send it on GET
+    if (s.startsWith("data:")) return "";
 
-      // Ignore data URLs
-      if (s.startsWith("data:")) return "";
+    // If it's a URL with ?name=..., prefer that
+    try{
+      const u = new URL(s, window.location.origin);
+      const n = u.searchParams.get('name');
+      if (n) return n;
+    }catch(e){ /* not a URL; fall back below */ }
 
-      try {
-          // Works for absolute & relative URLs
-          const url = new URL(s, window.location.origin);
-          const pathname = decodeURIComponent(url.pathname);  // ensure spaces, unicode preserved
-          return pathname.split('/').pop();
-      } catch (e) {
-          // For simple filenames or paths that cannot be parsed as URL
-          const cleaned = s.split(/[\\/]/).pop(); // handles Windows + Linux separators
-          return cleaned;
-      }
+    // Otherwise, just basename
+    const m = s.match(/[^/\\]+$/);
+    return m ? m[0] : s.slice(0, 120);
   }
-
   window.shortenPhotoSrc = shortenPhotoSrc;
 
   // === Photo-ID: resolve *only* the image chosen in the "תמונת זיהוי" card ===
@@ -978,33 +975,18 @@ function applyTemplateSections() {
         width: x.width, height: x.height, type: x.type
       }));
     };
-
-window.selectedPhotoNames = function() {
-    const out = [];
-    for (const p of window.getSelectedReportImages()) {
-
-        // 1) Full correctness: use serverName if exists (production)
-        if (p.serverName) {
-            out.push(p.serverName);
-            continue;
-        }
-
-        // 2) On local machine, URL is like C:\... or /home/... → extract basename
-        let url = p.url || "";
-
-        // Remove ?name=... because it is FAKE
-        if (url.includes("?")) {
-            url = url.split("?")[0];
-        }
-
-        // Extract filename from either C:\path or /unix/path
-        const base = decodeURIComponent(url).split(/[\\/]/).pop();
-        if (base) out.push(base);
-    }
-    return out;
-};
-
-
+    window.selectedPhotoNames = function(){
+      const out = [];
+      for (const p of window.getSelectedReportImages()){
+        if (p.serverName) { out.push(p.serverName); continue; }
+        const u = p.url || '';
+        const m = u.match(/[?&]name=([^&#]+)/);
+        if (m) { out.push(decodeURIComponent(m[1])); continue; }
+        const n = (p.name || '').split(/[\\/]/).pop();
+        if (n) out.push(n);
+      }
+      return out;
+    };
 
     function setStatus(msg){ if(statusEl) statusEl.textContent = msg || ''; }
     function clearGrids(){ if(gridL) gridL.innerHTML=''; if(gridP) gridP.innerHTML=''; }
@@ -2227,6 +2209,47 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
+<script>
+// ------------------- Photos Datepicker (DD/MM/YYYY → ISO) -------------------
+document.addEventListener("DOMContentLoaded", function() {
+
+    const dmyInput = document.getElementById("photos_date_dmy");
+    const isoInput = document.getElementById("photos_date");
+
+    if (!dmyInput || !isoInput) return;
+
+    function dmyToIso(dmy) {
+        if (!dmy) return "";
+        const [d, m, y] = dmy.split(/[./-]/);
+        if (!d || !m || !y) return "";
+        return `${y.padStart(4,"0")}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+    }
+
+    function isoToDmy(iso) {
+        if (!iso) return "";
+        const [y, m, d] = iso.split("-");
+        return `${d.padStart(2,"0")}/${m.padStart(2,"0")}/${y}`;
+    }
+
+    // Initialize flatpickr
+    flatpickr(dmyInput, {
+        dateFormat: "d/m/Y",
+        allowInput: true,
+        onChange: function(selectedDates, dateStr) {
+            // dateStr is already DD/MM/YYYY
+            dmyInput.value = dateStr;
+            isoInput.value = dmyToIso(dateStr);
+        },
+        onReady: function() {
+            // If server sent ISO value → restore DMY
+            if (isoInput.value) {
+                dmyInput.value = isoToDmy(isoInput.value);
+            }
+        }
+    });
+
+});
+</script>
 
 
 {% endblock %}
