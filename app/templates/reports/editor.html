@@ -2227,47 +2227,6 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
-<script>
-// ------------------- Photos Datepicker (DD/MM/YYYY → ISO) -------------------
-document.addEventListener("DOMContentLoaded", function() {
-
-    const dmyInput = document.getElementById("photos_date_dmy");
-    const isoInput = document.getElementById("photos_date");
-
-    if (!dmyInput || !isoInput) return;
-
-    function dmyToIso(dmy) {
-        if (!dmy) return "";
-        const [d, m, y] = dmy.split(/[./-]/);
-        if (!d || !m || !y) return "";
-        return `${y.padStart(4,"0")}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
-    }
-
-    function isoToDmy(iso) {
-        if (!iso) return "";
-        const [y, m, d] = iso.split("-");
-        return `${d.padStart(2,"0")}/${m.padStart(2,"0")}/${y}`;
-    }
-
-    // Initialize flatpickr
-    flatpickr(dmyInput, {
-        dateFormat: "d/m/Y",
-        allowInput: true,
-        onChange: function(selectedDates, dateStr) {
-            // dateStr is already DD/MM/YYYY
-            dmyInput.value = dateStr;
-            isoInput.value = dmyToIso(dateStr);
-        },
-        onReady: function() {
-            // If server sent ISO value → restore DMY
-            if (isoInput.value) {
-                dmyInput.value = isoToDmy(isoInput.value);
-            }
-        }
-    });
-
-});
-</script>
 
 
 {% endblock %}
