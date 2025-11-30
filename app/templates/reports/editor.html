@@ -125,6 +125,7 @@
                       data-insurance="{{ ins.insurance or '' }}"
                       data-claim-type="{{ ins.claim_type or '' }}"
                       data-phone="{{ ins.phone or '' }}"
+                      data-address="{{ ins.address or '' }}"
                     >
                       {{ (ins.last_name ~ ' ' ~ ins.first_name)|trim }}
                       · רפרנס {{ ins.ref_number or ins.ref or '—' }}
@@ -180,6 +181,11 @@
                         <label class="form-label">טלפון</label>
                         <input id="db_phone" type="text" class="form-control">
                       </div>
+                      <div class="col-8">
+                          <label class="form-label">כתובת</label>
+                          <input type="text" id="db_address" class="form-control">
+                      </div>
+
                     </div>
                   </div>
                 </div>
@@ -819,6 +825,7 @@ function applyTemplateSections() {
       db_id_number:    get('idNumber'),
       db_claim_number: get('claimNumber'),
       db_phone:        get('phone'),
+      db_address:        get('address'),
     };
     for (const [id,val] of Object.entries(map)){
       const el = document.getElementById(id);
@@ -831,7 +838,8 @@ function applyTemplateSections() {
     gender:     gender            || "",
     id_number:  map.db_id_number  || "",
     claim_number: map.db_claim_number || "",
-    phone:        map.db_phone      || "" 
+    phone:        map.db_phone      || "" ,
+    address:        map.db_address      || "" ,
   };
 
   // 🔹 NEW: use ref_number as the base for "מספרנו"
@@ -1225,6 +1233,7 @@ function applyTemplateSections() {
     if (g("db_end_time")) q.set("end_time", g("db_end_time"));
     if (g("db_summary")) q.set("summary", g("db_summary"));
     if (g("db_phone")) q.set("phone", g("db_phone"));
+    if (g("db_address")) q.set("address", g("db_address"));
 
     if (g('life_tracking_raw'))             q.set('tracking_raw', g('life_tracking_raw'));
 
@@ -1547,6 +1556,7 @@ if (rt === "MENORA_LIFE_INVOICE") {
             template:        tmplKey,
             injury_type:     v('ctx_injury_type'),
             phone:           v('db_phone'),
+            address:          v('db_address'),
             selected_photos: namesFn(),
             photos:          photosFn()
           };

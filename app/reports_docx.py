@@ -217,6 +217,7 @@ def _fetch_insured_row(insured_id: int) -> dict:
         "id_number":    ins.id_number or "",
         "claim_number": ins.claim_number or "",
         "phone": ins.phone or "",
+        "address": ins.address or "",
         "age":          _calc_age(ins.birth_date),
         "injury_type":  getattr(ins, "injury_type", "") or "",
     }
@@ -272,6 +273,10 @@ def get_report_context(report_id: int, *, insured_id: int | None = None, overrid
     phone_override = overrides.get("phone", "")
     if phone_override:
         db_fields["phone"] = phone_override
+
+    address_override = overrides.get("address", "")
+    if address_override:
+        db_fields["address"] = address_override
 
     # 🔹 DEBUG: what’s going into db.background?
     try:
@@ -340,6 +345,7 @@ def _collect_overrides_from_query(args) -> dict:
         "insured_name": "insured.name",
         "insured_id": "insured.id",
         "insured_phone": "insured.phone",
+        "insured_address": "insured.address",
         "injury_type": "insured.injury_type",
         "surv_place": "surveillance.place",
         "surv_city": "surveillance.city",
@@ -376,6 +382,7 @@ def _collect_overrides_from_json(json_body: dict | None) -> dict:
         "insured_name": "insured.name",
         "insured_id": "insured.id",
         "insured_phone": "insured.phone",
+        "insured_address": "insured.address",
         "injury_type": "insured.injury_type",
         "surv_place": "surveillance.place",
         "surv_city": "surveillance.city",
@@ -746,6 +753,7 @@ def preview_docx_as_pdf(report_id: int):
         "authorities_1": (request.args.get("authorities_1") or "").strip(),
         "authorities_2": (request.args.get("authorities_2") or "").strip(),
         "phone":         (request.args.get("phone") or "").strip(),
+        "address": (request.args.get("address") or "").strip(),
         "dnb":           (request.args.get("dnb") or "").strip(),
     }
 
@@ -977,6 +985,7 @@ def render_docx_download(report_id: int):
         "authorities_1": payload.get("authorities_1", "").strip(),
         "authorities_2": payload.get("authorities_2", "").strip(),
         "phone":         payload.get("phone", "").strip(),
+        "address": payload.get("address", "").strip(),
         "dnb":           payload.get("dnb", "").strip(),
     }
 
