@@ -614,25 +614,28 @@ window.safeUUID = (function () {
     if (o) o.style.display = 'none';
   }
 
-  // Keep GET URLs short: turn data URLs or long paths into a short basename
+  // Always return the correct basename, even for encoded URLs or relative paths
   function shortenPhotoSrc(val){
-    if (!val) return "";
-    const s = String(val).trim();
+      if (!val) return "";
 
-    // If it's a data URL, don't send it on GET
-    if (s.startsWith("data:")) return "";
+      // Convert to string and decode any encoded characters
+      const s = decodeURIComponent(String(val).trim());
 
-    // If it's a URL with ?name=..., prefer that
-    try{
-      const u = new URL(s, window.location.origin);
-      const n = u.searchParams.get('name');
-      if (n) return n;
-    }catch(e){ /* not a URL; fall back below */ }
+      // Ignore data URLs
+      if (s.startsWith("data:")) return "";
 
-    // Otherwise, just basename
-    const m = s.match(/[^/\\]+$/);
-    return m ? m[0] : s.slice(0, 120);
+      try {
+          // Works for absolute & relative URLs
+          const url = new URL(s, window.location.origin);
+          const pathname = decodeURIComponent(url.pathname);  // ensure spaces, unicode preserved
+          return pathname.split('/').pop();
+      } catch (e) {
+          // For simple filenames or paths that cannot be parsed as URL
+          const cleaned = s.split(/[\\/]/).pop(); // handles Windows + Linux separators
+          return cleaned;
+      }
   }
+
   window.shortenPhotoSrc = shortenPhotoSrc;
 
   // === Photo-ID: resolve *only* the image chosen in the "תמונת זיהוי" card ===
