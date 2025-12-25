@@ -218,6 +218,7 @@ def _fetch_insured_row(insured_id: int) -> dict:
         "claim_number": ins.claim_number or "",
         "phone": ins.phone or "",
         "address": ins.address or "",
+        "city": ins.city or "",
         "age":          _calc_age(ins.birth_date),
         "injury_type":  getattr(ins, "injury_type", "") or "",
     }

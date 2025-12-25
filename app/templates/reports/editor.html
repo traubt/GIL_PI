@@ -126,6 +126,7 @@
                       data-claim-type="{{ ins.claim_type or '' }}"
                       data-phone="{{ ins.phone or '' }}"
                       data-address="{{ ins.address or '' }}"
+                      data-city="{{ ins.city or '' }}"
                     >
                       {{ (ins.last_name ~ ' ' ~ ins.first_name)|trim }}
                       · רפרנס {{ ins.ref_number or ins.ref or '—' }}
@@ -181,10 +182,24 @@
                         <label class="form-label">טלפון</label>
                         <input id="db_phone" type="text" class="form-control">
                       </div>
-                      <div class="col-8">
-                          <label class="form-label">כתובת</label>
-                          <input type="text" id="db_address" class="form-control">
-                      </div>
+<div class="row mb-3">
+  <div class="col-md-8">
+    <label class="form-label">כתובת</label>
+    <input type="text"
+           class="form-control"
+           id="db_address"
+           placeholder="כתובת">
+  </div>
+
+  <div class="col-md-4">
+    <label class="form-label">עיר</label>
+    <input type="text"
+           class="form-control"
+           id="db_city"
+           placeholder="עיר">
+  </div>
+</div>
+
 
                     </div>
                   </div>
@@ -826,6 +841,7 @@ function applyTemplateSections() {
       db_claim_number: get('claimNumber'),
       db_phone:        get('phone'),
       db_address:        get('address'),
+      db_city:        get('city'),
     };
     for (const [id,val] of Object.entries(map)){
       const el = document.getElementById(id);
@@ -840,6 +856,7 @@ function applyTemplateSections() {
     claim_number: map.db_claim_number || "",
     phone:        map.db_phone      || "" ,
     address:        map.db_address      || "" ,
+    city:        map.db_city      || "" ,
   };
 
   // 🔹 NEW: use ref_number as the base for "מספרנו"
@@ -1234,6 +1251,7 @@ function applyTemplateSections() {
     if (g("db_summary")) q.set("summary", g("db_summary"));
     if (g("db_phone")) q.set("phone", g("db_phone"));
     if (g("db_address")) q.set("address", g("db_address"));
+    if (g("db_city")) q.set("address", g("db_city"));
 
     if (g('life_tracking_raw'))             q.set('tracking_raw', g('life_tracking_raw'));
 
@@ -1557,6 +1575,7 @@ if (rt === "MENORA_LIFE_INVOICE") {
             injury_type:     v('ctx_injury_type'),
             phone:           v('db_phone'),
             address:          v('db_address'),
+            city:          v('db_city'),
             selected_photos: namesFn(),
             photos:          photosFn()
           };
