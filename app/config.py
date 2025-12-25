@@ -12,10 +12,10 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
     # Project/app base
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # .../app
+    BASE_DIR = Path(__file__).resolve().parent  # .../app
 
     # Where user-uploaded insured photos live (relative to project root by default)
-    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', 'static/uploads/insured_photos')
+    UPLOAD_FOLDER = BASE_DIR / "static" / "uploads" / "insured_photos"
 
     # LibreOffice binary (env override -> auto-detect -> OS-specific default)
     LIBREOFFICE_BIN = (
