@@ -41,11 +41,13 @@ TEMPLATE_MAP = {
 from datetime import datetime, date
 from flask import request, current_app
 
-# import your model
-# from app.models import GilInsured   # <-- adjust to your actual import
+from dataclasses import dataclass
 
-
-
+@dataclass
+class PreparedPhoto:
+    path: str
+    orientation: str   # "portrait" | "landscape"
+    image: InlineImage
 
 
 def ddmmyyyy(iso_str: str) -> str:
@@ -442,53 +444,77 @@ def render_docx_bytes(template_path: str, context: dict) -> bytes:
     return buf.getvalue()
 
 
-# app/reports_docx.py  (updated routes)
+def build_resized_inline_image(
+    doc,
+    image_path,
+    *,
+    max_width_mm: float,
+    max_height_mm: float
+):
+    """
+    Create a resized InlineImage that fits within max width/height (mm),
+    preserving aspect ratio. Matches existing Siudi behavior.
+    """
+    try:
+        with Image.open(image_path) as im:
+            w_px, h_px = im.size
+    except Exception:
+        # Fallback: let docx handle it (should not happen)
+        return InlineImage(doc, image_path)
 
-# @reports_docx_bp.route("/<int:report_id>/preview", methods=["GET"])
-# def preview_docx_as_html(report_id: int):
-#     """
-#     Generate-on-the-fly DOCX and convert to HTML for preview (Mammoth) with style mapping.
-#     Note: Word headers/footers are not rendered by Mammoth.
-#     """
-#     template_path = load_template_docx("menora_siudi.docx")
-#
-#     # allow activity date injection for your test
-#     activity_date = request.args.get("activity_date", "").strip()
-#     context = get_report_context(report_id, overrides={"activity_date": activity_date} if activity_date else None)
-#     data = render_docx_bytes(template_path, context)
-#
-#     # Map Word styles -> HTML classes we can style
-#     # Adjust names to your template’s styles if needed (Normal, Heading 1, Heading 2, Caption, Quote, Table Grid, etc.)
-#     style_map = """
-#     p[style-name='Normal'] => p.normal
-#     p[style-name='Heading 1'] => h1.h1
-#     p[style-name='Heading 2'] => h2.h2
-#     p[style-name='Heading 3'] => h3.h3
-#     p[style-name='Caption'] => p.caption
-#     r[style-name='Strong'] => b
-#     table => table.word
-#     table > tr => tr
-#     table > tr > td => td
-#     """
-#
-#     result = mammoth.convert_to_html(io.BytesIO(data), style_map=style_map)
-#     html = result.value
-#
-#     base = f"""<!doctype html>
-# <html lang="he" dir="rtl">
-#   <head>
-#     <meta charset="utf-8">
-#     <link rel="stylesheet" href="/static/css/word_preview.css">
-#   </head>
-#   <body>
-#     <div class="a4">
-#       <div class="page">
-#         {html}
-#       </div>
-#     </div>
-#   </body>
-# </html>"""
-#     return render_template_string(base)
+    # portrait vs landscape
+    if h_px >= w_px:
+        # portrait → constrain height
+        return InlineImage(
+            doc,
+            image_path,
+            height=Mm(max_height_mm)
+        )
+    else:
+        # landscape → constrain width
+        return InlineImage(
+            doc,
+            image_path,
+            width=Mm(max_width_mm)
+        )
+
+def prepare_photos(
+    doc,
+    image_paths,
+    *,
+    max_width_mm: float,
+    max_height_mm: float
+):
+    """
+    Load + resize photos and return PreparedPhoto objects.
+    No layout logic here.
+    """
+    prepared = []
+
+    for path in image_paths:
+        try:
+            with Image.open(path) as im:
+                w_px, h_px = im.size
+                orientation = "portrait" if h_px >= w_px else "landscape"
+        except Exception:
+            orientation = "landscape"
+
+        img = build_resized_inline_image(
+            doc,
+            path,
+            max_width_mm=max_width_mm,
+            max_height_mm=max_height_mm
+        )
+
+        prepared.append(
+            PreparedPhoto(
+                path=path,
+                orientation=orientation,
+                image=img
+            )
+        )
+
+    return prepared
 
 
 @reports_docx_bp.route("/<int:report_id>/download/<path:filename>", methods=["GET"])
@@ -853,7 +879,15 @@ def preview_docx_as_pdf(report_id: int):
     #      FOLLOW-UP: flat list goes to {{ social_photos }}
     # ------------------------------------------------------------
     if tmpl_key == "menora_life_followup":
-        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in resolved_paths]
+        prepared = prepare_photos(
+            tpl,
+            resolved_paths,
+            max_width_mm=120,
+            max_height_mm=95
+        )
+
+        # For now: flat list, same as before
+        ctx["social_photos"] = [p.image for p in prepared]
 
         # Authorities tables
         for key, placeholder in [
@@ -865,18 +899,17 @@ def preview_docx_as_pdf(report_id: int):
             ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(120)) if img_path else ""
 
     # ------------------------------------------------------------
-    # NORMAL photo reports: landscape/portrait separation
+    # SIUDI + GENERIC PHOTO REPORTS — unified handling
     # ------------------------------------------------------------
-    lands, ports = [], []
-    for p in resolved_paths:
-        try:
-            with Image.open(p) as im:
-                w, h = im.size
-            (lands if w >= h else ports).append(p)
-        except Exception as e:
-            current_app.logger.warning("[PHOTOS] Failed to open %s: %s", p, e)
+    prepared = prepare_photos(
+        tpl,
+        resolved_paths,
+        max_width_mm=120,
+        max_height_mm=95
+    )
 
-    land_images = [InlineImage(tpl, p, width=Mm(120)) for p in lands]
+    lands = [p.image for p in prepared if p.orientation == "landscape"]
+    ports = [p.image for p in prepared if p.orientation == "portrait"]
 
     def chunk2(items):
         it = iter(items)
@@ -884,15 +917,9 @@ def preview_docx_as_pdf(report_id: int):
             b = next(it, None)
             yield a, b
 
-    port_rows = [
-        (InlineImage(tpl, l, width=Mm(76)),
-         InlineImage(tpl, r, width=Mm(76)) if r else None)
-        for l, r in chunk2(ports)
-    ]
-
-    ctx["land_images"] = land_images
-    ctx["port_rows"]   = port_rows
-    ctx["gap"]         = "\u00A0" * 8
+    ctx["land_images"] = lands
+    ctx["port_rows"] = [(l, r) for l, r in chunk2(ports)]
+    ctx["gap"] = "\u00A0" * 8
 
     # ------------------------------------------------------------
     #   🔥🔥🔥 FIXED BLOCK: MENORA LIFE INVOICE MUST HAVE claim+insured
