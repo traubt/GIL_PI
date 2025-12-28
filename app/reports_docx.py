@@ -545,15 +545,17 @@ def build_photo_pages(prepared_photos):
             })
             break
 
-        is_two_portrait = (
-            first.orientation == "portrait"
-            and second.orientation == "portrait"
+        is_same_orientation = (
+                first.orientation == second.orientation
         )
 
         pages.append({
-            "layout": "row" if is_two_portrait else "column",
+            "layout": "row" if is_same_orientation else "column",
             "photos": [first.image, second.image],
-            "is_two_portrait": is_two_portrait,
+            "is_two_portrait": (
+                    first.orientation == "portrait"
+                    and second.orientation == "portrait"
+            ),
         })
 
         i += 2
@@ -952,24 +954,19 @@ def preview_docx_as_pdf(report_id: int):
     # ------------------------------------------------------------
     # SIUDI + GENERIC PHOTO REPORTS — unified handling
     # ------------------------------------------------------------
-    prepared = prepare_photos(
-        tpl,
-        resolved_paths,
-        max_width_mm=155,
-        max_height_mm=130
-    )
+    if tmpl_key != "menora_life_followup":
+        prepared = prepare_photos(
+            tpl,
+            resolved_paths,
+            max_width_mm=155,
+            max_height_mm=130
+        )
 
-    photo_pages = build_photo_pages(prepared)
+        photo_pages = build_photo_pages(prepared)
+        ctx["photo_pages"] = photo_pages
+        ctx["social_photos"] = [p.image for p in prepared]
 
-    # TEMP: expose to template
-    ctx["photo_pages"] = photo_pages
 
-    # For now: flat list, same as before
-    ctx["social_photos"] = [p.image for p in prepared]
-
-    # ------------------------------------------------------------
-    #   🔥🔥🔥 FIXED BLOCK: MENORA LIFE INVOICE MUST HAVE claim+insured
-    # ------------------------------------------------------------
     # ------------------------------------------------------------
     #     MENORA LIFE INVOICE — populate invoice fields (PREVIEW)
     # ------------------------------------------------------------
