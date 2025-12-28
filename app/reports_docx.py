@@ -11,6 +11,7 @@ import os, io, datetime
 import subprocess, tempfile, shutil, time, glob
 from pathlib import Path
 from .models import *
+from typing import List
 
 # ---- Use app config for paths ----
 from .config import Config
@@ -517,6 +518,51 @@ def prepare_photos(
     return prepared
 
 
+
+def build_photo_pages(prepared_photos):
+    """
+    Build page-based photo layout.
+    Each page contains 1 or 2 photos, in strict chronological order.
+
+    Layout rules:
+    - portrait + portrait  → side-by-side (row)
+    - any other combo      → stacked (column)
+    """
+
+    pages = []
+    i = 0
+
+    while i < len(prepared_photos):
+        first = prepared_photos[i]
+        second = prepared_photos[i + 1] if i + 1 < len(prepared_photos) else None
+
+        # Single photo page
+        if not second:
+            pages.append({
+                "layout": "single",
+                "photos": [first.image],
+                "is_two_portrait": False,
+            })
+            break
+
+        is_two_portrait = (
+            first.orientation == "portrait"
+            and second.orientation == "portrait"
+        )
+
+        pages.append({
+            "layout": "row" if is_two_portrait else "column",
+            "photos": [first.image, second.image],
+            "is_two_portrait": is_two_portrait,
+        })
+
+        i += 2
+
+    return pages
+
+
+
+############################### ROUTES #############################################
 @reports_docx_bp.route("/<int:report_id>/download/<path:filename>", methods=["GET"])
 def download_docx(report_id: int, filename: str):
     """
@@ -882,9 +928,14 @@ def preview_docx_as_pdf(report_id: int):
         prepared = prepare_photos(
             tpl,
             resolved_paths,
-            max_width_mm=120,
-            max_height_mm=95
+            max_width_mm=155,
+            max_height_mm=145
         )
+
+        photo_pages = build_photo_pages(prepared)
+
+        # TEMP: expose to template
+        ctx["photo_pages"] = photo_pages
 
         # For now: flat list, same as before
         ctx["social_photos"] = [p.image for p in prepared]
@@ -896,7 +947,7 @@ def preview_docx_as_pdf(report_id: int):
         ]:
             name = (request.args.get(key) or "").strip()
             img_path = resolve_one(name)
-            ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(120)) if img_path else ""
+            ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(155)) if img_path else ""
 
     # ------------------------------------------------------------
     # SIUDI + GENERIC PHOTO REPORTS — unified handling
@@ -904,22 +955,17 @@ def preview_docx_as_pdf(report_id: int):
     prepared = prepare_photos(
         tpl,
         resolved_paths,
-        max_width_mm=120,
-        max_height_mm=95
+        max_width_mm=155,
+        max_height_mm=130
     )
 
-    lands = [p.image for p in prepared if p.orientation == "landscape"]
-    ports = [p.image for p in prepared if p.orientation == "portrait"]
+    photo_pages = build_photo_pages(prepared)
 
-    def chunk2(items):
-        it = iter(items)
-        for a in it:
-            b = next(it, None)
-            yield a, b
+    # TEMP: expose to template
+    ctx["photo_pages"] = photo_pages
 
-    ctx["land_images"] = lands
-    ctx["port_rows"] = [(l, r) for l, r in chunk2(ports)]
-    ctx["gap"] = "\u00A0" * 8
+    # For now: flat list, same as before
+    ctx["social_photos"] = [p.image for p in prepared]
 
     # ------------------------------------------------------------
     #   🔥🔥🔥 FIXED BLOCK: MENORA LIFE INVOICE MUST HAVE claim+insured
@@ -967,6 +1013,7 @@ def preview_docx_as_pdf(report_id: int):
     # GENERATE PDF
     # ------------------------------------------------------------
     buf = io.BytesIO()
+
     tpl.render(ctx)
     tpl.save(buf)
     pdf_bytes = _docx_to_pdf_bytes(buf.getvalue())
@@ -1089,7 +1136,7 @@ def render_docx_download(report_id: int):
             tbl_name = (payload.get(key) or "").strip()
             img_path = resolve_one(tbl_name) if tbl_name else None
             if img_path:
-                ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(120))
+                ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(155))
             else:
                 ctx[placeholder] = ""
 
@@ -1203,7 +1250,7 @@ def render_docx_download(report_id: int):
     # --- Social media photos for Menora Life follow-up (download) ---
     if tmpl_key == "menora_life_followup":
         # life-followup uses ONLY selected_life_photos[] for the social media block
-        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(120)) for p in paths]
+        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(155)) for p in paths]
 
         # --- Authorities 1 + 2 (must not depend on active_list!) ---
         for key, placeholder in [
@@ -1213,42 +1260,8 @@ def render_docx_download(report_id: int):
             name = (request.args.get(key) or "").strip()
             img_path = resolve_one(name)
             current_app.logger.info("[AUTH] key=%s name=%s resolved=%s", key, name, img_path)
-            ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(120)) if img_path else ""
+            ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(155)) if img_path else ""
 
-    # --- orientation split using real pixel sizes ---
-    lands, ports = [], []
-    for p in paths:
-        try:
-            with Image.open(p) as im:
-                w, h = im.size
-            (lands if w >= h else ports).append(p)
-        except Exception as e:
-            current_app.logger.warning("[PHOTOS] open fail %s: %s", p, e)
-
-    LAND_W = Mm(120)
-    PORT_W = Mm(76)
-
-    land_images = [InlineImage(tpl, p, width=LAND_W) for p in lands]
-
-    def chunk2(items):
-        it = iter(items)
-        for a in it:
-            b = next(it, None)
-            yield a, b
-
-    port_rows = []
-    for l, r in chunk2(ports):
-        left  = InlineImage(tpl, l, width=PORT_W)
-        right = InlineImage(tpl, r, width=PORT_W) if r else None
-        port_rows.append((left, right))
-
-    gap = "\u00A0" * 8
-
-    ctx.update({
-        "land_images": land_images,
-        "port_rows":   port_rows,
-        "gap":         gap,
-    })
 
     # --- render and save to instance/generated_reports for all other reports ---
     out_dir = os.path.join(current_app.instance_path, "generated_reports")
@@ -1386,9 +1399,10 @@ def photo_id_preview_pdf(report_id: int):
 
     tpl = DocxTemplate(template_path)
     if img_path:
-        ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(140))
+        ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(90))
     else:
         ctx["id_photo"] = ""  # keep placeholder empty if not found
+
     tpl.render(ctx)
 
     # -> PDF
@@ -1458,9 +1472,11 @@ def photo_id_render_docx(report_id: int):
 
     tpl = DocxTemplate(template_path)
     if img_path:
-      ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(140))
+      ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(90))
     else:
       ctx["id_photo"] = ""
+
+
     tpl.render(ctx)
 
     # save to instance/generated_reports
