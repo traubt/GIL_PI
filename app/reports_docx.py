@@ -1268,10 +1268,28 @@ def render_docx_download(report_id: int):
     # =================== /MENORA LIFE INVOICE =============================
 
     # --- collect selected names from payload (for photo-based reports) ---
-    names = payload.get("selected_photos") or []
-    if not names and isinstance(payload.get("photos"), list):
-        names = [os.path.basename(p.get("name", "")) for p in payload["photos"] if p.get("name")]
-    names = [os.path.basename(n) for n in names if n]
+    def _normalize_photo_name(v: str) -> str | None:
+        if not v:
+            return None
+
+        # URL case: /reports/photos/serve?...&name=FILE.png
+        if "name=" in v:
+            return v.split("name=", 1)[1].split("&", 1)[0]
+
+        # Strip querystring if exists
+        if "?" in v:
+            v = v.split("?", 1)[0]
+
+        return os.path.basename(v) or None
+
+    raw_names = payload.get("selected_photos") or []
+
+    # fallback for older payloads
+    if not raw_names and isinstance(payload.get("photos"), list):
+        raw_names = [p.get("name") for p in payload["photos"] if p.get("name")]
+
+    names = [_normalize_photo_name(v) for v in raw_names]
+    names = [n for n in names if n]
 
     paths = [p for n in names if (p := resolve_one(n))]
 
@@ -1306,6 +1324,23 @@ def render_docx_download(report_id: int):
     stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"report_{report_id}_{stamp}.docx"
     abs_path = os.path.join(out_dir, filename)
+
+    # ------------------------------------------------------------
+    #            PHOTO HANDLING — DOCX DOWNLOAD (FIX)
+    # ------------------------------------------------------------
+    if paths:
+        prepared = prepare_photos(
+            tpl,
+            paths,
+            max_width_mm=155,
+            max_height_mm=130
+        )
+
+        ctx["photo_pages"] = build_photo_pages(prepared)
+        ctx["social_photos"] = [p.image for p in prepared]
+    else:
+        ctx["photo_pages"] = []
+        ctx["social_photos"] = []
 
     tpl.render(ctx)
     tpl.save(abs_path)
@@ -1469,7 +1504,10 @@ def photo_id_render_docx(report_id: int):
     id_src = (payload.get("id_photo_src") or "").strip()
 
     # Also consider selected_photos (client sends [basename])
-    names = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos") or []
+    names = payload.get("selected_photos") or []
+    if not names:
+        names = request.args.getlist("selected_photos[]") or request.args.getlist("selected_photos") or []
+
     base_name = names[0] if names else None
 
     # If we somehow got the route name 'serve' as a "filename", ignore it
@@ -1477,9 +1515,20 @@ def photo_id_render_docx(report_id: int):
         base_name = None
 
     # Prefer the explicit server-side filename; fall back to id_src only if needed
-    key = base_name or id_src
-    img_path = _resolve_photo_id_image(insured_id, report_id, key)
+    def _normalize_photo_name(v: str) -> str | None:
+        if not v:
+            return None
+        if "name=" in v:
+            return v.split("name=", 1)[1].split("&", 1)[0]
+        if "?" in v:
+            v = v.split("?", 1)[0]
+        return os.path.basename(v) or None
 
+    norm_base = _normalize_photo_name(base_name)
+    norm_src = _normalize_photo_name(id_src)
+
+    key = norm_base or norm_src
+    img_path = _resolve_photo_id_image(insured_id, report_id, key)
 
     current_app.logger.info(
         "[PhotoID][docx] report=%s insured=%s src=%r base=%r -> %r",
