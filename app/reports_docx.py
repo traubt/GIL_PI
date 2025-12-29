@@ -851,6 +851,45 @@ def preview_docx_as_pdf(report_id: int):
     tpl = DocxTemplate(template_path)
 
     # ------------------------------------------------------------
+    #      SIUDI INVOICE — populate invoice fields (PREVIEW)
+    # ------------------------------------------------------------
+    if tmpl_key == "siudi_invoice":
+        # Ensure required objects exist (🔥 prevents UndefinedError)
+        ctx.setdefault("claim", {})
+        ctx.setdefault("insured", {})
+        ctx.setdefault("totals", {})
+
+        # ---- Invoice header ----
+        inv_date_str = (request.args.get("inv_date") or "").strip()
+        inv_iso = _to_iso(inv_date_str) or inv_date_str
+        ctx["inv_date"] = ddmmyyyy(inv_iso) if "-" in (inv_iso or "") else inv_date_str
+
+        ctx["inv_number"] = (request.args.get("inv_number") or "").strip()
+        ctx["inv_ref"] = (request.args.get("inv_ref") or "").strip()
+
+        # ---- Claim ----
+        ctx["claim"]["number"] = (
+                request.args.get("claim.number")
+                or ctx.get("db", {}).get("claim_number", "")
+        )
+        ctx["claim"]["subject"] = (
+                request.args.get("claim.subject")
+                or ctx.get("db", {}).get("full_name", "")
+        )
+
+        # ---- Insured ----
+        ctx["insured"]["id_number"] = (
+                request.args.get("insured.id_number")
+                or ctx.get("db", {}).get("id_number", "")
+        )
+
+        # ---- Totals ----
+        ctx["totals"]["subtotal"] = (request.args.get("totals_subtotal") or "").strip()
+        ctx["totals"]["vat_rate"] = (request.args.get("totals_vat_rate") or "").strip()
+        ctx["totals"]["vat_amount"] = (request.args.get("totals_vat_amount") or "").strip()
+        ctx["totals"]["total"] = (request.args.get("totals_total") or "").strip()
+
+    # ------------------------------------------------------------
     #            FOLLOW-UP specific fields
     # ------------------------------------------------------------
     if tmpl_key == "menora_life_followup":
