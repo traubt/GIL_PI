@@ -500,9 +500,11 @@ def prepare_photos(
         except Exception:
             orientation = "landscape"
 
+        opt_path = optimize_image_for_docx(path)
+
         img = build_resized_inline_image(
             doc,
-            path,
+            opt_path,
             max_width_mm=max_width_mm,
             max_height_mm=max_height_mm
         )
@@ -562,6 +564,38 @@ def build_photo_pages(prepared_photos):
 
     return pages
 
+
+def optimize_image_for_docx(
+    src_path: str,
+    max_px: int = 1600,
+    quality: int = 75
+) -> str:
+    """
+    Downscale + recompress image for DOCX embedding.
+    Returns path to optimized temp JPEG.
+    """
+    img = Image.open(src_path)
+
+    # Convert to RGB (important for PNG / WEBP)
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+
+    # Resize (preserve aspect ratio)
+    img.thumbnail((max_px, max_px), Image.LANCZOS)
+
+    # Save to temp JPEG
+    fd, tmp_path = tempfile.mkstemp(suffix=".jpg")
+    os.close(fd)
+
+    img.save(
+        tmp_path,
+        format="JPEG",
+        quality=quality,
+        optimize=True,
+        progressive=True
+    )
+
+    return tmp_path
 
 
 ############################### ROUTES #############################################
@@ -996,7 +1030,12 @@ def preview_docx_as_pdf(report_id: int):
         ]:
             name = (request.args.get(key) or "").strip()
             img_path = resolve_one(name)
-            ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(155)) if img_path else ""
+            # ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(155)) if img_path else ""
+            if img_path:
+                opt_path = optimize_image_for_docx(img_path)
+                ctx[placeholder] = InlineImage(tpl, opt_path, width=Mm(155))
+            else:
+                ctx[placeholder] = ""
 
     # ------------------------------------------------------------
     # SIUDI + GENERIC PHOTO REPORTS — unified handling
@@ -1189,7 +1228,8 @@ def render_docx_download(report_id: int):
             tbl_name = (payload.get(key) or "").strip()
             img_path = resolve_one(tbl_name) if tbl_name else None
             if img_path:
-                ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(155))
+                opt_path = optimize_image_for_docx(img_path)
+                ctx[placeholder] = InlineImage(tpl, opt_path, width=Mm(155))
             else:
                 ctx[placeholder] = ""
 
@@ -1321,7 +1361,10 @@ def render_docx_download(report_id: int):
     # --- Social media photos for Menora Life follow-up (download) ---
     if tmpl_key == "menora_life_followup":
         # life-followup uses ONLY selected_life_photos[] for the social media block
-        ctx["social_photos"] = [InlineImage(tpl, p, width=Mm(155)) for p in paths]
+        ctx["social_photos"] = [
+            InlineImage(tpl, optimize_image_for_docx(p), width=Mm(155))
+            for p in paths
+        ]
 
         # --- Authorities 1 + 2 (must not depend on active_list!) ---
         for key, placeholder in [
@@ -1331,7 +1374,11 @@ def render_docx_download(report_id: int):
             name = (request.args.get(key) or "").strip()
             img_path = resolve_one(name)
             current_app.logger.info("[AUTH] key=%s name=%s resolved=%s", key, name, img_path)
-            ctx[placeholder] = InlineImage(tpl, img_path, width=Mm(155)) if img_path else ""
+            if img_path:
+                opt_path = optimize_image_for_docx(img_path)
+                ctx[placeholder] = InlineImage(tpl, opt_path, width=Mm(155))
+            else:
+                ctx[placeholder] = ""
 
 
     # --- render and save to instance/generated_reports for all other reports ---
@@ -1495,8 +1542,10 @@ def photo_id_preview_pdf(report_id: int):
     current_app.logger.info("[PhotoID][preview] template: %s", template_path)
 
     tpl = DocxTemplate(template_path)
+
     if img_path:
-        ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(90))
+        opt_path = optimize_image_for_docx(img_path)
+        ctx["id_photo"] = InlineImage(tpl, opt_path, width=Mm(90))
     else:
         ctx["id_photo"] = ""  # keep placeholder empty if not found
 
@@ -1591,11 +1640,12 @@ def photo_id_render_docx(report_id: int):
     current_app.logger.info("[PhotoID][docx] template: %s", template_path)
 
     tpl = DocxTemplate(template_path)
-    if img_path:
-      ctx["id_photo"] = InlineImage(tpl, img_path, width=Mm(90))
-    else:
-      ctx["id_photo"] = ""
 
+    if img_path:
+        opt_path = optimize_image_for_docx(img_path)
+        ctx["id_photo"] = InlineImage(tpl, opt_path, width=Mm(90))
+    else:
+        ctx["id_photo"] = ""  # keep placeholder empty if not found
 
     tpl.render(ctx)
 
