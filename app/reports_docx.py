@@ -842,6 +842,14 @@ def preview_docx_as_pdf(report_id: int):
     )
 
     # ------------------------------------------------------------
+    # 🔒 RESET PHOTO CONTEXT (prevents leakage between renders)
+    # ------------------------------------------------------------
+    ctx["photo_pages"] = []
+    ctx["social_photos"] = []
+    ctx["authorities_table_photo"] = ""
+    ctx["authorities_table_photo_2"] = ""
+
+    # ------------------------------------------------------------
     #          TEMPLATE DETECTION
     # ------------------------------------------------------------
     tmpl_key = (request.args.get("template", "siudi") or "siudi").strip().lower()
@@ -1120,6 +1128,15 @@ def render_docx_download(report_id: int):
         reference_no=reference_no,
         version_no=version_no,
     )
+
+    # ------------------------------------------------------------
+    # 🔒 RESET PHOTO CONTEXT (prevents leakage between renders)
+    # ------------------------------------------------------------
+    ctx["photo_pages"] = []
+    ctx["social_photos"] = []
+    ctx["authorities_table_photo"] = ""
+    ctx["authorities_table_photo_2"] = ""
+
 
     # --- template path ---
     tmpl_key = (payload.get("template") or "siudi").strip().lower()
@@ -1458,6 +1475,15 @@ def photo_id_preview_pdf(report_id: int):
         version_no=version_no,
     )
 
+    # ------------------------------------------------------------
+    # 🔒 RESET PHOTO CONTEXT (prevents leakage between renders)
+    # ------------------------------------------------------------
+    ctx["photo_pages"] = []
+    ctx["social_photos"] = []
+    ctx["authorities_table_photo"] = ""
+    ctx["authorities_table_photo_2"] = ""
+
+
     place_str = ", ".join(v for v in (id_place, id_city) if v)
     ctx.update({
         "id_date":  id_date or _iso_to_dots(ctx.get("ctx", {}).get("activity_date", "")),
@@ -1543,6 +1569,15 @@ def photo_id_render_docx(report_id: int):
         reference_no=reference_no,
         version_no=version_no,
     )
+
+    # ------------------------------------------------------------
+    # 🔒 RESET PHOTO CONTEXT (prevents leakage between renders)
+    # ------------------------------------------------------------
+    ctx["photo_pages"] = []
+    ctx["social_photos"] = []
+    ctx["authorities_table_photo"] = ""
+    ctx["authorities_table_photo_2"] = ""
+
 
 
     place_str = ", ".join(v for v in (id_place, id_city) if v)
