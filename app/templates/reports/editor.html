@@ -1959,30 +1959,39 @@ if (rt === "MENORA_LIFE_INVOICE") {
           grid.className = "thumb-grid";
 
           lfPicked.forEach(item => {
-              const wrap = document.createElement("div");
-
-              wrap.className =
-                  `thumb life-followup-photo ${item.selected ? 'selected' : ''}`;
-
-              wrap.dataset.name = item.serverName || "";   // 🔥 critical
-
+              const wrap = document.createElement("label");
+              wrap.className = "thumb life-followup-photo";
               wrap.style.cursor = "pointer";
-              wrap.addEventListener("click", () => {
-                  item.selected = !item.selected;
-                  wrap.classList.toggle("selected", item.selected);
+
+              // checkbox
+              const box = document.createElement("input");
+              box.type = "checkbox";
+              box.checked = item.selected;
+              box.style.marginInlineEnd = ".35rem";
+
+              box.addEventListener("change", () => {
+                  item.selected = box.checked;
               });
 
+              // image
               const img = document.createElement("img");
               img.src = item.serverUrl || item.url;
               img.alt = item.serverName || item.name;
 
+              // filename
               const name = document.createElement("div");
               name.innerHTML = `<span class="name">${item.serverName || item.name}</span>`;
 
+              // critical for server
+              wrap.dataset.name = item.serverName || "";
+
+              // assemble
+              wrap.appendChild(box);
               wrap.appendChild(img);
               wrap.appendChild(name);
 
               grid.appendChild(wrap);
+
           });
 
           container.appendChild(grid);
