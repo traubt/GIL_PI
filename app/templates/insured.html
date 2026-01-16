@@ -172,13 +172,13 @@
 
   <!-- ===== INSURANCE / CLINIC ===== -->
   <div class="card insured-section-card">
-    <div class="card-header">מרפאה</div>
+    <div class="card-header">בי"ח\מרפאה</div>
     <div class="card-body">
       <div class="row g-3">
         <div class="col-12 col-sm-6 col-md-4 col-lg-3">
-          <label for="clinic" class="form-label">מרפאה</label>
+          <label for="clinic" class="form-label">בי"ח\מרפאה</label>
           <select id="clinic" name="clinic" class="form-select">
-            <option value="">בחר מרפאה</option>
+            <option value="">בחר בי"ח\מרפאה</option>
             {% for clinic in clinics %}
               <option value="{{ clinic.clinic_name }}" {% if insured and insured.clinic == clinic.clinic_name %}selected{% endif %}>
                 {{ clinic.clinic_name }}
