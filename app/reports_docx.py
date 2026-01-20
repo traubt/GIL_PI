@@ -201,6 +201,10 @@ def _gender_lex(gender_raw: str | None) -> dict:
         "photos_poss":   "תמונותיה" if is_female else "תמונותיו",
         "pronoun_subj":  "היא"      if is_female else "הוא",
         "pronoun_obj":   "אותה"     if is_female else "אותו",
+        "injured": "הנפגעת" if is_female else "הנפגע",
+        "work": "עובדת" if is_female else "עובד",
+        "functioning": "תפקודה" if is_female else "תפקודו",
+
     }
 
 
