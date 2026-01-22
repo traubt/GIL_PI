@@ -275,10 +275,20 @@
       <!-- חקירת רשויות 1 -->
       <div class="col-12">
         <label class="form-label label-strong">חקירת רשויות 1</label>
+
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <input type="checkbox"
+                 id="db_authorities_1_exists"
+                 class="form-check-input">
+          <label for="db_authorities_1_exists" class="form-check-label">
+            קיים
+          </label>
+        </div>
+
         <textarea id="db_authorities_1"
                   class="form-control template-ph"
-                  rows="3"
-                  >בחקירה שערכנו,הוברר כי לנפגע לא קיים תיק עוסק מורשה במס ערך מוסף,ולא קיים אישור לניכוי מס ממס הכנסה.</textarea>
+                  rows="3"></textarea>
+
 
         <!-- כפתור וצילום טבלה -->
         <div class="mt-2 d-flex align-items-center gap-2">
@@ -322,14 +332,24 @@
                   >בבדיקה בדן אנד ברדסטריט, לנפגע אין מניות בחברות.</textarea>
       </div>
 
-
       <!-- חקירת רשויות 2 -->
       <div class="col-12">
         <label class="form-label label-strong">חקירת רשויות 2</label>
+
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <input type="checkbox"
+                 id="db_authorities_2_exists"
+                 class="form-check-input">
+          <label for="db_authorities_2_exists" class="form-check-label">
+            קיים
+          </label>
+        </div>
+
         <textarea id="db_authorities_2"
                   class="form-control template-ph"
-                  rows="3"
-                  >בחקירה שערכנו,הוברר כי לנפגע לא קיים תיק עוסק מורשה במס ערך מוסף, ולא קיים אישור לניכוי מס ממס הכנסה.</textarea>
+                  rows="3"></textarea>
+      </div>
+
 
         <!-- כפתור וצילום טבלה 2 -->
         <div class="mt-2 d-flex align-items-center gap-2">
@@ -2287,6 +2307,69 @@ document.addEventListener("DOMContentLoaded", function() {
 
 });
 </script>
+
+<script>
+(function () {
+
+  function isFemaleGender(raw) {
+    const g = (raw || '').toString().trim().toLowerCase();
+
+    // English
+    if (g === 'female' || g === 'f') return true;
+    if (g === 'male'   || g === 'm') return false;
+
+    // Hebrew (common values)
+    if (g.includes('נקבה')) return true;
+    if (g.includes('זכר'))  return false;
+
+    // If you ever store "אישה/גבר"
+    if (g.includes('אישה')) return true;
+    if (g.includes('גבר'))  return false;
+
+    return null; // unknown
+  }
+
+  function genderedAuthoritiesText() {
+    // Prefer the visible UI field (what you see in the screenshot),
+    // fallback to state.db.gender
+    const uiGender = (document.getElementById('db_gender')?.value || '').trim();
+    const stGender = (window.state?.db?.gender || '').trim();
+
+    const female = isFemaleGender(uiGender);
+    const finalFemale = (female !== null) ? female : isFemaleGender(stGender);
+
+    const who = finalFemale ? 'לנפגעת' : 'לנפגע';
+
+    return `בחקירה שערכנו, הוברר כי ${who} לא קיים תיק עוסק מורשה במס ערך מוסף, ולא קיים אישור לניכוי מס ממס הכנסה.`;
+  }
+
+  function initAuthoritiesToggle(textareaId, checkboxId) {
+    const ta = document.getElementById(textareaId);
+    const cb = document.getElementById(checkboxId);
+    if (!ta || !cb) return;
+
+    cb.checked = false;
+    ta.value = genderedAuthoritiesText();
+
+    cb.addEventListener('change', () => {
+      if (cb.checked) {
+        ta.value = '';
+        ta.focus();
+      } else {
+        ta.value = genderedAuthoritiesText();
+      }
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    initAuthoritiesToggle('db_authorities_1', 'db_authorities_1_exists');
+    initAuthoritiesToggle('db_authorities_2', 'db_authorities_2_exists');
+  });
+
+})();
+</script>
+
+
 
 
 {% endblock %}
