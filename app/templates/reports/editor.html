@@ -2329,37 +2329,53 @@ document.addEventListener("DOMContentLoaded", function() {
     return null; // unknown
   }
 
-  function genderedAuthoritiesText() {
-    // Prefer the visible UI field (what you see in the screenshot),
-    // fallback to state.db.gender
-    const uiGender = (document.getElementById('db_gender')?.value || '').trim();
-    const stGender = (window.state?.db?.gender || '').trim();
+function genderedAuthoritiesText(exists) {
+  // Prefer visible UI value, fallback to state
+  const uiGender = (document.getElementById('db_gender')?.value || '').trim();
+  const stGender = (window.state?.db?.gender || '').trim();
 
-    const female = isFemaleGender(uiGender);
-    const finalFemale = (female !== null) ? female : isFemaleGender(stGender);
-
-    const who = finalFemale ? 'לנפגעת' : 'לנפגע';
-
-    return `בחקירה שערכנו, הוברר כי ${who} לא קיים תיק עוסק מורשה במס ערך מוסף, ולא קיים אישור לניכוי מס ממס הכנסה.`;
+  function isFemale(raw) {
+    const g = (raw || '').toLowerCase();
+    if (g === 'female' || g === 'f') return true;
+    if (g === 'male' || g === 'm') return false;
+    if (g.includes('נקבה') || g.includes('אישה')) return true;
+    if (g.includes('זכר') || g.includes('גבר')) return false;
+    return null;
   }
 
-  function initAuthoritiesToggle(textareaId, checkboxId) {
-    const ta = document.getElementById(textareaId);
-    const cb = document.getElementById(checkboxId);
-    if (!ta || !cb) return;
+  const female =
+    isFemale(uiGender) !== null
+      ? isFemale(uiGender)
+      : isFemale(stGender);
 
-    cb.checked = false;
-    ta.value = genderedAuthoritiesText();
+  const who = female ? 'לנפגעת' : 'לנפגע';
 
-    cb.addEventListener('change', () => {
-      if (cb.checked) {
-        ta.value = '';
-        ta.focus();
-      } else {
-        ta.value = genderedAuthoritiesText();
-      }
-    });
+  // ✅ NEW: text depends on checkbox state
+  if (exists) {
+    return `בחקירה שערכנו, הוברר כי ${who} קיים תיק עוסק מורשה במס ערך מוסף, וכמו כן, קיים אישור לניכוי מס ממס הכנסה.`;
   }
+
+  return `בחקירה שערכנו, הוברר כי ${who} לא קיים תיק עוסק מורשה במס ערך מוסף, ולא קיים אישור לניכוי מס ממס הכנסה.`;
+}
+
+
+function initAuthoritiesToggle(textareaId, checkboxId) {
+  const ta = document.getElementById(textareaId);
+  const cb = document.getElementById(checkboxId);
+  if (!ta || !cb) return;
+
+  // default unchecked
+  cb.checked = false;
+
+  // set initial text based on checkbox state
+  ta.value = genderedAuthoritiesText(cb.checked);
+
+  cb.addEventListener('change', () => {
+    // ✅ NEW: do NOT clear — set the correct "exists / not exists" sentence
+    ta.value = genderedAuthoritiesText(cb.checked);
+  });
+}
+
 
   document.addEventListener('DOMContentLoaded', function () {
     initAuthoritiesToggle('db_authorities_1', 'db_authorities_1_exists');
