@@ -216,6 +216,84 @@ def parse_time(value):
                 return None
     return None
 
+# =========================
+# Tracking Reports Helpers
+# =========================
+
+def parse_date_flexible(value: str):
+    """
+    Accepts:
+      - "YYYY-MM-DD"
+      - "DD/MM/YYYY"
+    Returns: datetime.date | None
+    """
+    if not value:
+        return None
+    s = str(value).strip()
+    for fmt in ("%Y-%m-%d", "%d/%m/%Y"):
+        try:
+            return datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def get_current_investigator_row():
+    """
+    Returns GilInvestigator row for the logged-in user (role Investigator).
+    Uses the same matching logic you already use in /investigators route.
+    """
+    user_data = session.get('user')
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return None
+
+    inv_row = GilInvestigator.query.filter_by(user_id=user.get("id")).first()
+    if not inv_row:
+        full_name = f"{user.get('first_name','').strip()} {user.get('last_name','').strip()}".strip()
+        inv_row = GilInvestigator.query.filter_by(full_name=full_name).first()
+
+    return inv_row
+
+
+def user_is_admin_or_manager(user: dict) -> bool:
+    # adjust if you later add MANAGER role etc.
+    role = (user.get("role") or "").strip()
+    return role in ("ADMIN", "Admin", "Manager", "SUPERADMIN")
+
+
+def require_case_access_or_403(insured_id: int, ref_number: str):
+    """
+    Investigator can only access insured cases assigned to him via gil_investigator_case.active=1.
+    Admin/Manager can access everything.
+    Returns: (allowed: bool, inv_row: GilInvestigator|None, user: dict)
+    """
+    user_data = session.get('user')
+    user = json.loads(user_data) if user_data else {}
+
+    if not user:
+        return False, None, user
+
+    if user_is_admin_or_manager(user):
+        return True, None, user
+
+    # investigators only
+    if user.get("role") != "Investigator":
+        return False, None, user
+
+    inv_row = get_current_investigator_row()
+    if not inv_row:
+        return False, None, user
+
+    link = GilInvestigatorCase.query.filter_by(
+        insured_id=insured_id,
+        investigator_id=inv_row.id,
+        active=True
+    ).first()
+
+    return bool(link), inv_row, user
+
+
 
 @main.route('/send_email', methods=['POST'])
 def handle_send_email():
@@ -1787,9 +1865,15 @@ def investigators():
         # --- Add future appointments flag for each case ---
         today = datetime.utcnow().date()
         for c in cases:
-            c.has_future_appointments = any(
-                appt.appointment_date and appt.appointment_date > today
-                for appt in c.appointments
+            c.has_future_appointments = (
+                    db.session.query(GilAppointment.id)
+                    .filter(
+                        GilAppointment.case_id == c.id,
+                        GilAppointment.appointment_date != None,
+                        GilAppointment.appointment_date > today
+                    )
+                    .first()
+                    is not None
             )
 
     # Context for template
@@ -2286,6 +2370,275 @@ def update_admin_task(task_id):
     return jsonify({"status": "success", "message": "Task updated successfully"})
 
 
+####################  TRACKING REPORTS  #####################
+
+
+@main.route("/api/tracking_reports", methods=["GET"])
+def api_tracking_reports_list():
+    try:
+        insured_id = request.args.get("insured_id", type=int)
+        ref_number = (request.args.get("ref_number") or "").strip()
+        report_date = (request.args.get("report_date") or "").strip()  # optional
+
+        if not insured_id or not ref_number:
+            return jsonify({"status": "error", "message": "insured_id/ref_number missing"}), 400
+
+        allowed, inv_row, user = require_case_access_or_403(insured_id, ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        q = GilTrackingReport.query.filter_by(insured_id=insured_id, ref_number=ref_number)
+
+        d = parse_date_flexible(report_date)
+        if d:
+            q = q.filter(GilTrackingReport.report_date == d)
+
+        rows = q.order_by(GilTrackingReport.report_date.desc(), GilTrackingReport.report_id.desc()).all()
+
+        return jsonify({
+            "status": "success",
+            "reports": [{
+                "report_id": r.report_id,
+                "insured_id": r.insured_id,
+                "ref_number": r.ref_number,
+                "investigator_id": r.investigator_id,
+                "report_date": normalize_date(r.report_date),
+                "status": r.status or "Draft",
+                "note": r.note or "",
+                "updated_at": r.updated_at.isoformat() if r.updated_at else "",
+                "created_at": r.created_at.isoformat() if r.created_at else "",
+            } for r in rows]
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"api_tracking_reports_list error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
+
+@main.route("/api/tracking_reports/<int:report_id>", methods=["GET"])
+def api_tracking_report_get(report_id):
+    try:
+        r = GilTrackingReport.query.get_or_404(report_id)
+
+        allowed, inv_row, user = require_case_access_or_403(r.insured_id, r.ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        items = GilTrackingReportActivity.query.filter_by(report_id=r.report_id) \
+            .order_by(GilTrackingReportActivity.sort_order.asc(), GilTrackingReportActivity.activity_id.asc()) \
+            .all()
+
+        return jsonify({
+            "status": "success",
+            "report": {
+                "report_id": r.report_id,
+                "insured_id": r.insured_id,
+                "ref_number": r.ref_number,
+                "investigator_id": r.investigator_id,
+                "report_date": normalize_date(r.report_date),
+                "status": r.status or "Draft",
+                "note": r.note or "",
+                "items": [{
+                    "activity_id": it.activity_id,
+                    "activity_time": normalize_time(it.activity_time),
+                    "description": it.description or "",
+                    "sort_order": int(it.sort_order or 0)
+                } for it in items]
+            }
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"api_tracking_report_get error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
+@main.route("/api/tracking_reports/save", methods=["POST"])
+def api_tracking_report_save():
+    try:
+        payload = request.get_json(silent=True) or {}
+
+        insured_id = payload.get("insured_id")
+        ref_number = (payload.get("ref_number") or "").strip()
+        report_date_in = (payload.get("report_date") or "").strip()   # "YYYY-MM-DD" or "DD/MM/YYYY"
+        note = (payload.get("note") or "").strip()
+        items = payload.get("items") or []
+        report_id = payload.get("report_id")  # optional
+
+        if not insured_id or not ref_number or not report_date_in:
+            return jsonify({"status": "error", "message": "insured_id/ref_number/report_date missing"}), 400
+
+        d = parse_date_flexible(report_date_in)
+        if not d:
+            return jsonify({"status": "error", "message": "Invalid report_date"}), 400
+
+        allowed, inv_row, user = require_case_access_or_403(int(insured_id), ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        # Determine investigator_id:
+        # - Investigator user: must be inv_row.id
+        # - Admin/Manager: can use payload investigator_id or keep existing
+        investigator_id = None
+        if user_is_admin_or_manager(user):
+            investigator_id = payload.get("investigator_id")
+        else:
+            investigator_id = inv_row.id if inv_row else None
+
+        if not investigator_id:
+            return jsonify({"status": "error", "message": "investigator_id missing"}), 400
+
+        # Load existing by report_id OR unique key (ref_number + report_date)
+        r = None
+        if report_id:
+            r = GilTrackingReport.query.get(report_id)
+
+        if not r:
+            r = GilTrackingReport.query.filter_by(ref_number=ref_number, report_date=d).first()
+
+        # ✅ If Final => cannot edit (server-side enforcement)
+        if r and (r.status == "Final"):
+            # If you want admin to be able to "fix" Final, allow only admin:
+            if not user_is_admin_or_manager(user):
+                return jsonify({"status": "error", "message": "Report is Final and cannot be edited"}), 403
+
+
+        if not r:
+            r = GilTrackingReport(
+                insured_id=int(insured_id),
+                ref_number=ref_number,
+                investigator_id=int(investigator_id),
+                report_date=d,
+                status="Draft",
+                note=note
+            )
+            db.session.add(r)
+            db.session.flush()  # get r.report_id
+        else:
+            # If investigator (not admin), don't allow editing a report created by another investigator (optional rule)
+            if (not user_is_admin_or_manager(user)) and (r.investigator_id != int(investigator_id)):
+                return jsonify({"status": "error", "message": "Cannot edit another investigator's report"}), 403
+
+            r.note = note
+            r.updated_at = datetime.utcnow()
+
+        # Replace activities (simple and reliable)
+        GilTrackingReportActivity.query.filter_by(report_id=r.report_id).delete()
+
+        # items: [{activity_time:"HH:MM", description:"...", sort_order:0}, ...]
+        for idx, it in enumerate(items):
+            t = (it.get("activity_time") or "").strip()
+            desc = (it.get("description") or "").strip()
+            if not t or not desc:
+                continue
+
+            t_parsed = parse_time(t)  # <-- reuse your existing global parse_time()
+            if not t_parsed:
+                continue
+
+            sort_order = it.get("sort_order")
+            if sort_order is None:
+                sort_order = idx
+
+            db.session.add(GilTrackingReportActivity(
+                report_id=r.report_id,
+                activity_time=t_parsed,
+                description=desc,
+                sort_order=int(sort_order)
+            ))
+
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "report_id": r.report_id,
+            "report_date": normalize_date(r.report_date),
+            "status_value": r.status or "Draft"
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"api_tracking_report_save error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
+@main.route("/api/tracking_reports/<int:report_id>/status", methods=["POST"])
+def api_tracking_report_set_status(report_id):
+    try:
+        payload = request.get_json(silent=True) or {}
+        new_status = (payload.get("status") or "").strip()
+
+        # ✅ add Final
+        allowed_status = {"Draft", "Submitted", "Approved", "Rejected", "Final"}
+        if new_status not in allowed_status:
+            return jsonify({"status": "error", "message": "Invalid status"}), 400
+
+        r = GilTrackingReport.query.get_or_404(report_id)
+
+        allowed, inv_row, user = require_case_access_or_403(r.insured_id, r.ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        # ✅ Only admin/manager can approve/reject
+        if new_status in {"Approved", "Rejected"} and (not user_is_admin_or_manager(user)):
+            return jsonify({"status": "error", "message": "Only admin can approve/reject"}), 403
+
+        # ✅ Final is allowed for everyone who has access (or if you want: only admin)
+        # If you want "Final only admin", uncomment:
+        # if new_status == "Final" and (not user_is_admin_or_manager(user)):
+        #     return jsonify({"status": "error", "message": "Only admin can set Final"}), 403
+
+        r.status = new_status
+        r.updated_at = datetime.utcnow()
+        db.session.commit()
+
+        return jsonify({"status": "success", "report_id": r.report_id, "new_status": r.status})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"api_tracking_report_set_status error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
+
+
+@main.route("/api/tracking_reports/<int:report_id>/delete", methods=["POST"])
+def api_tracking_report_delete(report_id):
+    try:
+        r = GilTrackingReport.query.get_or_404(report_id)
+
+        allowed, inv_row, user = require_case_access_or_403(r.insured_id, r.ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        # Optional: prevent deleting approved unless admin
+        if r.status == "Approved" and (not user_is_admin_or_manager(user)):
+            return jsonify({"status": "error", "message": "Approved report cannot be deleted"}), 400
+
+        if r.status == "Final" and (not user_is_admin_or_manager(user)):
+            return jsonify({"status": "error", "message": "Final report cannot be deleted"}), 400
+
+
+        GilTrackingReportActivity.query.filter_by(report_id=r.report_id).delete()
+        db.session.delete(r)
+        db.session.commit()
+
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"api_tracking_report_delete error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
+
+@main.route('/tracking-report/finalize', methods=['POST'])
+def finalize_tracking_report():
+    data = request.get_json()
+    report_id = data.get('report_id')
+
+    report = GilTrackingReport.query.get_or_404(report_id)
+    report.status = 'Final'
+    report.last_edited = datetime.utcnow()
+
+    db.session.commit()
+
+    return jsonify({'status': 'ok'})
 
 
 ############################################################################

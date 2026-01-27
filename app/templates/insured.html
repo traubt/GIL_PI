@@ -4,6 +4,15 @@
   {% include 'header-bar.html' %}
   {% include 'side-bar.html' %}
 
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+
+
+
+
+
 <h3 class="mb-4">
   {% if insured %}עדכן תיק חקירה{% else %}צור תיק מבוטח{% endif %}
 </h3>
@@ -52,8 +61,10 @@
 
       <div class="col-12 col-sm-6 col-md-4 col-lg-2">
         <label for="received_date" class="form-label">תאריך קבלה</label>
-        <input type="date" class="form-control" id="received_date" name="received_date"
-               value="{{ insured.received_date.strftime('%Y-%m-%d') if insured and insured.received_date else '' }}">
+        <input type="text" class="form-control" id="received_date" name="received_date"
+           placeholder="DD/MM/YYYY"
+           value="{{ insured.received_date.strftime('%d/%m/%Y') if insured and insured.received_date else '' }}">
+
       </div>
 
       <div class="col-12 col-sm-6 col-md-4 col-lg-2">
@@ -137,9 +148,11 @@
       </div>
       <div class="col-md-2">
         <label for="birth_date" class="form-label">תאריך לידה</label>
-        <input type="date" id="birth_date" name="birth_date"
-               value="{{ insured.birth_date.strftime('%Y-%m-%d') if insured.birth_date else '' }}"
+        <input type="text" id="birth_date" name="birth_date"
+               placeholder="DD/MM/YYYY"
+               value="{{ insured.birth_date.strftime('%d/%m/%Y') if insured and insured.birth_date else '' }}"
                class="form-control">
+
       </div>
     </div>
   </div>
@@ -246,6 +259,39 @@
     </div>
   </div>
 
+<!-- ===== TRACKING REPORTS ===== -->
+<div class="card insured-section-card">
+  <div class="card-header">
+    דוח פעילות
+    <button type="button" class="btn btn-sm btn-success float-end" id="addTrackingReportBtn">
+      צור דוח פעילות
+    </button>
+  </div>
+  <div class="card-body">
+
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered align-middle" id="trackingReportsTable">
+        <thead>
+          <tr>
+            <th style="width:140px;">תאריך</th>
+            <th>סטטוס</th>
+            <th style="width:260px;">פעולות</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- UI-only: rows will be loaded via AJAX -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="text-muted small">
+      * ניתן ליצור מספר דוחות, אך דוח אחד לכל יום.
+    </div>
+  </div>
+</div>
+
+
+
 
   <!-- ===== ACTIONS ===== -->
   <div class="mt-3">
@@ -253,6 +299,94 @@
     <a href="{{ url_for('main.admin_insured') }}" class="btn btn-secondary">חזור</a>
   </div>
 </form>
+
+
+<!-- ===== Tracking Report Modal ===== -->
+<div class="modal fade" id="trackingReportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <form id="trackingReportForm">
+        <div class="modal-header">
+          <h5 class="modal-title" id="trackingReportModalTitle">דוח פעילות</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+        </div>
+
+        <div class="modal-body">
+          <input type="hidden" id="tr_report_id" value="">
+
+          <div class="row g-3 align-items-end mb-3">
+            <div class="col-12 col-md-3">
+              <label class="form-label">תאריך דוח</label>
+              <input type="text"
+                     id="activity_date_dmy"
+                     class="form-control js-date"
+                     placeholder="DD/MM/YYYY">
+            </div>
+
+            <div class="col-md-3">
+              <label class="form-label">סטטוס</label>
+              <input
+                type="text"
+                id="tracking_status"
+                class="form-control"
+                readonly
+              >
+            </div>
+
+
+            <div class="col-12 col-md-6">
+              <label class="form-label">הערה</label>
+              <input type="text" class="form-control" id="tr_note" placeholder="">
+            </div>
+          </div>
+
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">פעילויות</h6>
+            <button type="button" class="btn btn-sm btn-primary" id="addActivityRowBtn">הוסף פעילות</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle" id="activitiesTable">
+              <thead>
+                <tr>
+                  <th style="width:120px;">זמן</th>
+                  <th>תיאור פעילות</th>
+                  <th style="width:90px;">פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- rows injected by JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="text-muted small">
+            * השורה הראשונה היא תמיד "תחילת פעילות" והשורה האחרונה תמיד "סיום במשרד".
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-danger me-auto" id="deleteTrackingReportBtn" style="display:none;">
+            מחק דוח
+          </button>
+
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+          <button type="submit" class="btn btn-success" id="saveTrackingReportBtn">שמור</button>
+          <button
+            type="button"
+            id="finalizeReportBtn"
+            class="btn btn-warning"
+            style="display:none"
+          >
+            סיים דוח
+          </button>
+
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 
 <!-- ===== Add Contact Modal (unchanged) ===== -->
 
@@ -360,10 +494,244 @@
 let insuredId = {{ insured.id if insured else 'null' }};
 let isCreate = {{ 'false' if insured else 'true' }};
 
+// ================= TRACKING REPORTS (UI only) =================
+
+function initTrackingDatePicker() {
+  const el = document.getElementById('activity_date_dmy');
+  if (!el || !window.flatpickr) return;
+
+  // prevent double-init
+  if (el._flatpickr) return;
+
+  flatpickr(el, {
+    dateFormat: "d/m/Y",
+    allowInput: true
+  });
+}
+
+// init when modal opens (best for dynamic modals)
+document.addEventListener('shown.bs.modal', function (e) {
+  if (e.target && e.target.id === 'trackingReportModal') {
+    initTrackingDatePicker();
+  }
+});
+
+
+let trackingReportsCache = []; // [{report_id, report_date, status}]
+
+function trRowTemplate({ report_id, report_date, status }) {
+  return `
+    <tr data-id="${report_id}">
+      <td>${isoToDmy(report_date || '')}</td>
+      <td>${status || 'Draft'}</td>
+      <td>
+        <button type="button" class="btn btn-sm btn-outline-primary tr-view">צפה</button>
+        <button type="button" class="btn btn-sm btn-outline-secondary tr-edit">ערוך</button>
+        <button type="button" class="btn btn-sm btn-outline-danger tr-delete">מחק</button>
+      </td>
+    </tr>
+  `;
+}
+
+function ensureFirstLastRows() {
+  const $tbody = $('#activitiesTable tbody');
+  const rows = $tbody.find('tr');
+
+  // If empty -> create both
+  if (rows.length === 0) {
+    $tbody.append(activityRow('', 'תחילת פעילות', true));
+    $tbody.append(activityRow('', 'סיום במשרד', true));
+    return;
+  }
+
+  // Force first row description
+  const $first = $tbody.find('tr').first();
+  $first.find('.tr-desc').val('תחילת פעילות').prop('readonly', true);
+  $first.find('.tr-remove-activity').prop('disabled', true);
+
+  // Force last row description
+  const $last = $tbody.find('tr').last();
+  $last.find('.tr-desc').val('סיום במשרד').prop('readonly', true);
+  $last.find('.tr-remove-activity').prop('disabled', true);
+}
+
+function activityRow(timeVal = '', descVal = '', lockDesc = false) {
+  const ro = lockDesc ? 'readonly' : '';
+  return `
+    <tr>
+      <td><input type="time" class="form-control form-control-sm tr-time" value="${timeVal || ''}" required></td>
+      <td><input type="text" class="form-control form-control-sm tr-desc" value="${(descVal || '').replace(/"/g,'&quot;')}" ${ro} required></td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm btn-danger tr-remove-activity">מחק</button>
+      </td>
+    </tr>
+  `;
+}
+
+function loadActivitiesToModal(items) {
+  const $tbody = $('#activitiesTable tbody');
+  $tbody.empty();
+
+  if (!items || items.length === 0) {
+    $tbody.append(activityRow('', 'תחילת פעילות', true));
+    $tbody.append(activityRow('', 'סיום במשרד', true));
+    ensureFirstLastRows();
+    return;
+  }
+
+  // items are expected: [{activity_time:'HH:MM', description:'...', sort_order:n}]
+  items
+    .slice()
+    .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .forEach((it) => {
+      $tbody.append(activityRow(it.activity_time || '', it.description || '', false));
+    });
+
+  ensureFirstLastRows();
+}
+
+
+function applyTrackingStatus(status) {
+  const isFinal = (status || 'Draft') === 'Final';
+
+  // status display (Hebrew)
+  $('#tracking_status').val(isFinal ? 'סופי' : 'טיוטה');
+
+  // show finalize only if Draft AND we have a report_id
+  const hasId = ($('#tr_report_id').val() || '').trim() !== '';
+  $('#finalizeReportBtn').toggle(!isFinal && hasId);
+
+  // hide save if final
+  $('#saveTrackingReportBtn').toggle(!isFinal);
+
+  // hide add/remove buttons if final
+  $('#addActivityRowBtn').toggle(!isFinal);
+  $('.tr-remove-activity').toggle(!isFinal);
+
+  // lock/unlock inputs inside modal
+  $('#trackingReportModal')
+    .find('input, textarea, select, button')
+    .each(function () {
+      const $el = $(this);
+
+      // allow closing modal always
+      if ($el.attr('data-bs-dismiss') === 'modal') return;
+
+      // always keep finalize button enabled if Draft
+      if ($el.attr('id') === 'finalizeReportBtn') {
+        $el.prop('disabled', isFinal);
+        return;
+      }
+
+      // keep delete enabled only when not final
+      if ($el.attr('id') === 'deleteTrackingReportBtn') {
+        $el.prop('disabled', isFinal);
+        return;
+      }
+
+      // lock everything else if final
+      $el.prop('disabled', isFinal);
+    });
+}
+
+
+
+
+function openTrackingModal(mode, report) {
+  // mode: 'create' | 'view' | 'edit'
+  const isView = mode === 'view';
+  $('#trackingReportModalTitle').text(mode === 'create' ? 'צור דוח פעילות' : (isView ? 'צפייה בדוח פעילות' : 'עריכת דוח פעילות'));
+
+  $('#tr_report_id').val(report?.report_id || '');
+  $('#activity_date_dmy').val(isoToDmy(report?.report_date || ''));
+
+  applyTrackingStatus(report?.status || 'Draft');
+  $('#tr_note').val(report?.note || '');
+
+  // Reset activities UI
+  $('#activitiesTable tbody').empty();
+
+  // For UI-only, start with forced first/last rows
+  $('#activitiesTable tbody').append(activityRow('', 'תחילת פעילות', true));
+  $('#activitiesTable tbody').append(activityRow('', 'סיום במשרד', true));
+  ensureFirstLastRows();
+
+  // Toggle delete button visibility
+  $('#deleteTrackingReportBtn').toggle(!!report?.report_id && !isView);
+
+  // Toggle editability
+  $('#trackingReportForm input, #trackingReportForm button, #trackingReportForm select').prop('disabled', isView);
+  // keep close enabled
+  $('#trackingReportForm button[data-bs-dismiss="modal"]').prop('disabled', false);
+
+  // In view mode, hide add/remove activity buttons
+  $('#addActivityRowBtn').toggle(!isView);
+  $('.tr-remove-activity').toggle(!isView);
+
+  new bootstrap.Modal(document.getElementById('trackingReportModal')).show();
+}
+
+// Load reports list for this case (server)
+async function loadTrackingReports() {
+  if (!insuredId) return;
+
+  const ref_number = ($('#ref_number').val() || '').trim();
+  if (!ref_number) return;
+
+  try {
+    const res = await $.getJSON(`/api/tracking_reports?insured_id=${insuredId}&ref_number=${encodeURIComponent(ref_number)}`);
+
+    if (!res || res.status !== 'success') {
+      throw new Error(res?.message || 'שגיאה בטעינת דוחות פעילות');
+    }
+
+    // Normalize cache dates to ISO (YYYY-MM-DD) for comparisons
+    trackingReportsCache = (res.reports || []).map(r => {
+      let d = (r.report_date || '').trim();
+      if (d.includes('/')) d = dmyToIso(d);
+      return {
+        report_id: r.report_id,
+        report_date: d,
+        status: r.status || 'Draft',
+        note: r.note || ''
+      };
+    });
+
+    const $tbody = $('#trackingReportsTable tbody');
+    $tbody.empty();
+    trackingReportsCache.forEach(r => $tbody.append(trRowTemplate(r)));
+
+  } catch (e) {
+    showModal('❌ שגיאה', e.message || 'שגיאה בטעינת דוחות פעילות');
+  }
+}
+
+
+function reportDateExists(dateStr) {
+  return trackingReportsCache.some(r => r.report_date === dateStr);
+}
+
+
 $(function () {
+
+  if (typeof flatpickr !== 'undefined') {
+    flatpickr('#received_date', { dateFormat: 'd/m/Y', allowInput: true });
+    flatpickr('#birth_date',    { dateFormat: 'd/m/Y', allowInput: true });
+
+  }
+
+
   // ===== Save insured (main form) =====
   $('#insuredForm').on('submit', function (e) {
     e.preventDefault();
+
+    // Convert DD/MM/YYYY -> ISO for backend
+    const rd = ($('#received_date').val() || '').trim();
+    if (rd) $('#received_date').val(dmyToIso(rd));
+
+    const bd = ($('#birth_date').val() || '').trim();
+    if (bd) $('#birth_date').val(dmyToIso(bd));
+
     const formData = new FormData(this);
 
     $.ajax({
@@ -513,6 +881,195 @@ $(function () {
       .done(res => { if (res.status !== 'success') alert('שגיאה בעדכון נוהל פרקינסון'); })
       .fail(() => alert('שגיאת שרת בעדכון נוהל פרקינסון'));
   });
+
+
+    // ===== Tracking Reports: initial load =====
+  loadTrackingReports();
+
+  // Create new report
+  $('#addTrackingReportBtn').on('click', function () {
+    if (!insuredId) {
+      showModal('⚠️ לא ניתן', 'נא לשמור את התיק לפני יצירת דוח פעילות.');
+      return;
+    }
+    openTrackingModal('create', null);
+    loadActivitiesToModal([]);
+    applyTrackingStatus('Draft');
+  });
+
+  // Add activity row (in between first/last)
+  $('#addActivityRowBtn').on('click', function () {
+    const $tbody = $('#activitiesTable tbody');
+    const $last = $tbody.find('tr').last();
+    $(activityRow('', '', false)).insertBefore($last);
+    ensureFirstLastRows();
+  });
+
+  // Remove activity row (not first/last)
+  $(document).on('click', '.tr-remove-activity', function () {
+    $(this).closest('tr').remove();
+    ensureFirstLastRows();
+  });
+
+  // View
+  $(document).on('click', '.tr-view', async function () {
+    const id = $(this).closest('tr').data('id');
+    if (!id) return;
+
+    try {
+      const res = await $.getJSON(`/api/tracking_reports/${id}`);
+      if (!res || res.status !== 'success') throw new Error(res?.message || 'שגיאה בטעינת הדוח');
+
+      openTrackingModal('view', res.report);
+      loadActivitiesToModal(res.report.items || []);
+      applyTrackingStatus(res.report.status || 'Draft');
+
+    } catch (e) {
+      showModal('❌ שגיאה', e.message || 'שגיאה בטעינת הדוח');
+    }
+  });
+
+  // Edit
+  $(document).on('click', '.tr-edit', async function () {
+    const id = $(this).closest('tr').data('id');
+    if (!id) return;
+
+    try {
+      const res = await $.getJSON(`/api/tracking_reports/${id}`);
+      if (!res || res.status !== 'success') throw new Error(res?.message || 'שגיאה בטעינת הדוח');
+
+      openTrackingModal('edit', res.report);
+      loadActivitiesToModal(res.report.items || []);
+      applyTrackingStatus(res.report.status || 'Draft');
+
+    } catch (e) {
+      showModal('❌ שגיאה', e.message || 'שגיאה בטעינת הדוח');
+    }
+  });
+
+  // Delete from list
+  $(document).on('click', '.tr-delete', function () {
+    const id = $(this).closest('tr').data('id');
+    if (!id) return;
+
+    showModal('אישור מחיקה', 'האם למחוק את דוח הפעילות?', [
+      `<button type="button" class="btn btn-danger" id="confirmDeleteTR">מחק</button>`
+    ]);
+
+    $(document).off('click', '#confirmDeleteTR').on('click', '#confirmDeleteTR', async function () {
+      try {
+        const res = await $.post(`/api/tracking_reports/${id}/delete`);
+        if (!res || res.status !== 'success') throw new Error(res?.message || 'מחיקה נכשלה');
+
+        $('#genericModal').modal('hide');
+        await loadTrackingReports();
+        showModal('✅ נמחק', 'דוח הפעילות נמחק בהצלחה.');
+      } catch (e) {
+        showModal('❌ שגיאה', e?.responseJSON?.message || e.message || 'מחיקה נכשלה');
+      }
+    });
+  });
+
+  // Save report
+ //(UI validates; backend endpoint placeholder)
+    // Save report (server)
+  $('#trackingReportForm').on('submit', async function (e) {
+    e.preventDefault();
+
+    const report_id = ($('#tr_report_id').val() || '').trim();
+    const report_date_dmy = ($('#activity_date_dmy').val() || '').trim();
+    const report_date = dmyToIso(report_date_dmy);
+
+    const ref_number = ($('#ref_number').val() || '').trim();
+
+    if (!report_date) {
+      showModal('⚠️ חסר תאריך', 'נא לבחור תאריך לדוח הפעילות.');
+      return;
+    }
+
+    // enforce "one per day" (client-side; DB will also enforce)
+    if (!report_id && reportDateExists(report_date)) {
+      showModal('⚠️ לא ניתן', 'ניתן ליצור דוח אחד בלבד לכל יום.');
+      return;
+    }
+
+    ensureFirstLastRows();
+
+    const items = [];
+    let ok = true;
+
+    $('#activitiesTable tbody tr').each(function (idx) {
+      const t = ($(this).find('.tr-time').val() || '').trim();
+      const d = ($(this).find('.tr-desc').val() || '').trim();
+      if (!t || !d) ok = false;
+
+      items.push({
+        activity_time: t,
+        description: d,
+        sort_order: idx
+      });
+    });
+
+    if (!ok) {
+      showModal('⚠️ שדות חסרים', 'בכל פעילות חובה למלא זמן ותיאור פעילות.');
+      return;
+    }
+
+    const payload = {
+      report_id: report_id || null,
+      insured_id: insuredId,
+      ref_number,
+      report_date, // ISO YYYY-MM-DD
+      note: ($('#tr_note').val() || '').trim(),
+      items
+    };
+
+    try {
+      const res = await $.ajax({
+        url: '/api/tracking_reports/save',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(payload)
+      });
+
+      if (!res || res.status !== 'success') {
+        throw new Error(res?.message || 'שמירה נכשלה');
+      }
+
+      bootstrap.Modal.getInstance(document.getElementById('trackingReportModal')).hide();
+      await loadTrackingReports();
+      showModal('✅ נשמר', 'דוח הפעילות נשמר בהצלחה.');
+
+    } catch (e) {
+      showModal('❌ שגיאה', e?.responseJSON?.message || e.message || 'שמירה נכשלה');
+    }
+  });
+
+  // Delete from inside modal (edit only)
+  $('#deleteTrackingReportBtn').on('click', function () {
+    const id = ($('#tr_report_id').val() || '').trim();
+    if (!id) return;
+
+    showModal('אישור מחיקה', 'האם למחוק את דוח הפעילות?', [
+      `<button type="button" class="btn btn-danger" id="confirmDeleteTR2">מחק</button>`
+    ]);
+
+    $(document).off('click', '#confirmDeleteTR2').on('click', '#confirmDeleteTR2', async function () {
+      try {
+        const res = await $.post(`/api/tracking_reports/${id}/delete`);
+        if (!res || res.status !== 'success') throw new Error(res?.message || 'מחיקה נכשלה');
+
+        $('#genericModal').modal('hide');
+        bootstrap.Modal.getInstance(document.getElementById('trackingReportModal')).hide();
+
+        await loadTrackingReports();
+        showModal('✅ נמחק', 'דוח הפעילות נמחק בהצלחה.');
+      } catch (e) {
+        showModal('❌ שגיאה', e?.responseJSON?.message || e.message || 'מחיקה נכשלה');
+      }
+    });
+  });
+
 });
 
 
@@ -676,6 +1233,46 @@ function toggleClaimNumberField() {
   });
 
 </script>
+
+<script>
+$(document).on('click', '#finalizeReportBtn', function () {
+  showModal('סיום דוח', 'לאחר סיום הדוח לא ניתן יהיה לערוך אותו. האם להמשיך?', [
+    `<button type="button" class="btn btn-warning" id="confirmFinalizeTR">כן, סיים דוח</button>`
+  ]);
+});
+
+$(document).off('click', '#confirmFinalizeTR').on('click', '#confirmFinalizeTR', async function () {
+  const report_id = ($('#tr_report_id').val() || '').trim();
+  if (!report_id) {
+    $('#genericModal').modal('hide');
+    showModal('⚠️ לא ניתן', 'נא לשמור את הדוח לפני סיום.');
+    return;
+  }
+
+  try {
+    const res = await $.ajax({
+      url: '/tracking-report/finalize',
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({ report_id })
+    });
+
+    if (res && (res.status === 'ok' || res.status === 'success')) {
+      $('#genericModal').modal('hide');
+      applyTrackingStatus('Final');
+      await loadTrackingReports(); // refresh table status
+      showModal('✅ הצלחה', 'הדוח סומן כסופי.');
+    } else {
+      throw new Error(res?.message || 'שגיאה בסיום הדוח');
+    }
+  } catch (e) {
+    $('#genericModal').modal('hide');
+    showModal('❌ שגיאה', e?.responseJSON?.message || e.message || 'שגיאה בסיום הדוח');
+  }
+});
+</script>
+
+
 
 
 <!-- Generic Modal (unchanged) -->

@@ -403,6 +403,76 @@ class GilReportPhoto(db.Model):
     orientation = db.Column(db.String(10))  # 'landscape' | 'portrait' | 'square'
 
 
+class GilTrackingReport(db.Model):
+    __tablename__ = 'gil_tracking_reports'
+
+    report_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    ref_number = db.Column(db.String(50), nullable=False)  # gil_insured.ref_number (case identifier)
+
+    insured_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_insured.id', ondelete='CASCADE'),
+        nullable=False
+    )
+
+    investigator_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_investigator.id', ondelete='RESTRICT'),
+        nullable=False
+    )
+
+    report_date = db.Column(db.Date, nullable=False)
+
+    note = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(20), nullable=False, default='Draft')
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint('ref_number', 'report_date', name='uq_tracking_ref_day'),
+        db.Index('idx_tracking_insured', 'insured_id'),
+        db.Index('idx_tracking_investigator', 'investigator_id'),
+        db.Index('idx_tracking_date', 'report_date'),
+    )
+
+    insured = db.relationship('GilInsured', backref=db.backref('tracking_reports', lazy='dynamic'))
+    investigator = db.relationship('GilInvestigator', backref=db.backref('tracking_reports', lazy='dynamic'))
+
+    activities = db.relationship(
+        'GilTrackingReportActivity',
+        backref='report',
+        cascade='all, delete-orphan',
+        order_by='GilTrackingReportActivity.sort_order.asc()'
+    )
+
+
+class GilTrackingReportActivity(db.Model):
+    __tablename__ = 'gil_tracking_report_activities'
+
+    activity_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    report_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_tracking_reports.report_id', ondelete='CASCADE'),
+        nullable=False
+    )
+
+    activity_time = db.Column(db.Time, nullable=False)
+    description = db.Column(db.Text, nullable=False)
+
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index('idx_activity_report', 'report_id'),
+    )
+
+
+
 
 
 

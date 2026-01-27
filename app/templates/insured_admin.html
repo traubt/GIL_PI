@@ -367,6 +367,140 @@ $(function () {
     });
   }
 
+  // ============================
+  // Assign Investigator (BULK)
+  // ============================
+  function openAssignModalForCase(caseId, currentInvestigatorsStr) {
+    // set insured id
+    $('#assignInsuredId').val(caseId || "");
+    // mark bulk mode (0/1)
+    $('#bulkMode').val(caseId ? "0" : "1");
+
+    // clear checks
+    $('#assignInvestigatorForm input[type="checkbox"][name="investigators"]').prop('checked', false);
+
+    // pre-check existing investigators (stored as "name*name*name")
+    if (currentInvestigatorsStr) {
+      const parts = currentInvestigatorsStr.split('*').map(s => s.trim()).filter(Boolean);
+      parts.forEach(name => {
+        $('#assignInvestigatorForm input[type="checkbox"][name="investigators"][value="' + name.replace(/"/g, '\\"') + '"]').prop('checked', true);
+      });
+    }
+
+    new bootstrap.Modal(document.getElementById('assignInvestigatorModal')).show();
+  }
+
+  // click: bulk assign button (top)
+  $('#bulkAssignBtn').on('click', function () {
+
+    const ids = table.rows({ selected: true }).nodes().toArray()
+      .map(n => $(n).data('id'))
+      .filter(Boolean);
+
+    if (!ids.length) {
+      return;
+    }
+
+    // 🔒 Enforce single case only
+    if (ids.length !== 1) {
+
+      const msg = 'You can assign an investigator to one case at a time.';
+
+      // Preferred: your standard smart modal helper (if available)
+      if (typeof showSmartModal === 'function') {
+        showSmartModal('Assign Investigator', msg);
+        return;
+      }
+
+      // Safe fallback: only use genericModal if it exists on this page
+      const gm = document.getElementById('genericModal');
+      if (gm) {
+        const titleEl = document.getElementById('genericModalTitle');
+        const bodyEl  = document.getElementById('genericModalBody');
+        if (titleEl) titleEl.textContent = 'Assign Investigator';
+        if (bodyEl)  bodyEl.textContent  = msg;
+        new bootstrap.Modal(gm).show();
+        return;
+      }
+
+      // Last fallback: never crash
+      alert(msg);
+      return;
+    }
+
+
+    // exactly one case selected → proceed
+    const caseId = ids[0];
+
+    const row = $(`#insuredTable tr[data-id="${caseId}"]`);
+    const currentInvestigators = row.find('.investigator-cell').text().trim();
+
+    openAssignModalForCase(caseId, currentInvestigators);
+  });
+
+
+  // click: save in modal
+  $('#saveInvestigatorBtn').on('click', function () {
+    const selectedNames = $('#assignInvestigatorForm input[type="checkbox"][name="investigators"]:checked')
+      .map(function(){ return $(this).val(); })
+      .get();
+
+    const bulkMode = $('#bulkMode').val() === "1";
+
+    // helper: post for one case
+    function postAssign(caseId) {
+      return $.ajax({
+        url: '/insured/assign_investigator',
+        method: 'POST',
+        data: {
+          insured_id: caseId,
+          investigators: selectedNames  // jQuery sends as investigators=...&investigators=...
+        }
+      });
+    }
+
+    if (bulkMode) {
+      const ids = table.rows({ selected: true }).nodes().toArray()
+        .map(n => $(n).data('id'))
+        .filter(Boolean);
+
+      if (!ids.length) return;
+
+      // run all requests
+      const reqs = ids.map(id => postAssign(id));
+
+      $.when.apply($, reqs).done(function () {
+        // Update UI cell for each selected row
+        ids.forEach(id => {
+          const row = $(`#insuredTable tr[data-id="${id}"]`);
+          row.find('.investigator-cell').text(selectedNames.join('*'));
+        });
+
+        $('#assignInvestigatorModal').modal('hide');
+        alert('החוקר/ים הוצבו בהצלחה ✅');
+      }).fail(function (xhr) {
+        alert('שגיאה בהצבת חוקר: ' + (xhr.responseText || ''));
+      });
+
+    } else {
+      const caseId = $('#assignInsuredId').val();
+      if (!caseId) { alert('insured_id חסר'); return; }
+
+      postAssign(caseId).done(function (res) {
+        if (res.status === 'success') {
+          const row = $(`#insuredTable tr[data-id="${caseId}"]`);
+          row.find('.investigator-cell').text(res.investigator || selectedNames.join('*'));
+          $('#assignInvestigatorModal').modal('hide');
+          alert('החוקר/ים עודכנו ✅');
+        } else {
+          alert(res.message || 'שגיאה בעדכון חוקר');
+        }
+      }).fail(function (xhr) {
+        alert('שגיאה בהצבת חוקר: ' + (xhr.responseText || ''));
+      });
+    }
+  });
+
 
   function highlightRowAndFill(id) {
     $.getJSON(`/appointments/${id}/json`, function (a) {
