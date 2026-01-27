@@ -2438,6 +2438,7 @@ def api_tracking_report_get(report_id):
                 "report_date": normalize_date(r.report_date),
                 "status": r.status or "Draft",
                 "note": r.note or "",
+                "mileage_km": r.mileage_km,  # ✅ NEW
                 "items": [{
                     "activity_id": it.activity_id,
                     "activity_time": normalize_time(it.activity_time),
@@ -2451,6 +2452,7 @@ def api_tracking_report_get(report_id):
         current_app.logger.error(f"api_tracking_report_get error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
 
+
 @main.route("/api/tracking_reports/save", methods=["POST"])
 def api_tracking_report_save():
     try:
@@ -2462,6 +2464,18 @@ def api_tracking_report_save():
         note = (payload.get("note") or "").strip()
         items = payload.get("items") or []
         report_id = payload.get("report_id")  # optional
+
+        # ✅ NEW: mileage
+        mileage_in = payload.get("mileage_km", None)
+        mileage_km = None
+        try:
+            # allow "", None => NULL
+            if mileage_in not in (None, "", "null"):
+                mileage_km = int(mileage_in)
+                if mileage_km < 0:
+                    return jsonify({"status": "error", "message": "Invalid mileage_km"}), 400
+        except Exception:
+            return jsonify({"status": "error", "message": "Invalid mileage_km"}), 400
 
         if not insured_id or not ref_number or not report_date_in:
             return jsonify({"status": "error", "message": "insured_id/ref_number/report_date missing"}), 400
@@ -2496,10 +2510,8 @@ def api_tracking_report_save():
 
         # ✅ If Final => cannot edit (server-side enforcement)
         if r and (r.status == "Final"):
-            # If you want admin to be able to "fix" Final, allow only admin:
             if not user_is_admin_or_manager(user):
                 return jsonify({"status": "error", "message": "Report is Final and cannot be edited"}), 403
-
 
         if not r:
             r = GilTrackingReport(
@@ -2508,7 +2520,8 @@ def api_tracking_report_save():
                 investigator_id=int(investigator_id),
                 report_date=d,
                 status="Draft",
-                note=note
+                note=note,
+                mileage_km=mileage_km  # ✅ NEW
             )
             db.session.add(r)
             db.session.flush()  # get r.report_id
@@ -2518,6 +2531,7 @@ def api_tracking_report_save():
                 return jsonify({"status": "error", "message": "Cannot edit another investigator's report"}), 403
 
             r.note = note
+            r.mileage_km = mileage_km  # ✅ NEW
             r.updated_at = datetime.utcnow()
 
         # Replace activities (simple and reliable)
@@ -2551,13 +2565,15 @@ def api_tracking_report_save():
             "status": "success",
             "report_id": r.report_id,
             "report_date": normalize_date(r.report_date),
-            "status_value": r.status or "Draft"
+            "status_value": r.status or "Draft",
+            "mileage_km": r.mileage_km  # ✅ optional but nice
         })
 
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"api_tracking_report_save error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
 
 @main.route("/api/tracking_reports/<int:report_id>/status", methods=["POST"])
 def api_tracking_report_set_status(report_id):

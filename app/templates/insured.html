@@ -333,6 +333,19 @@
               >
             </div>
 
+            <div class="col-md-3">
+              <label class="form-label">Mileage (קילומטרז')</label>
+              <input
+                id="mileage_km"
+                type="number"
+                class="form-control"
+                min="0"
+                step="1"
+                placeholder="e.g. 123456"
+              />
+            </div>
+
+
 
             <div class="col-12 col-md-6">
               <label class="form-label">הערה</label>
@@ -574,10 +587,17 @@ function loadActivitiesToModal(items) {
 
   if (!items || items.length === 0) {
     $tbody.append(activityRow('', 'תחילת פעילות', true));
+
+    // ✅ 3 empty activities between start/end
+    $tbody.append(activityRow('', '', false));
+    $tbody.append(activityRow('', '', false));
+    $tbody.append(activityRow('', '', false));
+
     $tbody.append(activityRow('', 'סיום במשרד', true));
     ensureFirstLastRows();
     return;
   }
+
 
   // items are expected: [{activity_time:'HH:MM', description:'...', sort_order:n}]
   items
@@ -647,14 +667,19 @@ function openTrackingModal(mode, report) {
 
   applyTrackingStatus(report?.status || 'Draft');
   $('#tr_note').val(report?.note || '');
+  $('#mileage_km').val(report?.mileage_km ?? '');
 
   // Reset activities UI
   $('#activitiesTable tbody').empty();
 
-  // For UI-only, start with forced first/last rows
+  // ✅ Default: start + 3 empty + end
   $('#activitiesTable tbody').append(activityRow('', 'תחילת פעילות', true));
+  $('#activitiesTable tbody').append(activityRow('', '', false));
+  $('#activitiesTable tbody').append(activityRow('', '', false));
+  $('#activitiesTable tbody').append(activityRow('', '', false));
   $('#activitiesTable tbody').append(activityRow('', 'סיום במשרד', true));
   ensureFirstLastRows();
+
 
   // Toggle delete button visibility
   $('#deleteTrackingReportBtn').toggle(!!report?.report_id && !isView);
@@ -1015,12 +1040,18 @@ $(function () {
       return;
     }
 
+    const mileageVal = ($('#mileage_km').val() || '').toString().trim();
+
     const payload = {
       report_id: report_id || null,
       insured_id: insuredId,
       ref_number,
       report_date, // ISO YYYY-MM-DD
       note: ($('#tr_note').val() || '').trim(),
+
+      // ✅ mileage
+      mileage_km: mileageVal !== '' ? parseInt(mileageVal, 10) : null,
+
       items
     };
 

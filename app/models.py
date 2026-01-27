@@ -423,6 +423,7 @@ class GilTrackingReport(db.Model):
     )
 
     report_date = db.Column(db.Date, nullable=False)
+    mileage_km = db.Column(db.Integer, nullable=True)
 
     note = db.Column(db.Text, nullable=True)
     status = db.Column(db.String(20), nullable=False, default='Draft')
