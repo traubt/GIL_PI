@@ -290,6 +290,50 @@
   </div>
 </div>
 
+<!-- ===== MEDIA UPLOAD TO DROPBOX (NEW) ===== -->
+<div class="card insured-section-card mt-3">
+  <div class="card-header">טעינת מדיה לדרופבוקס</div>
+  <div class="card-body">
+
+    <div class="row g-3 align-items-end">
+      <div class="col-12 col-md-3">
+        <label class="form-label">סוג מדיה</label>
+        <select id="dbx_media_type" class="form-select">
+          <option value="photos">תמונות</option>
+          <option value="id_photo">תמונת זיהוי</option>
+          <option value="social">מדיה חברתית</option>
+          <option value="video">וידאו</option>
+        </select>
+      </div>
+
+      <div class="col-12 col-md-6">
+        <label class="form-label">בחר קבצים</label>
+        <input id="dbx_media_files" type="file" class="form-control" multiple accept="image/*,video/*">
+        <div class="form-text text-muted">
+          * העלאה מתבצעת דרך 360 לחשבון Dropbox מרכזי.
+        </div>
+      </div>
+
+      <div class="col-12 col-md-3 d-grid">
+        <button type="button" id="dbx_upload_btn" class="btn btn-primary">העלה</button>
+      </div>
+    </div>
+
+    <div class="row g-3 mt-1">
+      <div class="col-12">
+        <label class="form-label">הערה (אופציונלי)</label>
+        <input id="dbx_media_note" type="text" class="form-control" placeholder="לדוגמה: תמונות מיום...">
+      </div>
+    </div>
+
+    <div class="progress mt-3 d-none" id="dbx_upload_progress_wrap">
+      <div class="progress-bar" id="dbx_upload_progress" role="progressbar" style="width: 0%;">0%</div>
+    </div>
+
+    <div class="mt-3" id="dbx_upload_result"></div>
+
+  </div>
+</div>
 
 
 
@@ -738,6 +782,91 @@ function reportDateExists(dateStr) {
 
 
 $(function () {
+
+  // ================= Dropbox Media Upload (NEW) =================
+
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"']/g, function (m) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[m];
+    });
+  }
+
+  $('#dbx_upload_btn').on('click', function () {
+
+    // must have insured saved
+    if (!insuredId) {
+      showModal('⚠️ לא ניתן', 'נא לשמור את התיק לפני העלאת מדיה לדרופבוקס.');
+      return;
+    }
+
+    const mediaType = ($('#dbx_media_type').val() || '').trim();
+    const note = ($('#dbx_media_note').val() || '').trim();
+    const input = document.getElementById('dbx_media_files');
+
+    if (!input || !input.files || input.files.length === 0) {
+      showModal('⚠️ חסר קובץ', 'נא לבחור קבצים להעלאה.');
+      return;
+    }
+
+    const fd = new FormData();
+    fd.append('media_type', mediaType);
+    fd.append('note', note);
+
+    for (const f of input.files) {
+      fd.append('files', f);
+    }
+
+    $('#dbx_upload_result').html('');
+    $('#dbx_upload_progress_wrap').removeClass('d-none');
+    $('#dbx_upload_progress').css('width', '0%').text('0%');
+
+    $.ajax({
+      url: `/insured/${insuredId}/media/upload`,
+      method: 'POST',
+      data: fd,
+      processData: false,
+      contentType: false,
+      xhr: function () {
+        const xhr = new window.XMLHttpRequest();
+        xhr.upload.addEventListener('progress', function (evt) {
+          if (evt.lengthComputable) {
+            const pct = Math.round((evt.loaded / evt.total) * 100);
+            $('#dbx_upload_progress').css('width', pct + '%').text(pct + '%');
+          }
+        }, false);
+        return xhr;
+      }
+    })
+    .done(function (res) {
+      $('#dbx_upload_progress_wrap').addClass('d-none');
+
+      if (!res || res.status !== 'success') {
+        showModal('❌ שגיאה', res?.message || 'העלאה נכשלה');
+        return;
+      }
+
+      const rows = (res.results || []).map(r => {
+        if (r.status === 'success') {
+          return `<div class="text-success">✔ ${escapeHtml(r.file)}</div>`;
+        }
+        return `<div class="text-danger">✖ ${escapeHtml(r.file)} — ${escapeHtml(r.message || 'Error')}</div>`;
+      }).join('');
+
+      $('#dbx_upload_result').html(rows || "<div class='text-muted'>אין תוצאות</div>");
+
+      // Clear input after upload
+      input.value = '';
+      $('#dbx_media_note').val('');
+
+      showModal('✅ הצלחה', 'הקבצים הועלו בהצלחה לדרופבוקס.');
+    })
+    .fail(function (xhr) {
+      $('#dbx_upload_progress_wrap').addClass('d-none');
+      const msg = xhr?.responseJSON?.message || 'שגיאה בהעלאה';
+      showModal('❌ שגיאה', msg);
+    });
+  });
+
 
   if (typeof flatpickr !== 'undefined') {
     flatpickr('#received_date', { dateFormat: 'd/m/Y', allowInput: true });

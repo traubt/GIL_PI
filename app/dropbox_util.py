@@ -177,3 +177,122 @@ def list_case_images(
         return []
     photos_path = _join_dropbox(case_root, PHOTOS_SUBFOLDER)
     return list_images_in_folder(dbx_client, photos_path)
+
+
+# -------------------------
+# Media upload
+# -------------------------
+
+import re
+from datetime import datetime
+from dropbox.files import WriteMode
+
+
+MEDIA_SUBFOLDERS = {
+    "photos": "תמונות",
+    "id_photo": "תמונת זיהוי",
+    "social": "מדיה חברתית",
+    "video": "וידאו",
+}
+
+# keep your existing ALLOWED_EXTS for images; extend for video
+ALLOWED_VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}  # adjust if needed
+
+
+def _safe_filename(name: str) -> str:
+    """
+    Minimal filename sanitizer for Dropbox paths:
+    - remove path separators
+    - remove weird control chars
+    """
+    name = (name or "").strip()
+    name = name.replace("\\", "_").replace("/", "_")
+    name = re.sub(r"[\x00-\x1f\x7f]+", "", name)
+    return name or "file"
+
+
+def build_media_folder_path(
+    insurance: str | None,
+    claim_type: str | None,
+    last_name: str | None,
+    first_name: str | None,
+    id_number: str | None,
+    claim_number: str | None,
+    media_type: str,
+) -> str | None:
+    """
+    Return target folder path for the insured, based on existing case-root convention
+    + the selected media type subfolder.
+    """
+    case_root = build_dropbox_folder_path(
+        insurance=insurance,
+        claim_type=claim_type,
+        last_name=last_name,
+        first_name=first_name,
+        id_number=id_number,
+        claim_number=claim_number,
+    )
+    if not case_root:
+        return None
+
+    sub = MEDIA_SUBFOLDERS.get(media_type)
+    if not sub:
+        return None
+
+    return _join_dropbox(case_root, sub)
+
+
+def ensure_folder_exists(dbx_client: dropbox.Dropbox, folder_path: str) -> None:
+    """
+    Idempotent folder ensure.
+    """
+    try:
+        dbx_client.files_create_folder_v2(folder_path)
+    except Exception:
+        # "already exists" / or other errors: let caller handle only if needed
+        # Usually Dropbox throws ApiError for existing folder; we can ignore safely.
+        pass
+
+
+def upload_media_file(
+    dbx_client: dropbox.Dropbox,
+    folder_path: str,
+    file_storage,  # werkzeug.datastructures.FileStorage
+    stored_filename: str | None = None,
+) -> dict:
+    """
+    Upload a single file to Dropbox under folder_path.
+    Returns: {ok, dropbox_path, dropbox_file_id, size_bytes, name}
+    Raises exception on hard failure.
+    """
+    original = _safe_filename(file_storage.filename or "file")
+    filename = _safe_filename(stored_filename or original)
+
+    target_path = _join_dropbox(folder_path, filename)
+
+    # read bytes (OK for photos). For very large videos we’ll upgrade to upload_session later.
+    data = file_storage.read()
+    size_bytes = len(data)
+
+    # reset stream so caller could reuse (optional)
+    try:
+        file_storage.stream.seek(0)
+    except Exception:
+        pass
+
+    res = dbx_client.files_upload(
+        data,
+        target_path,
+        mode=WriteMode.add,  # avoid overwrites
+        mute=True,
+    )
+
+    return {
+        "ok": True,
+        "dropbox_path": res.path_display or target_path,
+        "dropbox_file_id": getattr(res, "id", None),
+        "size_bytes": size_bytes,
+        "name": original,
+        "stored_name": filename,
+    }
+

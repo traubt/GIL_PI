@@ -2657,7 +2657,174 @@ def finalize_tracking_report():
     return jsonify({'status': 'ok'})
 
 
-############################################################################
+################  UPLOAD MEDIA BY INVESTIGATORS  #################
+
+# ===============================
+# Media upload (Photos / Videos)
+# ===============================
+
+MEDIA_SUBFOLDERS = {
+    "photos": "תמונות",
+    "id_photo": "תמונת זיהוי",
+    "social": "מדיה חברתית",
+    "video": "וידאו",
+}
+
+ALLOWED_MEDIA_TYPES = set(MEDIA_SUBFOLDERS.keys())
+
+# Keep it conservative for phase 1
+ALLOWED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
+ALLOWED_VIDEO_EXTS = {".mp4", ".mov", ".m4v", ".avi"}  # adjust as needed
+
+MAX_FILES_PER_UPLOAD = 20
+MAX_IMAGE_MB = 25
+MAX_VIDEO_MB = 300  # phase 1; we can increase later with upload_session
+
+
+def build_media_target_folder(insured: GilInsured, media_type: str) -> str | None:
+    """
+    Reuse your existing folder convention and just append the media subfolder.
+    """
+    base = build_dropbox_folder_path(
+        insured.insurance, insured.claim_type,
+        insured.last_name, insured.first_name,
+        insured.id_number, insured.claim_number
+    )
+    if not base:
+        return None
+    sub = MEDIA_SUBFOLDERS.get(media_type)
+    if not sub:
+        return None
+    return f"{base}/{sub}"
+
+
+def ensure_dropbox_folder(path: str):
+    """
+    Idempotent: creates folder if missing, ignores 'already exists' conflict.
+    """
+    try:
+        dbx.files_create_folder_v2(path)
+    except ApiError as e:
+        if not (e.error.is_path() and e.error.get_path().is_conflict()):
+            raise
+
+
+def validate_media_file(file_storage, media_type: str):
+    """
+    Validates file extension and size according to media_type.
+    Raises ValueError on invalid file.
+    """
+    filename = (file_storage.filename or "").strip()
+    if not filename:
+        raise ValueError("Missing filename")
+
+    ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    size_bytes = getattr(file_storage, "content_length", None)
+
+    # content_length is sometimes None with multipart; we can still validate after reading
+    is_video = (media_type == "video")
+    allowed = ALLOWED_VIDEO_EXTS if is_video else ALLOWED_IMAGE_EXTS.union(ALLOWED_VIDEO_EXTS)
+
+    if ext not in allowed:
+        raise ValueError(f"File type not allowed: {ext}")
+
+    if size_bytes is not None:
+        mb = size_bytes / (1024 * 1024)
+        if is_video and mb > MAX_VIDEO_MB:
+            raise ValueError(f"Video too large (>{MAX_VIDEO_MB}MB)")
+        if (not is_video) and mb > MAX_IMAGE_MB:
+            raise ValueError(f"Image too large (>{MAX_IMAGE_MB}MB)")
+
+
+@main.route("/insured/<int:insured_id>/media/upload", methods=["POST"])
+def insured_media_upload(insured_id: int):
+    try:
+        # session user (same pattern you use everywhere)
+        user_data = session.get('user')
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        insured = GilInsured.query.get_or_404(insured_id)
+
+        media_type = (request.form.get("media_type") or "").strip()
+        note = (request.form.get("note") or "").strip()
+
+        if media_type not in ALLOWED_MEDIA_TYPES:
+            return jsonify({"status": "error", "message": "Invalid media_type"}), 400
+
+        files = request.files.getlist("files")
+        if not files:
+            return jsonify({"status": "error", "message": "No files uploaded"}), 400
+
+        if len(files) > MAX_FILES_PER_UPLOAD:
+            return jsonify({"status": "error", "message": f"Too many files (max {MAX_FILES_PER_UPLOAD})"}), 400
+
+        folder_path = build_media_target_folder(insured, media_type)
+        if not folder_path:
+            return jsonify({
+                "status": "error",
+                "message": "Cannot determine Dropbox folder. Check insured insurance/type fields."
+            }), 400
+
+        # Ensure the subfolder exists (safe if already exists)
+        ensure_dropbox_folder(folder_path)
+
+        results = []
+
+        for f in files:
+            try:
+                validate_media_file(f, media_type)
+
+                # Unique server-side name to avoid collisions
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                safe_name = secure_filename(f.filename)  # Werkzeug already imported in your file
+                stored_name = f"{insured_id}_{ts}_{safe_name}"
+                dropbox_path = f"{folder_path}/{stored_name}"
+
+                # Phase 1: direct upload (good for photos + moderate videos)
+                data = f.read()
+                size_bytes = len(data)
+
+                # size guard even if content_length not available
+                mb = size_bytes / (1024 * 1024)
+                if media_type == "video" and mb > MAX_VIDEO_MB:
+                    raise ValueError(f"Video too large (>{MAX_VIDEO_MB}MB)")
+                if media_type != "video" and mb > MAX_IMAGE_MB:
+                    raise ValueError(f"Image too large (>{MAX_IMAGE_MB}MB)")
+
+                dbx.files_upload(
+                    data,
+                    dropbox_path,
+                    mode=dropbox.files.WriteMode.add,
+                    mute=True
+                )
+
+                results.append({
+                    "file": f.filename,
+                    "status": "success",
+                    "dropbox_path": dropbox_path,
+                    "size_bytes": size_bytes
+                })
+
+            except Exception as e:
+                results.append({
+                    "file": getattr(f, "filename", "file"),
+                    "status": "error",
+                    "message": str(e)
+                })
+
+        return jsonify({
+            "status": "success",
+            "folder_path": folder_path,
+            "note": note,
+            "results": results
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"insured_media_upload error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
 
 if __name__ == '__main__':
     app.run(debug=True)
