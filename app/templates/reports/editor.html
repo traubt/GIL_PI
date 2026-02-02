@@ -182,24 +182,16 @@
                         <label class="form-label">טלפון</label>
                         <input id="db_phone" type="text" class="form-control">
                       </div>
-<div class="row mb-3">
-  <div class="col-md-8">
-    <label class="form-label">כתובת</label>
-    <input type="text"
-           class="form-control"
-           id="db_address"
-           placeholder="כתובת">
-  </div>
 
-  <div class="col-md-4">
-    <label class="form-label">עיר</label>
-    <input type="text"
-           class="form-control"
-           id="db_city"
-           placeholder="עיר">
-  </div>
-</div>
+                      <div class="col-md-8">
+                        <label class="form-label">כתובת</label>
+                        <input type="text" id="db_address" class="form-control" placeholder="כתובת">
+                      </div>
 
+                      <div class="col-md-4">
+                        <label class="form-label">עיר</label>
+                        <input type="text" id="db_city" class="form-control" placeholder="עיר">
+                      </div>
 
                     </div>
                   </div>
@@ -404,46 +396,35 @@
                   placeholder="למשל: זיהוי – הנפגע זוהה עפ&quot;י ..."></textarea>
       </div>
 
-      <!-- תאריך פעילות -->
-      <div class="col-md-4">
-        <label class="form-label">תאריך מעקב</label>
-        <input id="db_tracking_date"
-               type="text"
-               class="form-control template-ph"
-               placeholder="dd/mm/yyyy">
-      </div>
-
-      <!-- התחלת פעילות -->
-      <div class="col-md-4">
-        <label class="form-label">זמן תחילת פעילות</label>
-        <input id="db_start_time"
-               type="time"
-               class="form-control template-ph">
-      </div>
-
-      <!-- סיום פעילות -->
-      <div class="col-md-4">
-        <label class="form-label">זמן סיום פעילות</label>
-        <input id="db_end_time"
-               type="time"
-               class="form-control template-ph">
-      </div>
-
-            <!-- פעילויות במהלך המעקב -->
+          <!-- פעילויות במהלך המעקב (מהחוקר) -->
       <div class="col-12">
-        <label class="form-label label-strong">פעילויות במהלך המעקב</label>
-        <textarea id="life_tracking_raw"
-                  class="form-control template-ph"
-                  rows="6"
-                  placeholder="דוגמה:
-06:00 - הגיע לכתובת הנפגע ברחוב ...
-07:15 - הנפגע יצא מהבית ..."></textarea>
+        <label class="form-label label-strong">דוח פעילות חוקר</label>
+
+              <!-- תאריך פעילות (מגיע מדוח פעילות החוקר) -->
+        <div class="col-md-4">
+          <label class="form-label">תאריך מעקב</label>
+          <select id="db_tracking_date"
+                  class="form-select template-ph">
+            <option value="">טוען תאריכים...</option>
+          </select>
+          <div class="form-text text-muted small">
+            התאריך נטען מדוח פעילות החוקר. בחר תאריך כדי להציג את הפעילויות.
+          </div>
+        </div>
+
+        <div id="life_tracking_list" class="border rounded p-2 bg-white">
+          <div class="text-muted small">בחר תאריך כדי לטעון פעילויות…</div>
+        </div>
+
         <div class="form-text text-muted small">
-          כל שורה בפורמט <code>HH:MM - תיאור הפעילות</code>.
+          השעה נעולה. ניתן לערוך רק את תיאור הפעילות (לצורך הדו״ח בלבד).
         </div>
       </div>
 
+      
+
       <!-- סיכום -->
+
       <div class="col-12">
         <label class="form-label">סיכום</label>
         <textarea id="db_summary"
@@ -520,7 +501,7 @@
 
 
 
-            </div>
+
           </div>
         </div>
       </div>
@@ -586,6 +567,214 @@ window.safeUUID = (function () {
     });
   };
 })();
+
+
+/* ============================================================
+   Menora Life Follow-up: Activities from investigator report
+   - Dropdown loads tracking dates (unique per insured/day)
+   - Selecting a date loads activities
+   - Admin can edit description only (no DB writes)
+   - On preview/download we send tracking_raw built from UI
+   ============================================================ */
+(function () {
+  const MODAL_ID = 'noTrackingReportsModal';
+
+  function showInfoModal(title, bodyHtml) {
+    // Bootstrap modal if available, otherwise fallback to alert()
+    try {
+      if (window.bootstrap && bootstrap.Modal) {
+        let el = document.getElementById(MODAL_ID);
+        if (!el) {
+          el = document.createElement('div');
+          el.id = MODAL_ID;
+          el.className = 'modal fade';
+          el.tabIndex = -1;
+          el.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title"></h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body"></div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+                </div>
+              </div>
+            </div>`;
+          document.body.appendChild(el);
+        }
+        el.querySelector('.modal-title').textContent = title || '';
+        el.querySelector('.modal-body').innerHTML = bodyHtml || '';
+        const m = new bootstrap.Modal(el);
+        m.show();
+        return;
+      }
+    } catch (e) {
+      // ignore
+    }
+    alert((title ? (title + "\n\n") : "") + (bodyHtml || '').replace(/<[^>]+>/g, ''));
+  }
+
+  function isoToDMY(iso) {
+    if (!iso || typeof iso !== 'string') return '';
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return iso;
+    return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+
+  async function fetchJSON(url) {
+    const res = await fetch(url, { method: 'GET' });
+    return await res.json();
+  }
+
+  function renderActivities(listEl, activities) {
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    if (!activities || !activities.length) {
+      listEl.innerHTML = `<div class="text-muted small">No activities found for selected date.</div>`;
+      return;
+    }
+
+    // RTL block
+    listEl.setAttribute('dir', 'rtl');
+
+    activities.forEach((a, idx) => {
+      const time = (a.time || '').trim();
+      const desc = (a.description || '').trim();
+
+      const row = document.createElement('div');
+      row.className = 'd-flex gap-2 align-items-start py-1 border-bottom';
+      row.dataset.time = time;
+
+      const timeEl = document.createElement('div');
+      timeEl.className = 'text-nowrap fw-semibold';
+      timeEl.style.width = '70px';
+      timeEl.textContent = time;
+
+      const ta = document.createElement('textarea');
+      ta.className = 'form-control form-control-sm';
+      ta.rows = 2;
+      ta.value = desc;
+      ta.placeholder = 'תיאור פעילות...';
+      ta.style.resize = 'vertical';
+
+      // keep textarea a bit larger than text
+      ta.style.minHeight = '46px';
+
+      row.appendChild(timeEl);
+      row.appendChild(ta);
+      listEl.appendChild(row);
+    });
+  }
+
+  function isLifeFollowupSelected() {
+    const v = (document.getElementById('reportType')?.value || '').trim();
+    const up = v.toUpperCase();
+    return (v === 'menora_life_followup' || up === 'MENORA_LIFE_FOLLOWUP');
+  }
+
+
+  async function loadTrackingDatesAndMaybeActivities() {
+    if (!isLifeFollowupSelected()) return;
+
+    const insuredId = (window.state && window.state.insured_id) ? Number(window.state.insured_id) : null;
+    if (!insuredId) return;
+
+    const dd = document.getElementById('db_tracking_date');
+    const listEl = document.getElementById('life_tracking_list');
+    if (!dd || !listEl) return;
+
+    dd.innerHTML = `<option value="">טוען תאריכים...</option>`;
+    listEl.innerHTML = `<div class="text-muted small">טוען פעילויות...</div>`;
+
+    const j = await fetchJSON(`/reports/api/insured/${insuredId}/tracking-dates`);
+    if (!j || j.status !== 'ok') {
+      dd.innerHTML = `<option value="">שגיאה בטעינת תאריכים</option>`;
+      listEl.innerHTML = `<div class="text-danger small">Failed to load tracking dates.</div>`;
+      return;
+    }
+
+    const dates = j.dates || [];
+    if (!dates.length) {
+      dd.innerHTML = `<option value="">אין דוחות פעילות</option>`;
+      listEl.innerHTML = `<div class="text-muted small">אין פעילויות להצגה.</div>`;
+      showInfoModal(
+        'No follow up reports found',
+        'No investigator activity reports were found for this insured. You can continue editing, but the Activities section will be empty.'
+      );
+      return;
+    }
+
+    dd.innerHTML = `<option value="">בחר תאריך...</option>` + dates.map(d => {
+      const iso = d.iso || '';
+      const dmy = d.dmy || isoToDMY(iso);
+      return `<option value="${iso}">${dmy}</option>`;
+    }).join('');
+
+    // auto-select latest
+    dd.value = dates[0].iso || '';
+    await loadActivitiesForSelectedDate();
+  }
+
+  async function loadActivitiesForSelectedDate() {
+    const insuredId = (window.state && window.state.insured_id) ? Number(window.state.insured_id) : null;
+    const dd = document.getElementById('db_tracking_date');
+    const listEl = document.getElementById('life_tracking_list');
+    if (!insuredId || !dd || !listEl) return;
+
+    const iso = (dd.value || '').trim();
+    if (!iso) {
+      listEl.innerHTML = `<div class="text-muted small">בחר תאריך כדי לטעון פעילויות…</div>`;
+      return;
+    }
+
+    listEl.innerHTML = `<div class="text-muted small">טוען פעילויות...</div>`;
+    const j = await fetchJSON(`/reports/api/insured/${insuredId}/tracking-activities?report_date=${encodeURIComponent(iso)}`);
+    if (!j || j.status !== 'ok') {
+      listEl.innerHTML = `<div class="text-danger small">Failed to load activities.</div>`;
+      return;
+    }
+
+    renderActivities(listEl, j.activities || []);
+  }
+
+  // Expose collector for preview/docx payload (build "HH:MM - desc" lines)
+  window.collectLifeFollowupTrackingRaw = function () {
+    const listEl = document.getElementById('life_tracking_list');
+    if (!listEl) return '';
+    const rows = listEl.querySelectorAll('div[data-time]');
+    const lines = [];
+    rows.forEach(r => {
+      const time = (r.dataset.time || '').trim();
+      const ta = r.querySelector('textarea');
+      const desc = (ta && ta.value != null) ? String(ta.value).trim() : '';
+      if (!time) return;
+      if (!desc) return;
+      lines.push(`${time} - ${desc}`);
+    });
+    return lines.join('\n');
+  };
+
+  // Hook events
+  document.addEventListener('DOMContentLoaded', () => {
+    const dd = document.getElementById('db_tracking_date');
+    if (dd) dd.addEventListener('change', loadActivitiesForSelectedDate);
+
+    // When changing report type to follow-up, load data
+    const rt = document.getElementById('reportType');
+    if (rt) rt.addEventListener('change', () => {
+      if (isLifeFollowupSelected()) {
+        loadTrackingDatesAndMaybeActivities();
+      }
+    });
+
+    // Initial load (if follow-up already selected)
+    loadTrackingDatesAndMaybeActivities();
+  });
+})();
+
 </script>
 
 
@@ -1266,16 +1455,14 @@ function applyTemplateSections() {
     if (g("db_social_media_identification"))
       q.set("social_media_identification", g("db_social_media_identification"));
     if (g("db_tracking_date")) q.set("tracking_date", g("db_tracking_date"));
-    if (g("db_start_time")) q.set("start_time", g("db_start_time"));
-    if (g("db_end_time")) q.set("end_time", g("db_end_time"));
-    if (g("db_summary")) q.set("summary", g("db_summary"));
+if (g("db_summary")) q.set("summary", g("db_summary"));
     if (g("db_phone")) q.set("phone", g("db_phone"));
     if (g("db_address")) q.set("address", g("db_address"));
     if (g("db_city")) q.set("city", g("db_city"));
-
-    if (g('life_tracking_raw'))             q.set('tracking_raw', g('life_tracking_raw'));
-
-    // === תמונות טבלה עבור "חקירת רשויות" (Menora Life Follow-up בלבד) ===
+    // tracking activities (from investigator report)
+    const traw = (typeof window.collectLifeFollowupTrackingRaw === 'function') ? window.collectLifeFollowupTrackingRaw() : '';
+    if (traw) q.set('tracking_raw', traw);
+// === תמונות טבלה עבור "חקירת רשויות" (Menora Life Follow-up בלבד) ===
     const tmplKey = selectedTemplateKey();
     if (tmplKey === 'menora_life_followup' &&
         typeof window.getAuthoritiesTablesForPayload === 'function') {
@@ -1612,15 +1799,12 @@ if (rt === "MENORA_LIFE_INVOICE") {
             payload.social_media                = v('db_social_media');
             payload.social_media_identification = v('db_social_media_identification');
             payload.tracking_date               = v('db_tracking_date');
-            payload.start_time                  = v('db_start_time');
-            payload.end_time                    = v('db_end_time');
-            payload.summary                     = v('db_summary');
+payload.summary                     = v('db_summary');
             payload.authorities_1               = v('db_authorities_1');
             payload.dnb                         = v('db_dnb');
             payload.authorities_2               = v('db_authorities_2');
-            payload.tracking_raw                = v('life_tracking_raw');
-
-            if (typeof window.getAuthoritiesTablesForPayload === 'function') {
+            payload.tracking_raw                = (typeof window.collectLifeFollowupTrackingRaw === 'function') ? window.collectLifeFollowupTrackingRaw() : '';
+if (typeof window.getAuthoritiesTablesForPayload === 'function') {
               const tbls = window.getAuthoritiesTablesForPayload();
               if (tbls.authorities_table)   payload.authorities_table   = tbls.authorities_table;
               if (tbls.authorities_table_2) payload.authorities_table_2 = tbls.authorities_table_2;
@@ -1700,16 +1884,6 @@ if (rt === "MENORA_LIFE_INVOICE") {
         }
       });
     }
-
-    // 👇 NEW: same style date-picker for life follow-up tracking date
-    const trackingEl = document.getElementById('db_tracking_date');
-    if (trackingEl && window.flatpickr) {
-      flatpickr(trackingEl, {
-        dateFormat: "d/m/Y",
-        allowInput: true
-      });
-    }
-
 
   });
 

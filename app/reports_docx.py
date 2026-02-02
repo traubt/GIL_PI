@@ -27,6 +27,103 @@ OUTPUT_DIR = getattr(
 
 reports_docx_bp = Blueprint("reports_docx", __name__, url_prefix="/reports")
 
+def _iso_to_ddmmyyyy_dash(s: str) -> str:
+    """
+    '2026-01-27' -> '27-01-2026'
+    Leaves unknown formats as-is.
+    """
+    if not s:
+        return ""
+    s = str(s).strip()
+    try:
+        y, m, d = s.split("-")
+        if len(y) == 4 and len(m) == 2 and len(d) == 2:
+            return f"{d}-{m}-{y}"
+    except Exception:
+        pass
+    return s
+
+
+
+# ============================================================
+# API: Investigator Tracking Reports (per-insured, per-day)
+# - Dor requirement: 1 activity report per day per insured.
+# - We expose dates + activities by report_date (not report_id).
+# ============================================================
+@reports_docx_bp.route("/api/insured/<int:insured_id>/tracking-dates", methods=["GET"])
+def api_tracking_dates(insured_id: int):
+    from datetime import date as _date
+    try:
+        rows = (
+            GilTrackingReport.query
+            .filter(GilTrackingReport.insured_id == insured_id)
+            .order_by(GilTrackingReport.report_date.desc())
+            .all()
+        )
+        seen = set()
+        out = []
+        for r in rows:
+            if not r.report_date:
+                continue
+            iso = r.report_date.isoformat()
+            if iso in seen:
+                continue
+            seen.add(iso)
+            dmy = r.report_date.strftime("%d/%m/%Y")
+            out.append({"iso": iso, "dmy": dmy})
+        return jsonify({"status": "ok", "dates": out})
+    except Exception as e:
+        current_app.logger.exception("api_tracking_dates failed")
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@reports_docx_bp.route("/api/insured/<int:insured_id>/tracking-activities", methods=["GET"])
+def api_tracking_activities(insured_id: int):
+    from datetime import datetime as _dt
+    report_date = (request.args.get("report_date") or "").strip()
+
+    # Parse YYYY-MM-DD
+    try:
+        dt = _dt.strptime(report_date, "%Y-%m-%d").date()
+    except Exception:
+        return jsonify({"status": "ok", "activities": []})
+
+    try:
+        rep_row = (
+            GilTrackingReport.query
+            .filter(
+                GilTrackingReport.insured_id == insured_id,
+                GilTrackingReport.report_date == dt
+            )
+            .first()
+        )
+        if not rep_row:
+            return jsonify({"status": "ok", "activities": []})
+
+        acts = (
+            GilTrackingReportActivity.query
+            .filter(GilTrackingReportActivity.report_id == rep_row.report_id)
+            .order_by(
+                GilTrackingReportActivity.sort_order.asc(),
+                GilTrackingReportActivity.activity_id.asc(),
+            )
+            .all()
+        )
+
+        out = []
+        for a in acts:
+            t = a.activity_time.strftime("%H:%M") if a.activity_time else ""
+            out.append({
+                "time": t,
+                "description": a.description or ""
+            })
+
+        return jsonify({"status": "ok", "activities": out})
+    except Exception as e:
+        current_app.logger.exception("api_tracking_activities failed")
+        return jsonify({"status": "error", "error": str(e)}), 500
+
+
 TEMPLATE_MAP = {
     "tracking": "menora_report.docx",   # your old tracking template
     "siudi":    "menora_siudi.docx",    # the new one
@@ -880,6 +977,14 @@ def preview_docx_as_pdf(report_id: int):
     )
 
     # ------------------------------------------------------------
+    # Tracking date formatted for Menora header: dd-mm-yyyy
+    # ------------------------------------------------------------
+    db = ctx.get("db", {})
+    ctx["tracking_date_ddmmyyyy"] = _iso_to_ddmmyyyy_dash(
+        db.get("tracking_date", "")
+    )
+
+    # ------------------------------------------------------------
     # 🔒 RESET PHOTO CONTEXT (prevents leakage between renders)
     # ------------------------------------------------------------
     ctx["photo_pages"] = []
@@ -1170,6 +1275,14 @@ def render_docx_download(report_id: int):
         ref_number=ref_number,
         reference_no=reference_no,
         version_no=version_no,
+    )
+
+    # ------------------------------------------------------------
+    # Tracking date formatted for Menora header: dd-mm-yyyy
+    # ------------------------------------------------------------
+    db = ctx.get("db", {})
+    ctx["tracking_date_ddmmyyyy"] = _iso_to_ddmmyyyy_dash(
+        db.get("tracking_date", "")
     )
 
     # ------------------------------------------------------------
@@ -1527,6 +1640,14 @@ def photo_id_preview_pdf(report_id: int):
     )
 
     # ------------------------------------------------------------
+    # Tracking date formatted for Menora header: dd-mm-yyyy
+    # ------------------------------------------------------------
+    db = ctx.get("db", {})
+    ctx["tracking_date_ddmmyyyy"] = _iso_to_ddmmyyyy_dash(
+        db.get("tracking_date", "")
+    )
+
+    # ------------------------------------------------------------
     # 🔒 RESET PHOTO CONTEXT (prevents leakage between renders)
     # ------------------------------------------------------------
     ctx["photo_pages"] = []
@@ -1621,6 +1742,14 @@ def photo_id_render_docx(report_id: int):
         ref_number=ref_number,
         reference_no=reference_no,
         version_no=version_no,
+    )
+
+    # ------------------------------------------------------------
+    # Tracking date formatted for Menora header: dd-mm-yyyy
+    # ------------------------------------------------------------
+    db = ctx.get("db", {})
+    ctx["tracking_date_ddmmyyyy"] = _iso_to_ddmmyyyy_dash(
+        db.get("tracking_date", "")
     )
 
     # ------------------------------------------------------------
