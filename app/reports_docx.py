@@ -1796,8 +1796,6 @@ def photo_id_render_docx(report_id: int):
     return jsonify({"ok": True, "docx_url": docx_url})
 
 
-
-
 # ================== /PHOTO ID: dedicated endpoints (server only) =======================
 
 
