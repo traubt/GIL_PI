@@ -290,50 +290,145 @@
   </div>
 </div>
 
-<!-- ===== MEDIA UPLOAD TO DROPBOX (NEW) ===== -->
+<!-- ===== MEDIA UPLOAD TO DROPBOX (NEW LAYOUT) ===== -->
+
+<style>
+  /* Reuse editor-style thumb grid */
+  .thumb-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:.75rem; }
+  .thumb{ display:block; border:1px solid #e5e7eb; border-radius:.5rem; padding:.5rem; background:#fff; }
+  .thumb img{ width:100%; height:110px; object-fit:cover; border-radius:.35rem; display:block; }
+  .thumb .name{ display:inline-block; font-size:.75rem; color:#6b7280; margin-top:.35rem; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+</style>
+
 <div class="card insured-section-card mt-3">
   <div class="card-header">טעינת מדיה לדרופבוקס</div>
   <div class="card-body">
 
-    <div class="row g-3 align-items-end">
-      <div class="col-12 col-md-3">
-        <label class="form-label">סוג מדיה</label>
-        <select id="dbx_media_type" class="form-select">
-          <option value="photos">תמונות</option>
-          <option value="id_photo">תמונת זיהוי</option>
-          <option value="social">מדיה חברתית</option>
-          <option value="video">וידאו</option>
-        </select>
-      </div>
-
-      <div class="col-12 col-md-6">
-        <label class="form-label">בחר קבצים</label>
-        <input id="dbx_media_files" type="file" class="form-control" multiple accept="image/*,video/*">
-        <div class="form-text text-muted">
-          * העלאה מתבצעת דרך 360 לחשבון Dropbox מרכזי.
+    <!-- 1) PHOTOS -->
+    <div class="border rounded p-3 mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">תמונות</h6>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="photos">רענן</button>
+          <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="photos">בחר הכל</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="photos">בטל בחירה</button>
         </div>
       </div>
 
-      <div class="col-12 col-md-3 d-grid">
-        <button type="button" id="dbx_upload_btn" class="btn btn-primary">העלה</button>
+      <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-8">
+          <label class="form-label">בחר קבצים</label>
+          <input id="media_files_photos" type="file" class="form-control" multiple accept="image/*">
+        </div>
+        <div class="col-12 col-md-4 d-grid">
+          <button type="button" class="btn btn-primary js-media-upload" data-type="photos">העלה</button>
+        </div>
       </div>
-    </div>
 
-    <div class="row g-3 mt-1">
-      <div class="col-12">
-        <label class="form-label">הערה (אופציונלי)</label>
-        <input id="dbx_media_note" type="text" class="form-control" placeholder="לדוגמה: תמונות מיום...">
+      <div class="progress mt-3 d-none" id="progress_wrap_photos">
+        <div class="progress-bar" id="progress_bar_photos" role="progressbar" style="width:0%;">0%</div>
       </div>
+
+      <div class="mt-3" id="result_photos"></div>
+      <div class="mt-3 thumb-grid" id="grid_photos"></div>
     </div>
 
-    <div class="progress mt-3 d-none" id="dbx_upload_progress_wrap">
-      <div class="progress-bar" id="dbx_upload_progress" role="progressbar" style="width: 0%;">0%</div>
+
+    <!-- 2) ID PHOTO -->
+    <div class="border rounded p-3 mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">תמונת זיהוי</h6>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="id_photo">רענן</button>
+          <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="id_photo">בחר הכל</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="id_photo">בטל בחירה</button>
+        </div>
+      </div>
+
+      <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-8">
+          <label class="form-label">בחר קובץ</label>
+          <input id="media_files_id_photo" type="file" class="form-control" multiple accept="image/*">
+          <div class="form-text text-muted">
+            * שינוי שם הקובץ לתבנית "שם מלא + תאריך" יתווסף בשלב הבא (Item 3).
+          </div>
+        </div>
+        <div class="col-12 col-md-4 d-grid">
+          <button type="button" class="btn btn-primary js-media-upload" data-type="id_photo">העלה</button>
+        </div>
+      </div>
+
+      <div class="progress mt-3 d-none" id="progress_wrap_id_photo">
+        <div class="progress-bar" id="progress_bar_id_photo" role="progressbar" style="width:0%;">0%</div>
+      </div>
+
+      <div class="mt-3" id="result_id_photo"></div>
+      <div class="mt-3 thumb-grid" id="grid_id_photo"></div>
     </div>
 
-    <div class="mt-3" id="dbx_upload_result"></div>
+
+    <!-- 3) SOCIAL MEDIA -->
+    <div class="border rounded p-3 mb-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">מדיה חברתית / אינטרנט</h6>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="social">רענן</button>
+          <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="social">בחר הכל</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="social">בטל בחירה</button>
+        </div>
+      </div>
+
+      <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-8">
+          <label class="form-label">בחר קבצים</label>
+          <input id="media_files_social" type="file" class="form-control" multiple accept="image/*">
+        </div>
+        <div class="col-12 col-md-4 d-grid">
+          <button type="button" class="btn btn-primary js-media-upload" data-type="social">העלה</button>
+        </div>
+      </div>
+
+      <div class="progress mt-3 d-none" id="progress_wrap_social">
+        <div class="progress-bar" id="progress_bar_social" role="progressbar" style="width:0%;">0%</div>
+      </div>
+
+      <div class="mt-3" id="result_social"></div>
+      <div class="mt-3 thumb-grid" id="grid_social"></div>
+    </div>
+
+
+    <!-- 4) VIDEO -->
+    <div class="border rounded p-3">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="mb-0">וידאו</h6>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="video">רענן</button>
+          <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="video">בחר הכל</button>
+          <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="video">בטל בחירה</button>
+        </div>
+      </div>
+
+      <div class="row g-3 align-items-end">
+        <div class="col-12 col-md-8">
+          <label class="form-label">בחר קבצים</label>
+          <input id="media_files_video" type="file" class="form-control" multiple accept="video/*">
+        </div>
+        <div class="col-12 col-md-4 d-grid">
+          <button type="button" class="btn btn-primary js-media-upload" data-type="video">העלה</button>
+        </div>
+      </div>
+
+      <div class="progress mt-3 d-none" id="progress_wrap_video">
+        <div class="progress-bar" id="progress_bar_video" role="progressbar" style="width:0%;">0%</div>
+      </div>
+
+      <div class="mt-3" id="result_video"></div>
+      <div class="mt-3 thumb-grid" id="grid_video"></div>
+    </div>
 
   </div>
 </div>
+
 
 
 
@@ -783,42 +878,248 @@ function reportDateExists(dateStr) {
 
 $(function () {
 
-  // ================= Dropbox Media Upload (NEW) =================
+  // ================= Local Preview (BEFORE upload) =================
+  // localPicked[type] = [{ file: File, name, url, mime_type, selected }]
+  const localPicked = {
+    photos:   [],
+    id_photo: [],
+    social:   [],
+    video:    []
+  };
 
-  function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, function (m) {
-      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" })[m];
+  function fileMime(file) {
+    return (file && file.type) ? file.type : '';
+  }
+
+  function fileIsImage(file) {
+    return fileMime(file).startsWith('image/');
+  }
+
+  function fileIsVideo(file) {
+    return fileMime(file).startsWith('video/');
+  }
+
+  function clearLocal(type) {
+    // revoke old object urls
+    (localPicked[type] || []).forEach(x => {
+      try { if (x.url) URL.revokeObjectURL(x.url); } catch(e){}
+    });
+    localPicked[type] = [];
+  }
+
+  // Render a grid from *localPicked* (not Dropbox)
+  function renderLocalGrid(type) {
+    const grid = document.getElementById(`grid_${type}`);
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const list = localPicked[type] || [];
+    for (const item of list) {
+      const wrap = document.createElement('label');
+      wrap.className = 'thumb';
+      wrap.style.cursor = 'pointer';
+
+      const box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = !!item.selected;
+      box.style.marginInlineEnd = '.35rem';
+      box.addEventListener('change', () => item.selected = box.checked);
+
+      // preview
+      if (item.mime_type.startsWith('image/')) {
+        const img = document.createElement('img');
+        img.src = item.url;
+        img.alt = item.name;
+        wrap.appendChild(img);
+      } else {
+        const div = document.createElement('div');
+        div.style.cssText = 'height:110px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:#f3f4f6';
+        div.textContent = item.mime_type.startsWith('video/') ? 'וידאו' : 'קובץ';
+        wrap.appendChild(div);
+      }
+
+      const meta = document.createElement('div');
+      meta.style.marginTop = '.35rem';
+      meta.innerHTML = `<span class="name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>`;
+      wrap.appendChild(meta);
+
+      wrap.insertBefore(box, wrap.firstChild);
+      grid.appendChild(wrap);
+    }
+  }
+
+  // When user selects files -> show thumbnails immediately
+  function bindLocalPreview(type) {
+    const input = document.getElementById(`media_files_${type}`);
+    if (!input) return;
+
+    input.addEventListener('change', function () {
+      clearLocal(type);
+
+      const files = Array.from(this.files || []);
+      if (!files.length) {
+        renderLocalGrid(type);
+        return;
+      }
+
+      localPicked[type] = files.map(f => ({
+        file: f,
+        name: f.name,
+        url: URL.createObjectURL(f),
+        mime_type: fileMime(f) || (type === 'video' ? 'video/*' : 'image/*'),
+        selected: true
+      }));
+
+      renderLocalGrid(type);
     });
   }
 
-  $('#dbx_upload_btn').on('click', function () {
+  // Bind previews for each section
+  bindLocalPreview('photos');
+  bindLocalPreview('id_photo');
+  bindLocalPreview('social');
+  bindLocalPreview('video');
 
-    // must have insured saved
+
+  // ================= Dropbox Media UI (sections + thumbnails) =================
+
+  const mediaPicked = {
+    photos:   [],
+    id_photo: [],
+    social:   [],
+    video:    []
+  };
+
+  function escapeHtml(s) {
+    return (s || "").replace(/[&<>"']/g, m => (
+      { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[m]
+    ));
+  }
+
+  // Standardized thumbnail card (same pattern as editor.html)
+  function makeThumbCard(item, type) {
+    const wrap = document.createElement('label');
+    wrap.className = 'thumb';
+    wrap.style.cursor = 'pointer';
+
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    box.checked = !!item.selected;
+    box.style.marginInlineEnd = '.35rem';
+    box.addEventListener('change', () => {
+      item.selected = box.checked;
+    });
+
+    if ((item.mime_type || '').startsWith('image/')) {
+      const img = document.createElement('img');
+      img.src = item.url;
+      img.alt = item.name;
+      wrap.appendChild(img);
+    } else {
+      const div = document.createElement('div');
+      div.style.cssText = 'height:110px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:#f3f4f6';
+      div.textContent = 'וידאו';
+      wrap.appendChild(div);
+    }
+
+    const meta = document.createElement('div');
+    meta.style.marginTop = '.35rem';
+    meta.innerHTML = `<span class="name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>`;
+    wrap.appendChild(meta);
+
+    wrap.insertBefore(box, wrap.firstChild);
+    return wrap;
+  }
+
+  function renderGrid(type) {
+    const grid = document.getElementById(`grid_${type}`);
+    if (!grid) return;
+    grid.innerHTML = '';
+
+    const list = mediaPicked[type] || [];
+    for (const item of list) {
+      grid.appendChild(makeThumbCard(item, type));
+    }
+  }
+
+  async function refreshMedia(type) {
     if (!insuredId) {
-      showModal('⚠️ לא ניתן', 'נא לשמור את התיק לפני העלאת מדיה לדרופבוקס.');
+      showModal('⚠️ Not available', 'Please save the case before loading Dropbox media.');
       return;
     }
 
-    const mediaType = ($('#dbx_media_type').val() || '').trim();
-    const note = ($('#dbx_media_note').val() || '').trim();
-    const input = document.getElementById('dbx_media_files');
+    try {
+      // If your endpoint differs, change this URL only
+      const res = await $.getJSON(`/insured/${insuredId}/media/list?media_type=${encodeURIComponent(type)}`);
 
-    if (!input || !input.files || input.files.length === 0) {
-      showModal('⚠️ חסר קובץ', 'נא לבחור קבצים להעלאה.');
+      if (!res || res.status !== 'success') {
+        throw new Error(res?.message || 'Failed to load media list');
+      }
+
+      // expected: res.files = [{name, url, mime_type}]
+      const files = res.files || [];
+
+      mediaPicked[type] = files.map(f => ({
+        name: f.name,
+        url: f.url,
+        mime_type: f.mime_type || '',
+        selected: true
+      }));
+
+      renderGrid(type);
+
+    } catch (e) {
+      showModal('❌ Error', e.message || 'Failed to load media list');
+    }
+  }
+
+  function setProgress(type, pct) {
+    $(`#progress_wrap_${type}`).removeClass('d-none');
+    $(`#progress_bar_${type}`).css('width', pct + '%').text(pct + '%');
+  }
+
+  function hideProgress(type) {
+    $(`#progress_wrap_${type}`).addClass('d-none');
+  }
+
+  function renderUploadResult(type, res) {
+    const el = $(`#result_${type}`);
+    if (!el.length) return;
+
+    const rows = (res.results || []).map(r => {
+      if (r.status === 'success') {
+        return `<div class="text-success">✔ ${escapeHtml(r.file)}</div>`;
+      }
+      return `<div class="text-danger">✖ ${escapeHtml(r.file)} — ${escapeHtml(r.message || 'Error')}</div>`;
+    }).join('');
+
+    el.html(rows || "<div class='text-muted'>No results</div>");
+  }
+
+  function uploadMedia(type) {
+    if (!insuredId) {
+      showModal('⚠️ Not available', 'Please save the case before uploading media to Dropbox.');
+      return;
+    }
+
+    // ✅ Upload only selected local files (from the preview grid)
+    const selected = (localPicked[type] || []).filter(x => x.selected);
+
+    if (!selected.length) {
+      showModal('⚠️ Missing file', 'Please select at least one file (checkbox) to upload.');
       return;
     }
 
     const fd = new FormData();
-    fd.append('media_type', mediaType);
-    fd.append('note', note);
+    fd.append('media_type', type);
 
-    for (const f of input.files) {
-      fd.append('files', f);
+    // append only selected files
+    for (const item of selected) {
+      fd.append('files', item.file);
     }
 
-    $('#dbx_upload_result').html('');
-    $('#dbx_upload_progress_wrap').removeClass('d-none');
-    $('#dbx_upload_progress').css('width', '0%').text('0%');
+    $(`#result_${type}`).html('');
+    setProgress(type, 0);
 
     $.ajax({
       url: `/insured/${insuredId}/media/upload`,
@@ -831,41 +1132,74 @@ $(function () {
         xhr.upload.addEventListener('progress', function (evt) {
           if (evt.lengthComputable) {
             const pct = Math.round((evt.loaded / evt.total) * 100);
-            $('#dbx_upload_progress').css('width', pct + '%').text(pct + '%');
+            setProgress(type, pct);
           }
         }, false);
         return xhr;
       }
     })
-    .done(function (res) {
-      $('#dbx_upload_progress_wrap').addClass('d-none');
+    .done(async function (res) {
+      hideProgress(type);
 
       if (!res || res.status !== 'success') {
-        showModal('❌ שגיאה', res?.message || 'העלאה נכשלה');
+        showModal('❌ Error', res?.message || 'Upload failed');
         return;
       }
 
-      const rows = (res.results || []).map(r => {
-        if (r.status === 'success') {
-          return `<div class="text-success">✔ ${escapeHtml(r.file)}</div>`;
-        }
-        return `<div class="text-danger">✖ ${escapeHtml(r.file)} — ${escapeHtml(r.message || 'Error')}</div>`;
-      }).join('');
+      renderUploadResult(type, res);
 
-      $('#dbx_upload_result').html(rows || "<div class='text-muted'>אין תוצאות</div>");
+      // ✅ clear file input + local thumbnails after upload
+      const input = document.getElementById(`media_files_${type}`);
+      if (input) input.value = '';
 
-      // Clear input after upload
-      input.value = '';
-      $('#dbx_media_note').val('');
+      clearLocal(type);
+      renderLocalGrid(type);
 
-      showModal('✅ הצלחה', 'הקבצים הועלו בהצלחה לדרופבוקס.');
+      // optional: refresh Dropbox list (keeps your existing behavior)
+      await refreshMedia(type);
+
+      showModal('✅ Success', 'Files uploaded successfully to Dropbox.');
     })
     .fail(function (xhr) {
-      $('#dbx_upload_progress_wrap').addClass('d-none');
-      const msg = xhr?.responseJSON?.message || 'שגיאה בהעלאה';
-      showModal('❌ שגיאה', msg);
+      hideProgress(type);
+      const msg = xhr?.responseJSON?.message || 'Upload error';
+      showModal('❌ Error', msg);
     });
+  }
+
+
+  // Buttons
+  $(document).on('click', '.js-media-upload', function () {
+    const type = $(this).data('type');
+    uploadMedia(type);
   });
+
+  $(document).on('click', '.js-media-refresh', function () {
+    const type = $(this).data('type');
+    refreshMedia(type);
+  });
+
+  $(document).on('click', '.js-media-select-all', function () {
+    const type = $(this).data('type');
+    (localPicked[type] || []).forEach(x => x.selected = true);
+    renderLocalGrid(type);
+  });
+
+  $(document).on('click', '.js-media-select-none', function () {
+    const type = $(this).data('type');
+    (localPicked[type] || []).forEach(x => x.selected = false);
+    renderLocalGrid(type);
+  });
+
+
+  // Initial load (optional)
+  if (insuredId) {
+    refreshMedia('photos');
+    refreshMedia('id_photo');
+    refreshMedia('social');
+    refreshMedia('video');
+  }
+
 
 
   if (typeof flatpickr !== 'undefined') {

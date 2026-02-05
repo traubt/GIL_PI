@@ -2826,6 +2826,75 @@ def insured_media_upload(insured_id: int):
         return jsonify({"status": "error", "message": "Server error"}), 500
 
 
+@main.route("/insured/<int:insured_id>/media/list", methods=["GET"])
+def insured_media_list(insured_id: int):
+    try:
+        # session user (same pattern you use everywhere)
+        user_data = session.get('user')
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        insured = GilInsured.query.get_or_404(insured_id)
+
+        media_type = (request.args.get("media_type") or "").strip()
+        if media_type not in ALLOWED_MEDIA_TYPES:
+            return jsonify({"status": "error", "message": "Invalid media_type"}), 400
+
+        folder_path = build_media_target_folder(insured, media_type)
+        if not folder_path:
+            return jsonify({
+                "status": "error",
+                "message": "Cannot determine Dropbox folder. Check insured insurance/type fields."
+            }), 400
+
+        # List folder in Dropbox
+        files_out = []
+        try:
+            res = dbx.files_list_folder(folder_path)
+            entries = list(res.entries)
+            while res.has_more:
+                res = dbx.files_list_folder_continue(res.cursor)
+                entries.extend(res.entries)
+        except ApiError:
+            # folder might not exist yet -> return empty list (don’t error)
+            return jsonify({"status": "success", "files": []})
+
+        def guess_mime(name: str) -> str:
+            n = (name or "").lower()
+            if n.endswith((".jpg", ".jpeg")): return "image/jpeg"
+            if n.endswith(".png"): return "image/png"
+            if n.endswith(".webp"): return "image/webp"
+            if n.endswith(".mp4"): return "video/mp4"
+            if n.endswith(".mov"): return "video/quicktime"
+            if n.endswith(".m4v"): return "video/x-m4v"
+            if n.endswith(".avi"): return "video/x-msvideo"
+            return "application/octet-stream"
+
+        # Build temporary links for files
+        for e in entries:
+            # FileMetadata only (ignore subfolders)
+            if not hasattr(e, "path_lower") or not hasattr(e, "name"):
+                continue
+            try:
+                link = dbx.files_get_temporary_link(e.path_lower).link
+            except ApiError:
+                continue
+
+            files_out.append({
+                "name": e.name,
+                "url": link,
+                "mime_type": guess_mime(e.name)
+            })
+
+        return jsonify({"status": "success", "files": files_out})
+
+    except Exception as e:
+        current_app.logger.error(f"insured_media_list error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
+
+
 if __name__ == '__main__':
     app.run(debug=True)
 
