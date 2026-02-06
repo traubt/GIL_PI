@@ -512,6 +512,36 @@
             </table>
           </div>
 
+          <hr class="my-4"/>
+
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">הוצאות</h6>
+            <button type="button" class="btn btn-sm btn-primary" id="addExpenseRowBtn">הוסף הוצאה</button>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm table-bordered align-middle" id="expensesTable">
+              <thead>
+                <tr>
+                  <th>תיאור</th>
+                  <th style="width:140px;">סכום</th>
+                  <th style="width:220px;">חשבונית</th>
+                  <th style="width:90px;">פעולות</th>
+                </tr>
+              </thead>
+              <tbody>
+                <!-- rows injected by JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="d-flex justify-content-end">
+            <div class="text-muted small">
+              סה״כ הוצאות: <span id="expensesTotal">0.00</span>
+            </div>
+          </div>
+
+
           <div class="text-muted small">
             * השורה הראשונה היא תמיד "תחילת פעילות" והשורה האחרונה תמיד "סיום במשרד".
           </div>
@@ -661,6 +691,14 @@ function initTrackingDatePicker() {
   });
 }
 
+// ===== Global helpers (must be global because used by functions outside $(function)) =====
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, m => (
+    { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[m]
+  ));
+}
+
+
 // init when modal opens (best for dynamic modals)
 document.addEventListener('shown.bs.modal', function (e) {
   if (e.target && e.target.id === 'trackingReportModal') {
@@ -749,6 +787,108 @@ function loadActivitiesToModal(items) {
   ensureFirstLastRows();
 }
 
+// ================= EXPENSES (UI) =================
+let trDeletedExpenseIds = []; // soft delete ids for this modal session
+
+function expenseRowTemplate(expense = {}) {
+  const id = expense.expense_id || '';
+  const desc = (expense.description || '').replace(/"/g,'&quot;');
+  const amount = (expense.amount || '').toString();
+
+  // media (0/1 effectively per your flow)
+  const media = (expense.media && expense.media.length) ? expense.media[0] : null;
+  const hasMedia = !!media && (!!media.thumb_url || !!media.shared_url || !!media.file_name);
+
+  const previewHtml = hasMedia
+    ? `<div class="d-flex align-items-center gap-2">
+         <div style="width:44px;height:44px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;background:#fff;display:flex;align-items:center;justify-content:center;">
+           ${media.thumb_url ? `<img src="${media.thumb_url}" style="width:100%;height:100%;object-fit:cover;">`
+                            : `<span style="font-size:12px;color:#6b7280;">✔</span>`}
+         </div>
+         <div class="small text-muted" style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(media.file_name || '')}">
+           ${escapeHtml(media.file_name || 'חשבונית')}
+         </div>
+       </div>`
+    : `<div class="small text-muted">לא הועלתה חשבונית</div>`;
+
+  return `
+    <tr>
+      <td>
+        <input type="hidden" class="exp-id" value="${id}">
+        <input type="text" class="form-control form-control-sm exp-desc" value="${desc}" placeholder="למשל: דלק / חניה / אוכל">
+      </td>
+      <td>
+        <input type="number" class="form-control form-control-sm exp-amount" min="0" step="0.01" value="${escapeHtml(amount)}" placeholder="0.00">
+      </td>
+      <td>
+        <div class="d-flex flex-column gap-1">
+          <div class="exp-preview">${previewHtml}</div>
+          <div class="d-flex gap-2">
+            <input type="file" class="form-control form-control-sm exp-file" accept="image/*">
+            <button type="button" class="btn btn-sm btn-outline-primary exp-upload">העלה</button>
+          </div>
+          <div class="small text-muted exp-upload-msg"></div>
+        </div>
+      </td>
+      <td class="text-center">
+        <button type="button" class="btn btn-sm btn-danger exp-remove">מחק</button>
+      </td>
+    </tr>
+  `;
+}
+
+function loadExpensesToModal(expenses) {
+  const $tbody = $('#expensesTable tbody');
+  $tbody.empty();
+  trDeletedExpenseIds = [];
+
+  if (!expenses || expenses.length === 0) {
+    // start with 1 empty row
+    $tbody.append(expenseRowTemplate({}));
+    computeExpensesTotal();
+    return;
+  }
+
+  expenses.forEach(e => $tbody.append(expenseRowTemplate(e)));
+  computeExpensesTotal();
+}
+
+function computeExpensesTotal() {
+  let total = 0;
+  $('#expensesTable tbody tr').each(function () {
+    const v = ($(this).find('.exp-amount').val() || '').toString().trim();
+    const n = parseFloat(v);
+    if (!isNaN(n)) total += n;
+  });
+  $('#expensesTotal').text(total.toFixed(2));
+}
+
+// collect expenses payload from UI
+function collectExpensesPayload(report_date_iso) {
+  const expenses = [];
+  $('#expensesTable tbody tr').each(function () {
+    const id = ($(this).find('.exp-id').val() || '').trim();
+    const desc = ($(this).find('.exp-desc').val() || '').trim();
+    const amountStr = ($(this).find('.exp-amount').val() || '').toString().trim();
+
+    // treat empty as 0
+    const amt = amountStr === '' ? 0 : parseFloat(amountStr);
+
+    // skip fully empty rows
+    if (!desc && (!amt || amt === 0)) return;
+
+    expenses.push({
+      expense_id: id ? parseInt(id, 10) : null,
+      description: desc,
+      amount: isNaN(amt) ? 0 : amt,
+      // optional - you can keep expense_date = report date for simplicity
+      expense_date: report_date_iso
+    });
+  });
+  return expenses;
+}
+
+
 
 function applyTrackingStatus(status) {
   const isFinal = (status || 'Draft') === 'Final';
@@ -831,6 +971,10 @@ function openTrackingModal(mode, report) {
   // In view mode, hide add/remove activity buttons
   $('#addActivityRowBtn').toggle(!isView);
   $('.tr-remove-activity').toggle(!isView);
+
+  // expenses
+  loadExpensesToModal(report?.expenses || []);
+
 
   new bootstrap.Modal(document.getElementById('trackingReportModal')).show();
 }
@@ -990,11 +1134,6 @@ $(function () {
     video:    []
   };
 
-  function escapeHtml(s) {
-    return (s || "").replace(/[&<>"']/g, m => (
-      { "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#039;" }[m]
-    ));
-  }
 
   // Standardized thumbnail card (same pattern as editor.html)
   function makeThumbCard(item, type) {
@@ -1253,11 +1392,10 @@ $(function () {
 
   // ===== Open add-contact modal (same for create/edit) =====
   $('#addContactBtn').on('click', function () {
-    const insuredId = {{ insured.id if insured else 'null' }};
 
-    // 0) must be in edit mode (insured already saved)
+    // Use GLOBAL insuredId (do not redeclare local const insuredId)
     if (!insuredId) {
-      alert('נא למלא ולשמור פרטי מבוטח לפני הוספת מקושרים.');
+      showModal('⚠️ לא ניתן', 'נא למלא ולשמור פרטי מבוטח לפני הוספת מקושרים.');
       return;
     }
 
@@ -1265,22 +1403,23 @@ $(function () {
     const firstName = ($('#first_name').val() || '').trim();
     const lastName  = ($('#last_name').val()  || '').trim();
     if (!firstName || !lastName) {
-      alert('אנא מלא/י שם פרטי ושם משפחה לפני הוספת מקושר');
+      showModal('⚠️ חסר מידע', 'אנא מלא/י שם פרטי ושם משפחה לפני הוספת מקושר');
       return;
     }
 
     // 2) ID number required
     const idNumber = ($('#id_number').val() || '').trim();
     if (!idNumber) {
-      alert('אנא הזן/י תעודת זהות לפני הוספת מקושר');
+      showModal('⚠️ חסר מידע', 'אנא הזן/י תעודת זהות לפני הוספת מקושר');
       return;
     }
 
     // 3) claim number required if type is אכע or סיעוד
     const claimType   = ($('#claim_type').val()   || '').trim();
     const claimNumber = ($('#claim_number').val() || '').trim();
+
     if ((claimType === 'אכע' || claimType === 'סיעוד') && !claimNumber) {
-      alert('עבור סוג חקירה אכע/סיעוד יש להזין מספר תביעה לפני הוספת מקושר');
+      showModal('⚠️ חסר מידע', 'עבור סוג חקירה אכע/סיעוד יש להזין מספר תביעה לפני הוספת מקושר');
       return;
     }
 
@@ -1410,6 +1549,7 @@ $(function () {
 
       openTrackingModal('view', res.report);
       loadActivitiesToModal(res.report.items || []);
+     // loadExpensesToModal(res.report.expenses || []);
       applyTrackingStatus(res.report.status || 'Draft');
 
     } catch (e) {
@@ -1428,6 +1568,7 @@ $(function () {
 
       openTrackingModal('edit', res.report);
       loadActivitiesToModal(res.report.items || []);
+    //  loadExpensesToModal(res.report.expenses || []);
       applyTrackingStatus(res.report.status || 'Draft');
 
     } catch (e) {
@@ -1458,6 +1599,98 @@ $(function () {
     });
   });
 
+  // ===== Expenses UI handlers =====
+
+  // Add expense row
+  $('#addExpenseRowBtn').on('click', function () {
+    $('#expensesTable tbody').append(expenseRowTemplate({}));
+    computeExpensesTotal();
+  });
+
+  // Recompute total when amount changes
+  $(document).on('input', '.exp-amount', function () {
+    computeExpensesTotal();
+  });
+
+  // Remove expense row (soft delete if existing)
+  $(document).on('click', '.exp-remove', function () {
+    const $tr = $(this).closest('tr');
+    const id = ($tr.find('.exp-id').val() || '').trim();
+    if (id) trDeletedExpenseIds.push(parseInt(id, 10));
+    $tr.remove();
+    computeExpensesTotal();
+  });
+
+  // Upload invoice image (expenses)
+  $(document).on('click', '.exp-upload', async function () {
+    const $tr = $(this).closest('tr');
+
+    const report_id = ($('#tr_report_id').val() || '').trim();
+    const expense_id = ($tr.find('.exp-id').val() || '').trim();
+
+    if (!report_id) {
+      showModal('⚠️ Cannot', 'Please save the report before uploading an invoice image.');
+      return;
+    }
+    if (!expense_id) {
+      showModal('⚠️ Cannot', 'Please save the report so the expense gets an ID, then upload the invoice.');
+      return;
+    }
+
+    const fileInput = $tr.find('.exp-file')[0];
+    const file = fileInput && fileInput.files && fileInput.files[0];
+    if (!file) {
+      showModal('⚠️ Missing file', 'Please choose an invoice image to upload.');
+      return;
+    }
+
+    // local preview immediately
+    try {
+      const url = URL.createObjectURL(file);
+      $tr.find('.exp-preview').html(
+        `<div class="d-flex align-items-center gap-2">
+           <div style="width:44px;height:44px;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">
+             <img src="${url}" style="width:100%;height:100%;object-fit:cover;">
+           </div>
+           <div class="small text-muted" style="max-width:140px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escapeHtml(file.name)}">
+             ${escapeHtml(file.name)}
+           </div>
+         </div>`
+      );
+    } catch (e) {}
+
+    const fd = new FormData();
+    fd.append('media_type', 'expenses');
+    fd.append('report_id', report_id);
+    fd.append('expense_id', expense_id);
+    fd.append('files', file);
+
+    $tr.find('.exp-upload-msg').text('Uploading...');
+
+    try {
+      const res = await $.ajax({
+        url: `/insured/${insuredId}/media/upload`,
+        method: 'POST',
+        data: fd,
+        processData: false,
+        contentType: false
+      });
+
+      if (!res || res.status !== 'success') {
+        throw new Error(res?.message || 'Upload failed');
+      }
+
+      $tr.find('.exp-upload-msg').text('✅ Uploaded to Dropbox');
+      fileInput.value = '';
+
+    } catch (err) {
+      $tr.find('.exp-upload-msg').text('');
+      showModal('❌ Error', err?.responseJSON?.message || err.message || 'Invoice upload failed');
+    }
+  });
+
+
+
   // Save report
  //(UI validates; backend endpoint placeholder)
     // Save report (server)
@@ -1467,6 +1700,8 @@ $(function () {
     const report_id = ($('#tr_report_id').val() || '').trim();
     const report_date_dmy = ($('#activity_date_dmy').val() || '').trim();
     const report_date = dmyToIso(report_date_dmy);
+    const expenses = collectExpensesPayload(report_date);
+
 
     const ref_number = ($('#ref_number').val() || '').trim();
 
@@ -1514,8 +1749,11 @@ $(function () {
 
       // ✅ mileage
       mileage_km: mileageVal !== '' ? parseInt(mileageVal, 10) : null,
+      items,
 
-      items
+        // NEW:
+      expenses,
+      deleted_expense_ids: trDeletedExpenseIds
     };
 
     try {
@@ -1530,9 +1768,39 @@ $(function () {
         throw new Error(res?.message || 'שמירה נכשלה');
       }
 
-      bootstrap.Modal.getInstance(document.getElementById('trackingReportModal')).hide();
+      // 1) Keep modal open
+      // 2) Make sure we now have report_id
+      const newId = (res.report_id || res.id || res.tracking_report_id || '').toString().trim();
+      if (newId) {
+        $('#tr_report_id').val(newId);
+      }
+
+      // 3) Refresh list/table (status/date)
       await loadTrackingReports();
-      showModal('✅ נשמר', 'דוח הפעילות נשמר בהצלחה.');
+
+      // 4) Reload report from server so expenses have expense_id values immediately
+      const rid = ($('#tr_report_id').val() || '').trim();
+      if (rid) {
+        try {
+          const rr = await $.getJSON(`/api/tracking_reports/${rid}`);
+          if (rr && rr.status === 'success' && rr.report) {
+            // Refill modal with authoritative saved state (keeps modal open)
+            loadActivitiesToModal(rr.report.items || []);
+            loadExpensesToModal(rr.report.expenses || []);
+            applyTrackingStatus(rr.report.status || 'Draft');
+
+            // Optional: update note/mileage if server normalized
+            $('#tr_note').val(rr.report.note || '');
+            $('#mileage_km').val(rr.report.mileage_km ?? '');
+          }
+        } catch (e) {
+          // non-fatal: saved but reload failed
+        }
+      }
+
+      // 5) Confirm
+      showModal('✅ נשמר', 'דוח הפעילות נשמר. ניתן כעת להעלות חשבוניות להוצאות מיד.');
+
 
     } catch (e) {
       showModal('❌ שגיאה', e?.responseJSON?.message || e.message || 'שמירה נכשלה');

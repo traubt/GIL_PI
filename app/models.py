@@ -3,7 +3,7 @@ from email.policy import default
 from . import db
 from flask_sqlalchemy import SQLAlchemy
 import datetime
-from datetime import datetime,timezone
+from datetime import datetime,timezone,date
 from sqlalchemy.dialects.mysql import MEDIUMTEXT, LONGTEXT
 
 
@@ -271,7 +271,7 @@ class GilClinics(db.Model):
         return f'<GilClinics {self.clinic_name}>'
 
 
-from datetime import datetime
+
 
 class GilAppointment(db.Model):
     __tablename__ = 'gil_appointments'
@@ -345,7 +345,7 @@ class GilInvestigatorCase(db.Model):
     assigned_by_user = db.relationship('User', foreign_keys=[assigned_by])
 
 
-from datetime import datetime
+
 from . import db
 
 class GilTask(db.Model):
@@ -438,8 +438,8 @@ class GilTrackingReport(db.Model):
         db.Index('idx_tracking_date', 'report_date'),
     )
 
-    insured = db.relationship('GilInsured', backref=db.backref('tracking_reports', lazy='dynamic'))
-    investigator = db.relationship('GilInvestigator', backref=db.backref('tracking_reports', lazy='dynamic'))
+    insured = db.relationship('GilInsured', backref=db.backref('tracking_reports', lazy='select'))
+    investigator = db.relationship('GilInvestigator', backref=db.backref('tracking_reports', lazy='select'))
 
     activities = db.relationship(
         'GilTrackingReportActivity',
@@ -447,6 +447,21 @@ class GilTrackingReport(db.Model):
         cascade='all, delete-orphan',
         order_by='GilTrackingReportActivity.sort_order.asc()'
     )
+
+    # ✅ NEW: Expenses for this tracking report (supports soft delete)
+    expenses = db.relationship(
+        'GilTrackingExpense',
+        back_populates='report',  # ✅ match GilTrackingExpense.report
+        cascade='all, delete-orphan',
+        lazy='select',
+        order_by='GilTrackingExpense.expense_id.asc()'
+    )
+
+    @property
+    def active_expenses(self):
+        """Convenience: only non-deleted expenses (matches your soft delete flow)."""
+        return [e for e in (self.expenses or []) if not getattr(e, "deleted_ind", False)]
+
 
 
 class GilTrackingReportActivity(db.Model):
@@ -471,6 +486,91 @@ class GilTrackingReportActivity(db.Model):
     __table_args__ = (
         db.Index('idx_activity_report', 'report_id'),
     )
+
+    ###################### Expenses ####################
+
+
+
+
+class GilTrackingExpense(db.Model):
+    __tablename__ = "gil_tracking_expenses"
+
+    expense_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    report_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_tracking_reports.report_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    # keep investigator_id here (even though report has one) -> helps future flexibility + auditing
+    investigator_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_investigator.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True
+    )
+
+    # who entered/edited it in the system (admin / investigator user)
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("toc_users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
+    expense_date = db.Column(db.Date, nullable=True, default=date.today)
+    description = db.Column(db.String(255), nullable=False, default="")
+    amount = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+
+    currency = db.Column(db.String(3), nullable=False, default="ILS")
+    category = db.Column(db.String(50), nullable=True)
+
+    deleted_ind = db.Column(db.Boolean, nullable=False, default=False)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    report = db.relationship("GilTrackingReport", back_populates="expenses")
+
+    media = db.relationship(
+        "GilTrackingExpenseMedia",
+        back_populates="expense",
+        cascade="all, delete-orphan",
+        lazy="select"
+    )
+
+
+class GilTrackingExpenseMedia(db.Model):
+    __tablename__ = "gil_tracking_expense_media"
+
+    media_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    expense_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_tracking_expenses.expense_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    storage_provider = db.Column(db.String(20), nullable=False, default="dropbox")
+
+    file_name = db.Column(db.String(255), nullable=False, default="")
+    file_ext = db.Column(db.String(10), nullable=True)
+    mime_type = db.Column(db.String(100), nullable=True)
+    file_size = db.Column(db.Integer, nullable=True)
+
+    # Dropbox metadata (source of truth is path)
+    dropbox_path = db.Column(db.Text, nullable=False)
+    dropbox_file_id = db.Column(db.String(120), nullable=True)
+    shared_url = db.Column(db.Text, nullable=True)
+    thumb_url = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    expense = db.relationship("GilTrackingExpense", back_populates="media")
+
 
 
 

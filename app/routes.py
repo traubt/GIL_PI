@@ -18,6 +18,8 @@ from flask import render_template, request, jsonify
 from app import db
 from app.models import GilInsured
 from datetime import datetime, timedelta
+from decimal import Decimal, InvalidOperation
+
 
 from sqlalchemy import text
 
@@ -2428,6 +2430,37 @@ def api_tracking_report_get(report_id):
             .order_by(GilTrackingReportActivity.sort_order.asc(), GilTrackingReportActivity.activity_id.asc()) \
             .all()
 
+        expenses = GilTrackingExpense.query.filter_by(report_id=r.report_id, deleted_ind=False) \
+            .order_by(GilTrackingExpense.expense_date.asc(), GilTrackingExpense.expense_id.asc()) \
+            .all()
+
+        exp_out = []
+        total = 0
+        for e in expenses:
+            # one expense can have 0..N media rows, but UI uses first thumbnail
+            media = GilTrackingExpenseMedia.query.filter_by(expense_id=e.expense_id) \
+                .order_by(GilTrackingExpenseMedia.media_id.asc()) \
+                .all()
+
+            amt = float(e.amount or 0)
+            total += amt
+
+            exp_out.append({
+                "expense_id": e.expense_id,
+                "expense_date": normalize_date(e.expense_date),
+                "description": e.description or "",
+                "amount": f"{amt:.2f}",
+                "currency": e.currency or "ILS",
+                "category": e.category or "",
+                "media": [{
+                    "media_id": m.media_id,
+                    "file_name": m.file_name or "",
+                    "dropbox_path": m.dropbox_path or "",
+                    "shared_url": m.shared_url or "",
+                    "thumb_url": m.thumb_url or ""
+                } for m in media]
+            })
+
         return jsonify({
             "status": "success",
             "report": {
@@ -2438,19 +2471,22 @@ def api_tracking_report_get(report_id):
                 "report_date": normalize_date(r.report_date),
                 "status": r.status or "Draft",
                 "note": r.note or "",
-                "mileage_km": r.mileage_km,  # ✅ NEW
+                "mileage_km": r.mileage_km,
                 "items": [{
                     "activity_id": it.activity_id,
                     "activity_time": normalize_time(it.activity_time),
                     "description": it.description or "",
                     "sort_order": int(it.sort_order or 0)
-                } for it in items]
+                } for it in items],
+                "expenses": exp_out,
+                "expenses_total": f"{total:.2f}"
             }
         })
 
     except Exception as e:
         current_app.logger.error(f"api_tracking_report_get error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
 
 
 @main.route("/api/tracking_reports/save", methods=["POST"])
@@ -2460,16 +2496,19 @@ def api_tracking_report_save():
 
         insured_id = payload.get("insured_id")
         ref_number = (payload.get("ref_number") or "").strip()
-        report_date_in = (payload.get("report_date") or "").strip()   # "YYYY-MM-DD" or "DD/MM/YYYY"
+        report_date_in = (payload.get("report_date") or "").strip()
         note = (payload.get("note") or "").strip()
         items = payload.get("items") or []
         report_id = payload.get("report_id")  # optional
+
+        # ✅ NEW: expenses + deleted ids
+        expenses_in = payload.get("expenses") or []
+        deleted_expense_ids = payload.get("deleted_expense_ids") or []
 
         # ✅ NEW: mileage
         mileage_in = payload.get("mileage_km", None)
         mileage_km = None
         try:
-            # allow "", None => NULL
             if mileage_in not in (None, "", "null"):
                 mileage_km = int(mileage_in)
                 if mileage_km < 0:
@@ -2489,8 +2528,6 @@ def api_tracking_report_save():
             return jsonify({"status": "error", "message": "Access denied"}), 403
 
         # Determine investigator_id:
-        # - Investigator user: must be inv_row.id
-        # - Admin/Manager: can use payload investigator_id or keep existing
         investigator_id = None
         if user_is_admin_or_manager(user):
             investigator_id = payload.get("investigator_id")
@@ -2504,14 +2541,12 @@ def api_tracking_report_save():
         r = None
         if report_id:
             r = GilTrackingReport.query.get(report_id)
-
         if not r:
             r = GilTrackingReport.query.filter_by(ref_number=ref_number, report_date=d).first()
 
-        # ✅ If Final => cannot edit (server-side enforcement)
-        if r and (r.status == "Final"):
-            if not user_is_admin_or_manager(user):
-                return jsonify({"status": "error", "message": "Report is Final and cannot be edited"}), 403
+        # ✅ Final => cannot edit (server-side enforcement)
+        if r and (r.status == "Final") and (not user_is_admin_or_manager(user)):
+            return jsonify({"status": "error", "message": "Report is Final and cannot be edited"}), 403
 
         if not r:
             r = GilTrackingReport(
@@ -2521,30 +2556,30 @@ def api_tracking_report_save():
                 report_date=d,
                 status="Draft",
                 note=note,
-                mileage_km=mileage_km  # ✅ NEW
+                mileage_km=mileage_km
             )
             db.session.add(r)
-            db.session.flush()  # get r.report_id
+            db.session.flush()
         else:
-            # If investigator (not admin), don't allow editing a report created by another investigator (optional rule)
             if (not user_is_admin_or_manager(user)) and (r.investigator_id != int(investigator_id)):
                 return jsonify({"status": "error", "message": "Cannot edit another investigator's report"}), 403
 
             r.note = note
-            r.mileage_km = mileage_km  # ✅ NEW
+            r.mileage_km = mileage_km
             r.updated_at = datetime.utcnow()
 
-        # Replace activities (simple and reliable)
+        # -----------------------------
+        # Replace activities (as you had)
+        # -----------------------------
         GilTrackingReportActivity.query.filter_by(report_id=r.report_id).delete()
 
-        # items: [{activity_time:"HH:MM", description:"...", sort_order:0}, ...]
         for idx, it in enumerate(items):
             t = (it.get("activity_time") or "").strip()
             desc = (it.get("description") or "").strip()
             if not t or not desc:
                 continue
 
-            t_parsed = parse_time(t)  # <-- reuse your existing global parse_time()
+            t_parsed = parse_time(t)
             if not t_parsed:
                 continue
 
@@ -2559,6 +2594,71 @@ def api_tracking_report_save():
                 sort_order=int(sort_order)
             ))
 
+        # -----------------------------
+        # ✅ Expenses: soft delete + upsert
+        # -----------------------------
+        # Soft delete explicitly deleted ids (only if they belong to this report)
+        if deleted_expense_ids:
+            GilTrackingExpense.query.filter(
+                GilTrackingExpense.report_id == r.report_id,
+                GilTrackingExpense.expense_id.in_(deleted_expense_ids)
+            ).update(
+                {"deleted_ind": True, "updated_at": datetime.utcnow()},
+                synchronize_session=False
+            )
+
+        # Upsert expenses
+        user_id = user.get("id") or None
+
+        for ex in expenses_in:
+            ex_id = ex.get("expense_id")
+            ex_desc = (ex.get("description") or "").strip()
+            ex_date_in = (ex.get("expense_date") or "").strip()
+            ex_category = (ex.get("category") or "").strip() or None
+            ex_currency = (ex.get("currency") or "").strip() or "ILS"
+
+            # amount
+            try:
+                ex_amount = Decimal(str(ex.get("amount") or "0")).quantize(Decimal("0.01"))
+                if ex_amount < 0:
+                    return jsonify({"status": "error", "message": "Expense amount cannot be negative"}), 400
+            except (InvalidOperation, ValueError):
+                return jsonify({"status": "error", "message": "Invalid expense amount"}), 400
+
+            # date (optional)
+            ex_date = parse_date_flexible(ex_date_in) if ex_date_in else None
+
+            # Skip empty rows (no desc and 0 amount)
+            if not ex_desc and ex_amount == 0:
+                continue
+
+            if ex_id:
+                row = GilTrackingExpense.query.filter_by(expense_id=ex_id, report_id=r.report_id).first()
+                if not row:
+                    continue
+
+                row.description = ex_desc
+                row.amount = ex_amount
+                row.expense_date = ex_date or row.expense_date
+                row.currency = ex_currency
+                row.category = ex_category
+                row.deleted_ind = False
+                row.updated_at = datetime.utcnow()
+
+            else:
+                row = GilTrackingExpense(
+                    report_id=r.report_id,
+                    investigator_id=int(investigator_id),
+                    created_by_user_id=user_id,
+                    expense_date=ex_date,
+                    description=ex_desc,
+                    amount=ex_amount,
+                    currency=ex_currency,
+                    category=ex_category,
+                    deleted_ind=False
+                )
+                db.session.add(row)
+
         db.session.commit()
 
         return jsonify({
@@ -2566,13 +2666,14 @@ def api_tracking_report_save():
             "report_id": r.report_id,
             "report_date": normalize_date(r.report_date),
             "status_value": r.status or "Draft",
-            "mileage_km": r.mileage_km  # ✅ optional but nice
+            "mileage_km": r.mileage_km
         })
 
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"api_tracking_report_save error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
 
 
 @main.route("/api/tracking_reports/<int:report_id>/status", methods=["POST"])
@@ -2668,6 +2769,7 @@ MEDIA_SUBFOLDERS = {
     "id_photo": "תמונת זיהוי",
     "social": "מדיה חברתית",
     "video": "וידאו",
+    "expenses": "הוצאות",
 }
 
 ALLOWED_MEDIA_TYPES = set(MEDIA_SUBFOLDERS.keys())
@@ -2709,9 +2811,15 @@ def build_id_photo_dropbox_name(insured, original_filename: str) -> str:
 
 
 
-def build_media_target_folder(insured: GilInsured, media_type: str) -> str | None:
+def build_media_target_folder(
+    insured: GilInsured,
+    media_type: str,
+    report_id: int | None = None,
+    expense_id: int | None = None
+) -> str | None:
     """
-    Reuse your existing folder convention and just append the media subfolder.
+    Reuse your existing folder convention and append the media subfolder.
+    For expenses: store under .../הוצאות/<report_id>/<expense_id>
     """
     base = build_dropbox_folder_path(
         insured.insurance, insured.claim_type,
@@ -2720,10 +2828,22 @@ def build_media_target_folder(insured: GilInsured, media_type: str) -> str | Non
     )
     if not base:
         return None
+
     sub = MEDIA_SUBFOLDERS.get(media_type)
     if not sub:
         return None
-    return f"{base}/{sub}"
+
+    folder = f"{base}/{sub}"
+
+    # ✅ Expenses: keep neat structure
+    if media_type == "expenses":
+        if report_id:
+            folder = f"{folder}/{int(report_id)}"
+        if expense_id:
+            folder = f"{folder}/{int(expense_id)}"
+
+    return folder
+
 
 
 def ensure_dropbox_folder(path: str):
@@ -2749,9 +2869,13 @@ def validate_media_file(file_storage, media_type: str):
     ext = "." + filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     size_bytes = getattr(file_storage, "content_length", None)
 
-    # content_length is sometimes None with multipart; we can still validate after reading
-    is_video = (media_type == "video")
-    allowed = ALLOWED_VIDEO_EXTS if is_video else ALLOWED_IMAGE_EXTS.union(ALLOWED_VIDEO_EXTS)
+    # ✅ expenses: images only
+    if media_type == "expenses":
+        allowed = ALLOWED_IMAGE_EXTS
+        is_video = False
+    else:
+        is_video = (media_type == "video")
+        allowed = ALLOWED_VIDEO_EXTS if is_video else ALLOWED_IMAGE_EXTS.union(ALLOWED_VIDEO_EXTS)
 
     if ext not in allowed:
         raise ValueError(f"File type not allowed: {ext}")
@@ -2762,6 +2886,7 @@ def validate_media_file(file_storage, media_type: str):
             raise ValueError(f"Video too large (>{MAX_VIDEO_MB}MB)")
         if (not is_video) and mb > MAX_IMAGE_MB:
             raise ValueError(f"Image too large (>{MAX_IMAGE_MB}MB)")
+
 
 
 @main.route("/insured/<int:insured_id>/media/upload", methods=["POST"])
@@ -2781,14 +2906,35 @@ def insured_media_upload(insured_id: int):
         if media_type not in ALLOWED_MEDIA_TYPES:
             return jsonify({"status": "error", "message": "Invalid media_type"}), 400
 
+        # ✅ NEW: for expenses we expect report_id + expense_id
+        report_id = request.form.get("report_id", type=int)
+        expense_id = request.form.get("expense_id", type=int)
+
+        if media_type == "expenses":
+            if not report_id or not expense_id:
+                return jsonify({"status": "error", "message": "report_id/expense_id required for expenses"}), 400
+
+            # Validate expense belongs to this report + insured (no cross-case uploads)
+            exp = GilTrackingExpense.query.get_or_404(expense_id)
+            if exp.report_id != report_id:
+                return jsonify({"status": "error", "message": "expense_id does not match report_id"}), 400
+
+            rep = GilTrackingReport.query.get_or_404(report_id)
+            if rep.insured_id != insured_id:
+                return jsonify({"status": "error", "message": "report does not belong to insured"}), 400
+
         files = request.files.getlist("files")
         if not files:
             return jsonify({"status": "error", "message": "No files uploaded"}), 400
 
+        # ✅ expenses: only 1 invoice image per expense
+        if media_type == "expenses" and len(files) != 1:
+            return jsonify({"status": "error", "message": "Expenses require exactly 1 image file"}), 400
+
         if len(files) > MAX_FILES_PER_UPLOAD:
             return jsonify({"status": "error", "message": f"Too many files (max {MAX_FILES_PER_UPLOAD})"}), 400
 
-        folder_path = build_media_target_folder(insured, media_type)
+        folder_path = build_media_target_folder(insured, media_type, report_id=report_id, expense_id=expense_id)
         if not folder_path:
             return jsonify({
                 "status": "error",
@@ -2806,21 +2952,25 @@ def insured_media_upload(insured_id: int):
 
                 original_name = getattr(f, "filename", "") or "file"
 
-                # =========================================================
-                # ✅ Item 3: ONLY for ID photo - rename on Dropbox
-                # =========================================================
-                if media_type == "id_photo":
-                    # IMPORTANT: do NOT use secure_filename here because it strips Hebrew.
-                    stored_name = build_id_photo_dropbox_name(insured, original_name)
+                # Expenses: stable name + overwrite
+                if media_type == "expenses":
+                    ext = os.path.splitext(original_name)[1].lower() or ".jpg"
+                    stored_name = f"expense_{expense_id}{ext}"
+                    write_mode = dropbox.files.WriteMode.overwrite
                 else:
                     # Existing naming (keep as-is)
                     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                     safe_name = secure_filename(original_name)
-                    stored_name = f"{insured_id}_{ts}_{safe_name}"
+
+                    if media_type == "id_photo":
+                        stored_name = build_id_photo_dropbox_name(insured, original_name)
+                    else:
+                        stored_name = f"{insured_id}_{ts}_{safe_name}"
+
+                    write_mode = dropbox.files.WriteMode.add
 
                 dropbox_path = f"{folder_path}/{stored_name}"
 
-                # Phase 1: direct upload (good for photos + moderate videos)
                 data = f.read()
                 size_bytes = len(data)
 
@@ -2834,19 +2984,40 @@ def insured_media_upload(insured_id: int):
                 dbx.files_upload(
                     data,
                     dropbox_path,
-                    mode=dropbox.files.WriteMode.add,
+                    mode=write_mode,
                     mute=True
                 )
 
+                # ✅ NEW: if expenses -> persist media row (1 per expense)
+                if media_type == "expenses":
+                    # Remove old media rows (hard delete media row is fine; expense stays soft-deletable)
+                    GilTrackingExpenseMedia.query.filter_by(expense_id=expense_id).delete()
+
+                    m = GilTrackingExpenseMedia(
+                        expense_id=expense_id,
+                        storage_provider="dropbox",
+                        file_name=stored_name,
+                        file_ext=os.path.splitext(stored_name)[1].lower(),
+                        mime_type="image/jpeg",  # safe default; UI doesn't rely on it
+                        file_size=size_bytes,
+                        dropbox_path=dropbox_path,
+                        dropbox_file_id=None,
+                        shared_url=None,
+                        thumb_url=None
+                    )
+                    db.session.add(m)
+                    db.session.commit()
+
                 results.append({
                     "file": original_name,
-                    "stored_name": stored_name,   # ✅ helpful for debugging
+                    "stored_name": stored_name,
                     "status": "success",
                     "dropbox_path": dropbox_path,
                     "size_bytes": size_bytes
                 })
 
             except Exception as e:
+                db.session.rollback()
                 results.append({
                     "file": getattr(f, "filename", "file"),
                     "status": "error",
@@ -2863,6 +3034,7 @@ def insured_media_upload(insured_id: int):
     except Exception as e:
         current_app.logger.error(f"insured_media_upload error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
 
 
 
