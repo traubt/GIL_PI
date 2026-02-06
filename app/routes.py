@@ -2681,6 +2681,34 @@ MAX_IMAGE_MB = 25
 MAX_VIDEO_MB = 300  # phase 1; we can increase later with upload_session
 
 
+
+def build_id_photo_dropbox_name(insured, original_filename: str) -> str:
+    """
+    Returns: <full insured name>_<datetime>_תמונת זיהוי<ext>
+    Example: "ישראל_כהן_20260206_093012_תמונת_זיהוי.jpg"
+    """
+    # Full name
+    first = (getattr(insured, "first_name", "") or "").strip()
+    last  = (getattr(insured, "last_name", "") or "").strip()
+    full_name = (f"{first} {last}").strip() or f"insured_{getattr(insured, 'id', '')}"
+
+    # Normalize: spaces -> underscores, remove filesystem-unfriendly chars
+    full_name = re.sub(r"\s+", "_", full_name)
+    full_name = re.sub(r'[\\/:*?"<>|]+', "", full_name)   # keep Hebrew, remove bad chars
+    full_name = full_name.strip("._ ")                    # cleanup
+
+    # Extension from original file
+    ext = os.path.splitext(original_filename or "")[1].lower()
+    if not ext:
+        ext = ".jpg"  # safe default
+
+    # Timestamp
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    return f"{full_name}_{ts}_תמונת_זיהוי{ext}"
+
+
+
 def build_media_target_folder(insured: GilInsured, media_type: str) -> str | None:
     """
     Reuse your existing folder convention and just append the media subfolder.
@@ -2776,10 +2804,20 @@ def insured_media_upload(insured_id: int):
             try:
                 validate_media_file(f, media_type)
 
-                # Unique server-side name to avoid collisions
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                safe_name = secure_filename(f.filename)  # Werkzeug already imported in your file
-                stored_name = f"{insured_id}_{ts}_{safe_name}"
+                original_name = getattr(f, "filename", "") or "file"
+
+                # =========================================================
+                # ✅ Item 3: ONLY for ID photo - rename on Dropbox
+                # =========================================================
+                if media_type == "id_photo":
+                    # IMPORTANT: do NOT use secure_filename here because it strips Hebrew.
+                    stored_name = build_id_photo_dropbox_name(insured, original_name)
+                else:
+                    # Existing naming (keep as-is)
+                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    safe_name = secure_filename(original_name)
+                    stored_name = f"{insured_id}_{ts}_{safe_name}"
+
                 dropbox_path = f"{folder_path}/{stored_name}"
 
                 # Phase 1: direct upload (good for photos + moderate videos)
@@ -2801,7 +2839,8 @@ def insured_media_upload(insured_id: int):
                 )
 
                 results.append({
-                    "file": f.filename,
+                    "file": original_name,
+                    "stored_name": stored_name,   # ✅ helpful for debugging
                     "status": "success",
                     "dropbox_path": dropbox_path,
                     "size_bytes": size_bytes
@@ -2824,6 +2863,7 @@ def insured_media_upload(insured_id: int):
     except Exception as e:
         current_app.logger.error(f"insured_media_upload error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
 
 
 @main.route("/insured/<int:insured_id>/media/list", methods=["GET"])
