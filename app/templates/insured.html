@@ -512,6 +512,10 @@
             </table>
           </div>
 
+          <div class="text-muted small">
+            * השורה הראשונה היא תמיד "תחילת פעילות" והשורה האחרונה תמיד "סיום במשרד".
+          </div>
+
           <hr class="my-4"/>
 
           <div class="d-flex justify-content-between align-items-center mb-2">
@@ -541,10 +545,6 @@
             </div>
           </div>
 
-
-          <div class="text-muted small">
-            * השורה הראשונה היא תמיד "תחילת פעילות" והשורה האחרונה תמיד "סיום במשרד".
-          </div>
         </div>
 
         <div class="modal-footer">
@@ -826,7 +826,11 @@ function expenseRowTemplate(expense = {}) {
           <div class="d-flex gap-2">
             <input type="file" class="form-control form-control-sm exp-file" accept="image/*">
             <button type="button" class="btn btn-sm btn-outline-primary exp-upload">העלה</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary exp-view" ${hasMedia ? '' : 'disabled'}>
+              צפה
+            </button>
           </div>
+
           <div class="small text-muted exp-upload-msg"></div>
         </div>
       </td>
@@ -1050,6 +1054,54 @@ $(function () {
     });
     localPicked[type] = [];
   }
+
+  function openInvoicePreviewModal(fileName, url) {
+  $('#invPreviewName').text(fileName || '');
+  $('#invPreviewError').addClass('d-none').text('');
+  $('#invPreviewImg').hide().attr('src', '');
+  $('#invPreviewLoading').show();
+
+  $('#invPreviewOpenNewTab').hide().attr('href', '#');
+
+  const modalEl = document.getElementById('invoicePreviewModal');
+  const modal = new bootstrap.Modal(modalEl);
+  modal.show();
+
+  // Load image
+  const img = document.getElementById('invPreviewImg');
+  img.onload = function () {
+    $('#invPreviewLoading').hide();
+    $('#invPreviewImg').show();
+    $('#invPreviewOpenNewTab').show().attr('href', url);
+  };
+  img.onerror = function () {
+    $('#invPreviewLoading').hide();
+    $('#invPreviewError').removeClass('d-none').text('לא ניתן לטעון את התמונה.');
+  };
+
+  // set src last (triggers load)
+  img.src = url;
+}
+
+$(document).on('click', '.exp-view', async function () {
+  const $tr = $(this).closest('tr');
+  const expense_id = ($tr.find('.exp-id').val() || '').trim();
+
+  if (!expense_id) return;
+
+  try {
+    const res = await $.getJSON(`/api/tracking_expenses/${expense_id}/media/open`);
+    if (!res || res.status !== 'success' || !res.url) {
+      throw new Error(res?.message || 'Cannot open invoice');
+    }
+
+    openInvoicePreviewModal(res.file_name || '', res.url);
+
+  } catch (e) {
+    showModal('❌ שגיאה', e?.message || 'לא ניתן לפתוח את החשבונית');
+  }
+});
+
 
   // Render a grid from *localPicked* (not Dropbox)
   function renderLocalGrid(type) {
@@ -1681,6 +1733,7 @@ $(function () {
       }
 
       $tr.find('.exp-upload-msg').text('✅ Uploaded to Dropbox');
+      $tr.find('.exp-view').prop('disabled', false);
       fileInput.value = '';
 
     } catch (err) {
@@ -2052,5 +2105,43 @@ $(document).off('click', '#confirmFinalizeTR').on('click', '#confirmFinalizeTR',
     </div>
   </div>
 </div>
+
+
+<!-- ===== Invoice Preview Modal ===== -->
+<div class="modal fade" id="invoicePreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          צפייה בחשבונית: <span id="invPreviewName" class="text-muted"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+      </div>
+
+      <div class="modal-body">
+        <div id="invPreviewLoading" class="text-center text-muted py-4" style="display:none;">
+          טוען...
+        </div>
+
+        <div id="invPreviewError" class="alert alert-danger d-none"></div>
+
+        <div class="text-center">
+          <img id="invPreviewImg"
+               src=""
+               alt="Invoice"
+               style="max-width:100%; height:auto; border:1px solid #e5e7eb; border-radius:8px; display:none;">
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <a id="invPreviewOpenNewTab" href="#" target="_blank" class="btn btn-outline-secondary" style="display:none;">
+          פתח בלשונית חדשה
+        </a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 
 {% endblock %}

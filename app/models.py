@@ -408,7 +408,7 @@ class GilTrackingReport(db.Model):
 
     report_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
-    ref_number = db.Column(db.String(50), nullable=False)  # gil_insured.ref_number (case identifier)
+    ref_number = db.Column(db.String(50), nullable=False)
 
     insured_id = db.Column(
         db.Integer,
@@ -448,10 +448,10 @@ class GilTrackingReport(db.Model):
         order_by='GilTrackingReportActivity.sort_order.asc()'
     )
 
-    # ✅ NEW: Expenses for this tracking report (supports soft delete)
+    # ✅ IMPORTANT: DO NOT use backref='report' here, because GilTrackingExpense already has .report
     expenses = db.relationship(
         'GilTrackingExpense',
-        back_populates='report',  # ✅ match GilTrackingExpense.report
+        back_populates='report',
         cascade='all, delete-orphan',
         lazy='select',
         order_by='GilTrackingExpense.expense_id.asc()'
@@ -459,9 +459,7 @@ class GilTrackingReport(db.Model):
 
     @property
     def active_expenses(self):
-        """Convenience: only non-deleted expenses (matches your soft delete flow)."""
         return [e for e in (self.expenses or []) if not getattr(e, "deleted_ind", False)]
-
 
 
 class GilTrackingReportActivity(db.Model):
@@ -490,8 +488,6 @@ class GilTrackingReportActivity(db.Model):
     ###################### Expenses ####################
 
 
-
-
 class GilTrackingExpense(db.Model):
     __tablename__ = "gil_tracking_expenses"
 
@@ -504,7 +500,6 @@ class GilTrackingExpense(db.Model):
         index=True
     )
 
-    # keep investigator_id here (even though report has one) -> helps future flexibility + auditing
     investigator_id = db.Column(
         db.Integer,
         db.ForeignKey("gil_investigator.id", ondelete="RESTRICT"),
@@ -512,7 +507,6 @@ class GilTrackingExpense(db.Model):
         index=True
     )
 
-    # who entered/edited it in the system (admin / investigator user)
     created_by_user_id = db.Column(
         db.Integer,
         db.ForeignKey("toc_users.id", ondelete="SET NULL"),
@@ -532,6 +526,7 @@ class GilTrackingExpense(db.Model):
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # ✅ match GilTrackingReport.expenses(back_populates='report')
     report = db.relationship("GilTrackingReport", back_populates="expenses")
 
     media = db.relationship(

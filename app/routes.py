@@ -2488,7 +2488,6 @@ def api_tracking_report_get(report_id):
         return jsonify({"status": "error", "message": "Server error"}), 500
 
 
-
 @main.route("/api/tracking_reports/save", methods=["POST"])
 def api_tracking_report_save():
     try:
@@ -2501,11 +2500,10 @@ def api_tracking_report_save():
         items = payload.get("items") or []
         report_id = payload.get("report_id")  # optional
 
-        # ✅ NEW: expenses + deleted ids
         expenses_in = payload.get("expenses") or []
         deleted_expense_ids = payload.get("deleted_expense_ids") or []
 
-        # ✅ NEW: mileage
+        # mileage
         mileage_in = payload.get("mileage_km", None)
         mileage_km = None
         try:
@@ -2527,27 +2525,50 @@ def api_tracking_report_save():
         if not allowed:
             return jsonify({"status": "error", "message": "Access denied"}), 403
 
-        # Determine investigator_id:
-        investigator_id = None
-        if user_is_admin_or_manager(user):
-            investigator_id = payload.get("investigator_id")
-        else:
-            investigator_id = inv_row.id if inv_row else None
-
-        if not investigator_id:
-            return jsonify({"status": "error", "message": "investigator_id missing"}), 400
-
-        # Load existing by report_id OR unique key (ref_number + report_date)
+        # -----------------------------
+        # Load existing report
+        # -----------------------------
         r = None
         if report_id:
             r = GilTrackingReport.query.get(report_id)
-        if not r:
-            r = GilTrackingReport.query.filter_by(ref_number=ref_number, report_date=d).first()
 
-        # ✅ Final => cannot edit (server-side enforcement)
+        if not r:
+            # ✅ SAFER: include insured_id as well (prevents cross-case collision if ref_number reused)
+            r = GilTrackingReport.query.filter_by(insured_id=int(insured_id), ref_number=ref_number, report_date=d).first()
+
+        # Final => cannot edit
         if r and (r.status == "Final") and (not user_is_admin_or_manager(user)):
             return jsonify({"status": "error", "message": "Report is Final and cannot be edited"}), 403
 
+        # -----------------------------
+        # Determine investigator_id (no UI requirement)
+        # -----------------------------
+        investigator_id = None
+
+        if user_is_admin_or_manager(user):
+            investigator_id = payload.get("investigator_id")
+
+            if not investigator_id and r:
+                investigator_id = r.investigator_id
+
+            if not investigator_id:
+                inv2 = get_current_investigator_row()
+                if inv2:
+                    investigator_id = inv2.id
+
+            if not investigator_id:
+                return jsonify({
+                    "status": "error",
+                    "message": "investigator_id missing (admin create). Open as investigator or pass investigator_id."
+                }), 400
+        else:
+            investigator_id = inv_row.id if inv_row else None
+            if not investigator_id:
+                return jsonify({"status": "error", "message": "investigator_id missing"}), 400
+
+        # -----------------------------
+        # Create / update report
+        # -----------------------------
         if not r:
             r = GilTrackingReport(
                 insured_id=int(insured_id),
@@ -2559,7 +2580,7 @@ def api_tracking_report_save():
                 mileage_km=mileage_km
             )
             db.session.add(r)
-            db.session.flush()
+            db.session.flush()  # ✅ ensures r.report_id exists
         else:
             if (not user_is_admin_or_manager(user)) and (r.investigator_id != int(investigator_id)):
                 return jsonify({"status": "error", "message": "Cannot edit another investigator's report"}), 403
@@ -2569,7 +2590,7 @@ def api_tracking_report_save():
             r.updated_at = datetime.utcnow()
 
         # -----------------------------
-        # Replace activities (as you had)
+        # Replace activities
         # -----------------------------
         GilTrackingReportActivity.query.filter_by(report_id=r.report_id).delete()
 
@@ -2595,9 +2616,8 @@ def api_tracking_report_save():
             ))
 
         # -----------------------------
-        # ✅ Expenses: soft delete + upsert
+        # Expenses: soft delete + upsert
         # -----------------------------
-        # Soft delete explicitly deleted ids (only if they belong to this report)
         if deleted_expense_ids:
             GilTrackingExpense.query.filter(
                 GilTrackingExpense.report_id == r.report_id,
@@ -2607,8 +2627,7 @@ def api_tracking_report_save():
                 synchronize_session=False
             )
 
-        # Upsert expenses
-        user_id = user.get("id") or None
+        user_id = (user or {}).get("id") or None
 
         for ex in expenses_in:
             ex_id = ex.get("expense_id")
@@ -2617,7 +2636,6 @@ def api_tracking_report_save():
             ex_category = (ex.get("category") or "").strip() or None
             ex_currency = (ex.get("currency") or "").strip() or "ILS"
 
-            # amount
             try:
                 ex_amount = Decimal(str(ex.get("amount") or "0")).quantize(Decimal("0.01"))
                 if ex_amount < 0:
@@ -2625,10 +2643,8 @@ def api_tracking_report_save():
             except (InvalidOperation, ValueError):
                 return jsonify({"status": "error", "message": "Invalid expense amount"}), 400
 
-            # date (optional)
             ex_date = parse_date_flexible(ex_date_in) if ex_date_in else None
 
-            # Skip empty rows (no desc and 0 amount)
             if not ex_desc and ex_amount == 0:
                 continue
 
@@ -2644,7 +2660,6 @@ def api_tracking_report_save():
                 row.category = ex_category
                 row.deleted_ind = False
                 row.updated_at = datetime.utcnow()
-
             else:
                 row = GilTrackingExpense(
                     report_id=r.report_id,
@@ -2661,12 +2676,45 @@ def api_tracking_report_save():
 
         db.session.commit()
 
+        # ✅ IMPORTANT: return expenses WITH DB IDs so UI can upload invoice immediately
+        expenses = GilTrackingExpense.query.filter_by(report_id=r.report_id, deleted_ind=False) \
+            .order_by(GilTrackingExpense.expense_date.asc(), GilTrackingExpense.expense_id.asc()) \
+            .all()
+
+        exp_out = []
+        total = 0.0
+        for e in expenses:
+            amt = float(e.amount or 0)
+            total += amt
+
+            media = GilTrackingExpenseMedia.query.filter_by(expense_id=e.expense_id) \
+                .order_by(GilTrackingExpenseMedia.media_id.asc()) \
+                .all()
+
+            exp_out.append({
+                "expense_id": e.expense_id,
+                "expense_date": normalize_date(e.expense_date),
+                "description": e.description or "",
+                "amount": f"{amt:.2f}",
+                "currency": e.currency or "ILS",
+                "category": e.category or "",
+                "media": [{
+                    "media_id": m.media_id,
+                    "file_name": m.file_name or "",
+                    "dropbox_path": m.dropbox_path or "",
+                    "shared_url": m.shared_url or "",
+                    "thumb_url": m.thumb_url or ""
+                } for m in media]
+            })
+
         return jsonify({
             "status": "success",
             "report_id": r.report_id,
             "report_date": normalize_date(r.report_date),
             "status_value": r.status or "Draft",
-            "mileage_km": r.mileage_km
+            "mileage_km": r.mileage_km,
+            "expenses": exp_out,
+            "expenses_total": f"{total:.2f}"
         })
 
     except Exception as e:
@@ -3104,6 +3152,40 @@ def insured_media_list(insured_id: int):
     except Exception as e:
         current_app.logger.error(f"insured_media_list error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
+
+@main.route("/api/tracking_expenses/<int:expense_id>/media/open", methods=["GET"])
+def api_tracking_expense_media_open(expense_id: int):
+    try:
+        # session user
+        user_data = session.get("user")
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        exp = GilTrackingExpense.query.get_or_404(expense_id)
+        rep = GilTrackingReport.query.get_or_404(exp.report_id)
+
+        allowed, inv_row, _user = require_case_access_or_403(rep.insured_id, rep.ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        m = GilTrackingExpenseMedia.query.filter_by(expense_id=expense_id) \
+            .order_by(GilTrackingExpenseMedia.media_id.desc()) \
+            .first()
+
+        if not m or not m.dropbox_path:
+            return jsonify({"status": "error", "message": "No invoice uploaded"}), 404
+
+        # Dropbox temporary link (no need to create shared links)
+        tmp = dbx.files_get_temporary_link(m.dropbox_path)
+
+        return jsonify({"status": "success", "url": tmp.link, "file_name": m.file_name or ""})
+
+    except Exception as e:
+        current_app.logger.error(f"api_tracking_expense_media_open error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
 
 
 
