@@ -2806,6 +2806,9 @@ def finalize_tracking_report():
     return jsonify({'status': 'ok'})
 
 
+
+
+
 ################  UPLOAD MEDIA BY INVESTIGATORS  #################
 
 # ===============================

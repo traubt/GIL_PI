@@ -15,6 +15,11 @@ from typing import List
 
 # ---- Use app config for paths ----
 from .config import Config
+import json
+from datetime import datetime as _dt
+from sqlalchemy import func
+from flask import session
+
 
 DOCX_TEMPLATES_DIR = getattr(
     Config, "DOCX_TEMPLATES_DIR",
@@ -80,6 +85,8 @@ def api_tracking_dates(insured_id: int):
 @reports_docx_bp.route("/api/insured/<int:insured_id>/tracking-activities", methods=["GET"])
 def api_tracking_activities(insured_id: int):
     from datetime import datetime as _dt
+    from sqlalchemy import func
+
     report_date = (request.args.get("report_date") or "").strip()
 
     # Parse YYYY-MM-DD
@@ -100,9 +107,15 @@ def api_tracking_activities(insured_id: int):
         if not rep_row:
             return jsonify({"status": "ok", "activities": []})
 
+        # --------------------------------------------------
+        # 1) Prefer CURRENT set (admin override if exists)
+        # --------------------------------------------------
         acts = (
             GilTrackingReportActivity.query
-            .filter(GilTrackingReportActivity.report_id == rep_row.report_id)
+            .filter(
+                GilTrackingReportActivity.report_id == rep_row.report_id,
+                GilTrackingReportActivity.is_current == True
+            )
             .order_by(
                 GilTrackingReportActivity.sort_order.asc(),
                 GilTrackingReportActivity.activity_id.asc(),
@@ -110,18 +123,142 @@ def api_tracking_activities(insured_id: int):
             .all()
         )
 
+        # --------------------------------------------------
+        # 2) Fallback: latest set_no (safety net)
+        # --------------------------------------------------
+        if not acts:
+            max_set = (
+                db.session.query(func.max(GilTrackingReportActivity.set_no))
+                .filter(GilTrackingReportActivity.report_id == rep_row.report_id)
+                .scalar()
+            )
+
+            if max_set is not None:
+                acts = (
+                    GilTrackingReportActivity.query
+                    .filter(
+                        GilTrackingReportActivity.report_id == rep_row.report_id,
+                        GilTrackingReportActivity.set_no == max_set
+                    )
+                    .order_by(
+                        GilTrackingReportActivity.sort_order.asc(),
+                        GilTrackingReportActivity.activity_id.asc(),
+                    )
+                    .all()
+                )
+
         out = []
         for a in acts:
             t = a.activity_time.strftime("%H:%M") if a.activity_time else ""
             out.append({
                 "time": t,
-                "description": a.description or ""
+                "description": a.description or "",
+                # optional metadata (harmless to UI)
+                "source": getattr(a, "source", "investigator"),
+                "set_no": getattr(a, "set_no", 1),
+                "is_current": getattr(a, "is_current", True),
             })
 
         return jsonify({"status": "ok", "activities": out})
+
     except Exception as e:
         current_app.logger.exception("api_tracking_activities failed")
         return jsonify({"status": "error", "error": str(e)}), 500
+
+
+@reports_docx_bp.route("/api/insured/<int:insured_id>/tracking-activities/save", methods=["POST"])
+def api_tracking_activities_save(insured_id: int):
+
+    # Auth (match your app style)
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    report_date = (payload.get("report_date") or "").strip()
+    activities  = payload.get("activities") or []
+
+    if not report_date:
+        return jsonify({"status": "error", "message": "Missing report_date"}), 400
+    if not isinstance(activities, list):
+        return jsonify({"status": "error", "message": "Invalid activities"}), 400
+
+    # Parse YYYY-MM-DD
+    try:
+        dt = _dt.strptime(report_date, "%Y-%m-%d").date()
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid report_date format"}), 400
+
+    rep_row = (
+        GilTrackingReport.query
+        .filter(GilTrackingReport.insured_id == insured_id,
+                GilTrackingReport.report_date == dt)
+        .first()
+    )
+    if not rep_row:
+        return jsonify({"status": "error", "message": "Tracking report not found"}), 404
+
+    # Normalize + validate
+    cleaned = []
+    for idx, a in enumerate(activities):
+        t = (a.get("time") or "").strip()
+        d = (a.get("description") or "").strip()
+
+        if not t or not d:
+            continue
+
+        # accept HH:MM or HH:MM:SS
+        try:
+            if len(t) == 5:
+                tt = _dt.strptime(t, "%H:%M").time()
+            else:
+                tt = _dt.strptime(t, "%H:%M:%S").time()
+        except Exception:
+            return jsonify({"status": "error", "message": f"Invalid time: {t}"}), 400
+
+        cleaned.append({"time": tt, "description": d, "sort_order": idx})
+
+    if len(cleaned) < 2:
+        return jsonify({"status": "error", "message": "Need at least start and end activities"}), 400
+
+    user_id = user.get("id")
+
+    try:
+        max_set = (
+            db.session.query(func.max(GilTrackingReportActivity.set_no))
+            .filter(GilTrackingReportActivity.report_id == rep_row.report_id)
+            .scalar()
+        ) or 1
+        new_set = int(max_set) + 1
+
+        # flip current -> non-current
+        (GilTrackingReportActivity.query
+         .filter(GilTrackingReportActivity.report_id == rep_row.report_id,
+                 GilTrackingReportActivity.is_current == True)
+         .update({"is_current": False}, synchronize_session=False))
+
+        # insert new current set
+        for r in cleaned:
+            db.session.add(GilTrackingReportActivity(
+                report_id=rep_row.report_id,
+                set_no=new_set,
+                is_current=True,
+                source="admin",
+                created_by_user_id=user_id,
+                activity_time=r["time"],
+                description=r["description"],
+                sort_order=r["sort_order"],
+            ))
+
+        db.session.commit()
+        return jsonify({"status": "ok", "message": "Activities saved", "set_no": new_set})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("api_tracking_activities_save failed")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 TEMPLATE_MAP = {

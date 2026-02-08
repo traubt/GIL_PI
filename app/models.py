@@ -5,6 +5,7 @@ from flask_sqlalchemy import SQLAlchemy
 import datetime
 from datetime import datetime,timezone,date
 from sqlalchemy.dialects.mysql import MEDIUMTEXT, LONGTEXT
+from sqlalchemy import Enum  # add this import if not already in your models file
 
 
 class User(db.Model):
@@ -473,6 +474,21 @@ class GilTrackingReportActivity(db.Model):
         nullable=False
     )
 
+    # -------------------------
+    # NEW: versioning + source
+    # -------------------------
+    set_no = db.Column(db.Integer, nullable=False, default=1)
+    is_current = db.Column(db.Boolean, nullable=False, default=True)
+    source = db.Column(
+        Enum('investigator', 'admin', name='gil_tracking_activity_source'),
+        nullable=False,
+        default='investigator'
+    )
+    created_by_user_id = db.Column(db.Integer, nullable=True)
+
+    # -------------------------
+    # Existing fields
+    # -------------------------
     activity_time = db.Column(db.Time, nullable=False)
     description = db.Column(db.Text, nullable=False)
 
@@ -483,9 +499,12 @@ class GilTrackingReportActivity(db.Model):
 
     __table_args__ = (
         db.Index('idx_activity_report', 'report_id'),
+        db.Index('idx_activity_report_current', 'report_id', 'is_current'),
+        db.Index('idx_activity_report_set', 'report_id', 'set_no'),
     )
 
     ###################### Expenses ####################
+
 
 
 class GilTrackingExpense(db.Model):

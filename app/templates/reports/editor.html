@@ -412,13 +412,22 @@
           </div>
         </div>
 
-        <div id="life_tracking_list" class="border rounded p-2 bg-white">
-          <div class="text-muted small">בחר תאריך כדי לטעון פעילויות…</div>
-        </div>
+<div id="life_tracking_list" class="border rounded p-2 bg-white">
+  <div class="text-muted small">בחר תאריך כדי לטעון פעילויות…</div>
+</div>
 
-        <div class="form-text text-muted small">
-          השעה נעולה. ניתן לערוך רק את תיאור הפעילות (לצורך הדו״ח בלבד).
-        </div>
+<div class="d-flex align-items-center gap-2 mt-2">
+  <button type="button" id="life_tracking_save_btn" class="btn btn-success btn-sm">
+    שמור פעילויות
+  </button>
+  <div id="life_tracking_save_status" class="small text-muted"></div>
+</div>
+
+<div class="form-text text-muted small">
+  ניתן לערוך שעה ותיאור, להוסיף פעילויות ולמחוק פעילויות (למעט התחלה/סיום). לאחר שמירה, הפעילויות ייטענו מחדש כגרסת מנהל.
+</div>
+
+
       </div>
 
       
@@ -569,16 +578,16 @@ window.safeUUID = (function () {
 
 /* ============================================================
    Menora Life Follow-up: Activities from investigator report
-   - Dropdown loads tracking dates (unique per insured/day)
-   - Selecting a date loads activities
-   - Admin can edit description only (no DB writes)
-   - On preview/download we send tracking_raw built from UI
+   NEW REQUIREMENTS:
+   - Admin can edit time (hour) and description
+   - Admin can insert activities between start/end
+   - Admin can delete activities except first/last (start/end)
+   - No DB writes yet (UI-only). We'll persist later.
    ============================================================ */
 (function () {
   const MODAL_ID = 'noTrackingReportsModal';
 
   function showInfoModal(title, bodyHtml) {
-    // Bootstrap modal if available, otherwise fallback to alert()
     try {
       if (window.bootstrap && bootstrap.Modal) {
         let el = document.getElementById(MODAL_ID);
@@ -608,9 +617,7 @@ window.safeUUID = (function () {
         m.show();
         return;
       }
-    } catch (e) {
-      // ignore
-    }
+    } catch (e) {}
     alert((title ? (title + "\n\n") : "") + (bodyHtml || '').replace(/<[^>]+>/g, ''));
   }
 
@@ -626,6 +633,28 @@ window.safeUUID = (function () {
     return await res.json();
   }
 
+  // normalize to HH:MM if user typed "H:M" etc.
+  function normalizeHHMM(v) {
+    const s = (v || '').toString().trim();
+    if (!s) return '';
+    const m = s.match(/^(\d{1,2}):(\d{1,2})$/);
+    if (!m) return s; // leave as-is (server might accept)
+    let hh = parseInt(m[1], 10);
+    let mm = parseInt(m[2], 10);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) return s;
+    if (hh < 0) hh = 0;
+    if (hh > 23) hh = 23;
+    if (mm < 0) mm = 0;
+    if (mm > 59) mm = 59;
+    return String(hh).padStart(2, '0') + ':' + String(mm).padStart(2, '0');
+  }
+
+  function isLifeFollowupSelected() {
+    const v = (document.getElementById('reportType')?.value || '').trim();
+    const up = v.toUpperCase();
+    return (v === 'menora_life_followup' || up === 'MENORA_LIFE_FOLLOWUP');
+  }
+
   function renderActivities(listEl, activities) {
     if (!listEl) return;
     listEl.innerHTML = '';
@@ -635,44 +664,118 @@ window.safeUUID = (function () {
       return;
     }
 
-    // RTL block
     listEl.setAttribute('dir', 'rtl');
 
-    activities.forEach((a, idx) => {
-      const time = (a.time || '').trim();
-      const desc = (a.description || '').trim();
+    // helpers to (re)protect start/end
+    function refreshProtection() {
+      const rows = Array.from(listEl.querySelectorAll('.life-act-row'));
+      rows.forEach(r => {
+        r.dataset.protected = '0';
+        const delBtn = r.querySelector('.js-del');
+        if (delBtn) delBtn.disabled = false;
+      });
 
+      if (rows.length >= 1) {
+        rows[0].dataset.protected = '1';
+        const delBtn0 = rows[0].querySelector('.js-del');
+        if (delBtn0) delBtn0.disabled = true;
+      }
+      if (rows.length >= 2) {
+        rows[rows.length - 1].dataset.protected = '1';
+        const delBtnLast = rows[rows.length - 1].querySelector('.js-del');
+        if (delBtnLast) delBtnLast.disabled = true;
+      }
+    }
+
+    function makeRow(time, desc) {
       const row = document.createElement('div');
-      row.className = 'd-flex gap-2 align-items-start py-1 border-bottom';
-      row.dataset.time = time;
+      row.className = 'd-flex gap-2 align-items-start py-2 border-bottom life-act-row';
 
-      const timeEl = document.createElement('div');
-      timeEl.className = 'text-nowrap fw-semibold';
-      timeEl.style.width = '70px';
-      timeEl.textContent = time;
+      // time input
+      const timeWrap = document.createElement('div');
+      timeWrap.style.width = '105px';
 
+      const timeInput = document.createElement('input');
+      timeInput.type = 'time';
+      timeInput.className = 'form-control form-control-sm text-center js-time';
+      timeInput.value = normalizeHHMM(time);
+      timeInput.step = 60; // minute granularity
+      timeInput.addEventListener('change', () => {
+        timeInput.value = normalizeHHMM(timeInput.value);
+      });
+
+      timeWrap.appendChild(timeInput);
+
+      // desc textarea
       const ta = document.createElement('textarea');
-      ta.className = 'form-control form-control-sm';
+      ta.className = 'form-control form-control-sm js-desc';
       ta.rows = 2;
-      ta.value = desc;
+      ta.value = (desc || '').trim();
       ta.placeholder = 'תיאור פעילות...';
       ta.style.resize = 'vertical';
-
-      // keep textarea a bit larger than text
       ta.style.minHeight = '46px';
 
-      row.appendChild(timeEl);
+      // actions
+      const act = document.createElement('div');
+      act.className = 'd-flex flex-column gap-1';
+      act.style.width = '92px';
+
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-outline-primary btn-sm js-add';
+      addBtn.textContent = 'הוסף';
+      addBtn.title = 'הוסף פעילות מתחת';
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'btn btn-outline-danger btn-sm js-del';
+      delBtn.textContent = 'מחק';
+      delBtn.title = 'מחק פעילות';
+
+      addBtn.addEventListener('click', () => {
+        // if user clicks "add" on last row (end), insert BEFORE the end row
+        const rows = Array.from(listEl.querySelectorAll('.life-act-row'));
+        const last = rows[rows.length - 1];
+        const newRow = makeRow('', '');
+
+        if (row === last && rows.length >= 2) {
+          listEl.insertBefore(newRow, last);
+        } else {
+          row.insertAdjacentElement('afterend', newRow);
+        }
+
+        refreshProtection();
+        // focus description
+        newRow.querySelector('.js-desc')?.focus();
+      });
+
+      delBtn.addEventListener('click', () => {
+        const isProtected = row.dataset.protected === '1';
+        if (isProtected) return;
+        row.remove();
+        refreshProtection();
+      });
+
+      act.appendChild(addBtn);
+      act.appendChild(delBtn);
+
+      row.appendChild(timeWrap);
       row.appendChild(ta);
+      row.appendChild(act);
+
+      return row;
+    }
+
+    // build rows
+    activities.forEach((a) => {
+      const time = (a.time || '').trim();
+      const desc = (a.description || '').trim();
+      const row = makeRow(time, desc);
       listEl.appendChild(row);
     });
-  }
 
-  function isLifeFollowupSelected() {
-    const v = (document.getElementById('reportType')?.value || '').trim();
-    const up = v.toUpperCase();
-    return (v === 'menora_life_followup' || up === 'MENORA_LIFE_FOLLOWUP');
+    refreshProtection();
   }
-
 
   async function loadTrackingDatesAndMaybeActivities() {
     if (!isLifeFollowupSelected()) return;
@@ -738,29 +841,142 @@ window.safeUUID = (function () {
     renderActivities(listEl, j.activities || []);
   }
 
-  // Expose collector for preview/docx payload (build "HH:MM - desc" lines)
+  function collectLifeFollowupTrackingRows() {
+    const listEl = document.getElementById('life_tracking_list');
+    if (!listEl) return [];
+
+    const rows = Array.from(listEl.querySelectorAll('.life-act-row'));
+    const out = [];
+
+    rows.forEach((r, idx) => {
+      const timeVal = r.querySelector('.js-time')?.value || '';
+      const descVal = r.querySelector('.js-desc')?.value || '';
+      const time = normalizeHHMM(timeVal).trim();
+      const desc = String(descVal || '').trim();
+
+      // skip empty
+      if (!time && !desc) return;
+
+      out.push({
+        time,
+        description: desc,
+        sort_order: idx
+      });
+    });
+
+    return out;
+  }
+
+  async function saveActivitiesOverride() {
+    const insuredId = (window.state && window.state.insured_id) ? Number(window.state.insured_id) : null;
+    const dd = document.getElementById('db_tracking_date');
+    const statusEl = document.getElementById('life_tracking_save_status');
+    if (!insuredId || !dd) return;
+
+    const reportDate = (dd.value || '').trim();
+    if (!reportDate) {
+      showInfoModal("Missing date", "Please select a tracking date first.");
+      return;
+    }
+
+    const activities = collectLifeFollowupTrackingRows();
+
+    if (activities.length < 2) {
+      showInfoModal("Invalid activities", "Need at least start and end activities.");
+      return;
+    }
+
+    // Basic validation: no blank time/desc
+    for (const a of activities) {
+      if (!a.time || !a.description) {
+        showInfoModal("Invalid row", "Each activity must include both time and description.");
+        return;
+      }
+    }
+
+    const btn = document.getElementById('life_tracking_save_btn');
+    if (btn) btn.disabled = true;
+    if (statusEl) statusEl.textContent = "שומר...";
+
+    try {
+      const res = await fetch(`/reports/api/insured/${insuredId}/tracking-activities/save`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          report_date: reportDate,
+          activities: activities
+        })
+      });
+
+      const raw = await res.text();   // read as text first (could be JSON or HTML)
+      let j = null;
+
+      try {
+        j = raw ? JSON.parse(raw) : null;
+      } catch (parseErr) {
+        // Not JSON => likely HTML error page (404/500/login redirect)
+        const preview = (raw || '').slice(0, 300);
+        throw new Error(
+          `Server did not return JSON (HTTP ${res.status}). ` +
+          `First chars: ${preview}`
+        );
+      }
+
+      if (!res.ok || !j || j.status !== "ok") {
+        const msg = (j && (j.message || j.error)) ? (j.message || j.error) : `Save failed (HTTP ${res.status})`;
+        throw new Error(msg);
+      }
+
+
+      if (statusEl) statusEl.textContent = "נשמר ✅";
+
+      // Reload activities so editor now shows the "current" set (admin)
+      await loadActivitiesForSelectedDate();
+
+    } catch (e) {
+      if (statusEl) statusEl.textContent = "";
+      showInfoModal("Save failed", String(e.message || e));
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  }
+
+
+
+  // IMPORTANT: collector now reads editable time + desc from DOM
   window.collectLifeFollowupTrackingRaw = function () {
     const listEl = document.getElementById('life_tracking_list');
     if (!listEl) return '';
-    const rows = listEl.querySelectorAll('div[data-time]');
+
+    const rows = Array.from(listEl.querySelectorAll('.life-act-row'));
     const lines = [];
+
     rows.forEach(r => {
-      const time = (r.dataset.time || '').trim();
-      const ta = r.querySelector('textarea');
-      const desc = (ta && ta.value != null) ? String(ta.value).trim() : '';
-      if (!time) return;
-      if (!desc) return;
+      const timeVal = r.querySelector('.js-time')?.value || '';
+      const descVal = r.querySelector('.js-desc')?.value || '';
+      const time = normalizeHHMM(timeVal).trim();
+      const desc = String(descVal || '').trim();
+
+      // skip empty rows
+      if (!time && !desc) return;
+      if (!time) return;       // require time
+      if (!desc) return;       // require description
       lines.push(`${time} - ${desc}`);
     });
+
     return lines.join('\n');
   };
 
   // Hook events
   document.addEventListener('DOMContentLoaded', () => {
+
+    const saveBtn = document.getElementById('life_tracking_save_btn');
+    if (saveBtn) saveBtn.addEventListener('click', saveActivitiesOverride);
+
+
     const dd = document.getElementById('db_tracking_date');
     if (dd) dd.addEventListener('change', loadActivitiesForSelectedDate);
 
-    // When changing report type to follow-up, load data
     const rt = document.getElementById('reportType');
     if (rt) rt.addEventListener('change', () => {
       if (isLifeFollowupSelected()) {
@@ -772,6 +988,8 @@ window.safeUUID = (function () {
     loadTrackingDatesAndMaybeActivities();
   });
 })();
+
+
 
 </script>
 
