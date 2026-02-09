@@ -586,8 +586,70 @@ class GilTrackingExpenseMedia(db.Model):
     expense = db.relationship("GilTrackingExpense", back_populates="media")
 
 
+####################  Media tracking  ######################
+class GilMedia(db.Model):
+    __tablename__ = "gil_media"
+
+    media_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    insured_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_insured.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    media_type = db.Column(db.String(20), nullable=False, default="photos")
+
+    dropbox_path = db.Column(db.String(1024), nullable=False)
+    file_name    = db.Column(db.String(255), nullable=True)
+
+    taken_at   = db.Column(db.DateTime, nullable=True)
+    taken_date = db.Column(db.Date, nullable=True)
+
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    uploaded_by_user_id = db.Column(db.Integer, nullable=True)
+
+    note = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        db.Index("idx_media_insured_date", "insured_id", "taken_date"),
+        db.Index("idx_media_type", "media_type"),
+    )
 
 
+
+class GilTrackingReportMedia(db.Model):
+    __tablename__ = "gil_tracking_report_media"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    tracking_report_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_tracking_reports.report_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    media_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_media.media_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    tag = db.Column(db.String(50), nullable=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+
+    created_by_user_id = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    __table_args__ = (
+        db.UniqueConstraint("tracking_report_id", "media_id", name="uq_tracking_report_media"),
+    )
 
 
 

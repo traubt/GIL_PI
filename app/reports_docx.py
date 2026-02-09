@@ -1935,6 +1935,125 @@ def photo_id_render_docx(report_id: int):
 
 # ================== /PHOTO ID: dedicated endpoints (server only) =======================
 
+#################### MEDIA UPLOAD  ######################################
+
+@reports_docx_bp.route("/api/insured/<int:insured_id>/media", methods=["GET"])
+def api_media_candidates(insured_id: int):
+    report_date = (request.args.get("date") or "").strip()
+    media_type = (request.args.get("type") or "").strip()  # optional
+
+    from datetime import datetime as _dt
+
+    try:
+        dt = _dt.strptime(report_date, "%Y-%m-%d").date()
+    except Exception:
+        return jsonify({"status": "ok", "media": []})
+
+    q = GilMedia.query.filter(
+        GilMedia.insured_id == insured_id,
+        GilMedia.taken_date == dt
+    )
+
+    if media_type:
+        q = q.filter(GilMedia.media_type == media_type)
+
+    rows = q.order_by(GilMedia.taken_at.asc(), GilMedia.media_id.asc()).all()
+
+    out = []
+    for r in rows:
+        out.append({
+            "media_id": r.media_id,
+            "media_type": r.media_type,
+            "dropbox_path": r.dropbox_path,
+            "file_name": r.file_name,
+            "taken_at": r.taken_at.isoformat() if r.taken_at else None,
+            # UI will use this later; implement thumb route in Step 3 if needed
+            # "thumb_url": f"/media/thumb/{r.media_id}"
+        })
+
+    return jsonify({"status": "ok", "media": out})
+
+
+@reports_docx_bp.route("/api/tracking-report/<int:tracking_report_id>/media-links", methods=["GET"])
+def api_tracking_report_media_links(tracking_report_id: int):
+    links = (GilTrackingReportMedia.query
+             .filter(GilTrackingReportMedia.tracking_report_id == tracking_report_id)
+             .order_by(GilTrackingReportMedia.sort_order.asc(), GilTrackingReportMedia.id.asc())
+             .all())
+
+    media_ids = [l.media_id for l in links]
+    media_rows = {}
+    if media_ids:
+        rows = GilMedia.query.filter(GilMedia.media_id.in_(media_ids)).all()
+        media_rows = {r.media_id: r for r in rows}
+
+    out = []
+    for l in links:
+        r = media_rows.get(l.media_id)
+        out.append({
+            "media_id": l.media_id,
+            "sort_order": l.sort_order,
+            "tag": l.tag,
+            "media_type": r.media_type if r else None,
+            "dropbox_path": r.dropbox_path if r else None,
+            "file_name": r.file_name if r else None,
+            "taken_at": r.taken_at.isoformat() if (r and r.taken_at) else None,
+        })
+
+    return jsonify({"status": "ok", "links": out})
+
+
+@reports_docx_bp.route("/api/tracking-report/<int:tracking_report_id>/media-links", methods=["POST"])
+def api_save_tracking_report_media_links(tracking_report_id: int):
+    import json
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    media_ids = payload.get("media_ids") or []
+
+    if not isinstance(media_ids, list):
+        return jsonify({"status": "error", "message": "media_ids must be a list"}), 400
+
+    # validate tracking report exists
+    rep = GilTrackingReport.query.get(tracking_report_id)
+    if not rep:
+        return jsonify({"status": "error", "message": "Tracking report not found"}), 404
+
+    # validate media belongs to same insured (important)
+    if media_ids:
+        cnt = (GilMedia.query
+               .filter(GilMedia.media_id.in_(media_ids),
+                       GilMedia.insured_id == rep.insured_id)
+               .count())
+        if cnt != len(set(media_ids)):
+            return jsonify({"status": "error", "message": "One or more media items do not belong to this insured"}), 400
+
+    try:
+        # delete existing links
+        GilTrackingReportMedia.query.filter_by(tracking_report_id=tracking_report_id).delete()
+
+        # insert new links with stable ordering
+        user_id = user.get("id")
+        for idx, mid in enumerate(media_ids):
+            db.session.add(GilTrackingReportMedia(
+                tracking_report_id=tracking_report_id,
+                media_id=int(mid),
+                sort_order=idx,
+                created_by_user_id=user_id
+            ))
+
+        db.session.commit()
+        return jsonify({"status": "ok", "message": "Media links saved", "count": len(media_ids)})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("api_save_tracking_report_media_links failed")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 
 
 

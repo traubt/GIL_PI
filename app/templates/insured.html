@@ -12,7 +12,6 @@
 
 
 
-
 <h3 class="mb-4">
   {% if insured %}עדכן תיק חקירה{% else %}צור תיק מבוטח{% endif %}
 </h3>
@@ -123,27 +122,27 @@
     <div class="row g-3">
       <div class="col-md-2">
         <label for="first_name" class="form-label">שם פרטי</label>
-        <input type="text" id="first_name" name="first_name" value="{{ insured.first_name }}" class="form-control">
+        <input type="text" id="first_name" name="first_name" value="{{ insured.first_name if insured else '' }}" class="form-control">
       </div>
       <div class="col-md-2">
         <label for="last_name" class="form-label">שם משפחה</label>
-        <input type="text" id="last_name" name="last_name" value="{{ insured.last_name }}" class="form-control">
+        <input type="text" id="last_name" name="last_name" value="{{ insured.last_name if insured else '' }}" class="form-control">
       </div>
       <div class="col-md-2">
         <label for="id_number" class="form-label">תעודת זהות</label>
-        <input type="text" id="id_number" name="id_number" value="{{ insured.id_number }}" class="form-control">
+        <input type="text" id="id_number" name="id_number" value="{{ insured.id_number if insured else '' }}" class="form-control">
       </div>
       <div class="col-md-2">
         <label for="father_name" class="form-label">שם אב</label>
-        <input type="text" id="father_name" name="father_name" value="{{ insured.father_name }}" class="form-control">
+        <input type="text" id="father_name" name="father_name" value="{{ insured.father_name if insured else '' }}" class="form-control">
       </div>
       <!-- NEW GENDER FIELD -->
       <div class="col-md-2">
         <label for="gender" class="form-label">מין</label>
         <select id="gender" name="gender" class="form-select">
           <option value="">בחר</option>
-          <option value="זכר" {% if insured.gender == 'זכר' %}selected{% endif %}>זכר</option>
-          <option value="נקבה" {% if insured.gender == 'נקבה' %}selected{% endif %}>נקבה</option>
+          <option value="זכר" {% if insured and insured.gender == 'זכר' %}selected{% endif %}>זכר</option>
+          <option value="נקבה" {% if insured and insured.gender == 'נקבה' %}selected{% endif %}>נקבה</option>
         </select>
       </div>
       <div class="col-md-2">
@@ -1177,92 +1176,8 @@ $(document).on('click', '.exp-view', async function () {
   bindLocalPreview('video');
 
 
-  // ================= Dropbox Media UI (sections + thumbnails) =================
 
-  const mediaPicked = {
-    photos:   [],
-    id_photo: [],
-    social:   [],
-    video:    []
-  };
-
-
-  // Standardized thumbnail card (same pattern as editor.html)
-  function makeThumbCard(item, type) {
-    const wrap = document.createElement('label');
-    wrap.className = 'thumb';
-    wrap.style.cursor = 'pointer';
-
-    const box = document.createElement('input');
-    box.type = 'checkbox';
-    box.checked = !!item.selected;
-    box.style.marginInlineEnd = '.35rem';
-    box.addEventListener('change', () => {
-      item.selected = box.checked;
-    });
-
-    if ((item.mime_type || '').startsWith('image/')) {
-      const img = document.createElement('img');
-      img.src = item.url;
-      img.alt = item.name;
-      wrap.appendChild(img);
-    } else {
-      const div = document.createElement('div');
-      div.style.cssText = 'height:110px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:#f3f4f6';
-      div.textContent = 'וידאו';
-      wrap.appendChild(div);
-    }
-
-    const meta = document.createElement('div');
-    meta.style.marginTop = '.35rem';
-    meta.innerHTML = `<span class="name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</span>`;
-    wrap.appendChild(meta);
-
-    wrap.insertBefore(box, wrap.firstChild);
-    return wrap;
-  }
-
-  function renderGrid(type) {
-    const grid = document.getElementById(`grid_${type}`);
-    if (!grid) return;
-    grid.innerHTML = '';
-
-    const list = mediaPicked[type] || [];
-    for (const item of list) {
-      grid.appendChild(makeThumbCard(item, type));
-    }
-  }
-
-  async function refreshMedia(type) {
-    if (!insuredId) {
-      showModal('⚠️ Not available', 'Please save the case before loading Dropbox media.');
-      return;
-    }
-
-    try {
-      // If your endpoint differs, change this URL only
-      const res = await $.getJSON(`/insured/${insuredId}/media/list?media_type=${encodeURIComponent(type)}`);
-
-      if (!res || res.status !== 'success') {
-        throw new Error(res?.message || 'Failed to load media list');
-      }
-
-      // expected: res.files = [{name, url, mime_type}]
-      const files = res.files || [];
-
-      mediaPicked[type] = files.map(f => ({
-        name: f.name,
-        url: f.url,
-        mime_type: f.mime_type || '',
-        selected: true
-      }));
-
-      renderGrid(type);
-
-    } catch (e) {
-      showModal('❌ Error', e.message || 'Failed to load media list');
-    }
-  }
+  // ================= Dropbox Media UI (upload + optional refresh) =================
 
   function setProgress(type, pct) {
     $(`#progress_wrap_${type}`).removeClass('d-none');
@@ -1271,6 +1186,7 @@ $(document).on('click', '.exp-view', async function () {
 
   function hideProgress(type) {
     $(`#progress_wrap_${type}`).addClass('d-none');
+    $(`#progress_bar_${type}`).css('width', '0%').text('0%');
   }
 
   function renderUploadResult(type, res) {
@@ -1287,30 +1203,52 @@ $(document).on('click', '.exp-view', async function () {
     el.html(rows || "<div class='text-muted'>No results</div>");
   }
 
+  // Optional: refresh Dropbox list (only if you have this endpoint working)
+  async function refreshMedia(type) {
+    if (!insuredId) return;
+
+    try {
+      const res = await $.getJSON(`/insured/${insuredId}/media/list?media_type=${encodeURIComponent(type)}`);
+      if (!res || res.status !== 'success') return;
+
+      // If your server returns files [{name,url,mime_type}] you can render them here.
+      // For now we just keep it simple: show count.
+      const files = res.files || [];
+      // You can expand this later to render Dropbox thumbnails.
+      // $('#result_' + type).prepend(`<div class="small text-muted">Dropbox files: ${files.length}</div>`);
+    } catch (e) {
+      // non-fatal
+    }
+  }
+
   function uploadMedia(type) {
     if (!insuredId) {
-      showModal('⚠️ Not available', 'Please save the case before uploading media to Dropbox.');
+      showModal('⚠️ לא ניתן', 'נא לשמור את התיק לפני העלאת מדיה לדרופבוקס.');
       return;
     }
 
-    // ✅ Upload only selected local files (from the preview grid)
+    // Upload only selected local files (from localPicked defined above)
     const selected = (localPicked[type] || []).filter(x => x.selected);
 
     if (!selected.length) {
-      showModal('⚠️ Missing file', 'Please select at least one file (checkbox) to upload.');
+      showModal('⚠️ חסר קובץ', 'נא לבחור לפחות קובץ אחד (סימון צ׳קבוקס) כדי להעלות.');
       return;
     }
 
     const fd = new FormData();
     fd.append('media_type', type);
 
-    // append only selected files
     for (const item of selected) {
       fd.append('files', item.file);
     }
 
+    // UI: reset result + progress
     $(`#result_${type}`).html('');
     setProgress(type, 0);
+
+    // Disable clicked upload button while uploading
+    const $btn = $(`.js-media-upload[data-type="${type}"]`);
+    $btn.prop('disabled', true).text('מעלה...');
 
     $.ajax({
       url: `/insured/${insuredId}/media/upload`,
@@ -1331,43 +1269,50 @@ $(document).on('click', '.exp-view', async function () {
     })
     .done(async function (res) {
       hideProgress(type);
+      $btn.prop('disabled', false).text('העלה');
 
       if (!res || res.status !== 'success') {
-        showModal('❌ Error', res?.message || 'Upload failed');
+        showModal('❌ שגיאה', res?.message || 'העלאה נכשלה');
         return;
       }
 
       renderUploadResult(type, res);
 
-      // ✅ clear file input + local thumbnails after upload
+      // Count success/fail
+      const results = res.results || [];
+      const okCount = results.filter(r => r.status === 'success').length;
+      const failCount = results.filter(r => r.status !== 'success').length;
+
+      // Clear file input + local thumbnails after upload
       const input = document.getElementById(`media_files_${type}`);
       if (input) input.value = '';
 
       clearLocal(type);
       renderLocalGrid(type);
 
-      // optional: refresh Dropbox list (keeps your existing behavior)
+      // Optional refresh
       await refreshMedia(type);
 
-      showModal('✅ Success', 'Files uploaded successfully to Dropbox.');
+      if (failCount === 0) {
+        showModal('✅ הצלחה', `${okCount} קבצים הועלו בהצלחה לדרופבוקס`);
+      } else if (okCount === 0) {
+        showModal('❌ שגיאה', `לא הועלו קבצים לדרופבוקס. (${failCount} נכשלו)`);
+      } else {
+        showModal('⚠️ הועלה חלקית', `${okCount} קבצים הועלו בהצלחה, ${failCount} נכשלו. (בדוק פירוט מתחת לכפתור)`);
+      }
     })
     .fail(function (xhr) {
       hideProgress(type);
-      const msg = xhr?.responseJSON?.message || 'Upload error';
-      showModal('❌ Error', msg);
+      $btn.prop('disabled', false).text('העלה');
+      const msg = xhr?.responseJSON?.message || xhr?.statusText || 'שגיאה בהעלאה לדרופבוקס';
+      showModal('❌ שגיאה', msg);
     });
   }
-
 
   // Buttons
   $(document).on('click', '.js-media-upload', function () {
     const type = $(this).data('type');
     uploadMedia(type);
-  });
-
-  $(document).on('click', '.js-media-refresh', function () {
-    const type = $(this).data('type');
-    refreshMedia(type);
   });
 
   $(document).on('click', '.js-media-select-all', function () {
@@ -1382,14 +1327,11 @@ $(document).on('click', '.exp-view', async function () {
     renderLocalGrid(type);
   });
 
+  $(document).on('click', '.js-media-refresh', function () {
+    const type = $(this).data('type');
+    refreshMedia(type);
+  });
 
-  // Initial load (optional)
-  if (insuredId) {
-    refreshMedia('photos');
-    refreshMedia('id_photo');
-    refreshMedia('social');
-    refreshMedia('video');
-  }
 
 
 

@@ -80,6 +80,32 @@ def build_dropbox_folder_path(insurance, claim_type, last_name, first_name, id_n
 
     return f"{base_path}/{folder_name}"
 
+def _extract_taken_at_from_exif_bytes(data: bytes):
+    """
+    Returns datetime or None.
+    Safe bytes-based EXIF read (works even after file.read()).
+    """
+    try:
+        from PIL import Image
+        import io
+        from datetime import datetime
+
+        img = Image.open(io.BytesIO(data))
+        exif = getattr(img, "_getexif", None)
+        if not exif:
+            return None
+
+        # 36867 = DateTimeOriginal, 306 = DateTime
+        dt = exif.get(36867) or exif.get(306)
+        if not dt:
+            return None
+
+        # EXIF format: "YYYY:MM:DD HH:MM:SS"
+        return datetime.strptime(dt, "%Y:%m:%d %H:%M:%S")
+    except Exception:
+        return None
+
+
 def sync_insured_to_dropbox(insured, photo_path=None):
     folder_path = build_dropbox_folder_path(
         insured.insurance, insured.claim_type,
@@ -2942,6 +2968,10 @@ def validate_media_file(file_storage, media_type: str):
 
 @main.route("/insured/<int:insured_id>/media/upload", methods=["POST"])
 def insured_media_upload(insured_id: int):
+    import os
+    import json
+    from datetime import datetime
+
     try:
         # session user (same pattern you use everywhere)
         user_data = session.get('user')
@@ -2957,9 +2987,18 @@ def insured_media_upload(insured_id: int):
         if media_type not in ALLOWED_MEDIA_TYPES:
             return jsonify({"status": "error", "message": "Invalid media_type"}), 400
 
+        # ----------------------------
+        # form int helper
+        # ----------------------------
+        def _to_int(v):
+            try:
+                return int(v)
+            except Exception:
+                return None
+
         # ✅ NEW: for expenses we expect report_id + expense_id
-        report_id = request.form.get("report_id", type=int)
-        expense_id = request.form.get("expense_id", type=int)
+        report_id = _to_int(request.form.get("report_id"))
+        expense_id = _to_int(request.form.get("expense_id"))
 
         if media_type == "expenses":
             if not report_id or not expense_id:
@@ -3003,6 +3042,17 @@ def insured_media_upload(insured_id: int):
 
                 original_name = getattr(f, "filename", "") or "file"
 
+                # Read bytes ONCE (used for size + upload + EXIF)
+                data = f.read() or b""
+                size_bytes = len(data)
+
+                # size guard even if content_length not available
+                mb = size_bytes / (1024 * 1024)
+                if media_type == "video" and mb > MAX_VIDEO_MB:
+                    raise ValueError(f"Video too large (>{MAX_VIDEO_MB}MB)")
+                if media_type != "video" and mb > MAX_IMAGE_MB:
+                    raise ValueError(f"Image too large (>{MAX_IMAGE_MB}MB)")
+
                 # Expenses: stable name + overwrite
                 if media_type == "expenses":
                     ext = os.path.splitext(original_name)[1].lower() or ".jpg"
@@ -3022,16 +3072,6 @@ def insured_media_upload(insured_id: int):
 
                 dropbox_path = f"{folder_path}/{stored_name}"
 
-                data = f.read()
-                size_bytes = len(data)
-
-                # size guard even if content_length not available
-                mb = size_bytes / (1024 * 1024)
-                if media_type == "video" and mb > MAX_VIDEO_MB:
-                    raise ValueError(f"Video too large (>{MAX_VIDEO_MB}MB)")
-                if media_type != "video" and mb > MAX_IMAGE_MB:
-                    raise ValueError(f"Image too large (>{MAX_IMAGE_MB}MB)")
-
                 dbx.files_upload(
                     data,
                     dropbox_path,
@@ -3039,9 +3079,35 @@ def insured_media_upload(insured_id: int):
                     mute=True
                 )
 
-                # ✅ NEW: if expenses -> persist media row (1 per expense)
+                # ---------------------------------------------------------
+                # ✅ Catalog uploaded media in gil_media (non-expenses)
+                # ---------------------------------------------------------
+                if media_type != "expenses":
+                    taken_at = None
+
+                    # Only try EXIF for image-based media
+                    if media_type in ("photos", "id_photo"):
+                        try:
+                            taken_at = _extract_taken_at_from_exif_bytes(data)
+                        except Exception:
+                            taken_at = None
+
+                    # If EXIF missing, fallback to now (UTC)
+                    if not taken_at:
+                        taken_at = datetime.utcnow()
+
+                    upsert_gil_media(
+                        insured_id=insured_id,
+                        media_type=media_type,          # ✅ store UI value directly
+                        dropbox_path=dropbox_path,
+                        file_name=stored_name,
+                        uploaded_by_user_id=(user.get("id") or None),
+                        taken_at=taken_at,
+                        note=note
+                    )
+
+                # ✅ expenses -> persist media row (1 per expense)
                 if media_type == "expenses":
-                    # Remove old media rows (hard delete media row is fine; expense stays soft-deletable)
                     GilTrackingExpenseMedia.query.filter_by(expense_id=expense_id).delete()
 
                     m = GilTrackingExpenseMedia(
@@ -3049,7 +3115,7 @@ def insured_media_upload(insured_id: int):
                         storage_provider="dropbox",
                         file_name=stored_name,
                         file_ext=os.path.splitext(stored_name)[1].lower(),
-                        mime_type="image/jpeg",  # safe default; UI doesn't rely on it
+                        mime_type=(getattr(f, "mimetype", None) or "image/jpeg"),
                         file_size=size_bytes,
                         dropbox_path=dropbox_path,
                         dropbox_file_id=None,
@@ -3069,6 +3135,7 @@ def insured_media_upload(insured_id: int):
 
             except Exception as e:
                 db.session.rollback()
+                current_app.logger.exception("insured_media_upload file failed")
                 results.append({
                     "file": getattr(f, "filename", "file"),
                     "status": "error",
@@ -3082,9 +3149,11 @@ def insured_media_upload(insured_id: int):
             "results": results
         })
 
-    except Exception as e:
-        current_app.logger.error(f"insured_media_upload error: {e}")
+    except Exception:
+        current_app.logger.exception("insured_media_upload error")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
+
 
 
 
@@ -3188,6 +3257,89 @@ def api_tracking_expense_media_open(expense_id: int):
     except Exception as e:
         current_app.logger.error(f"api_tracking_expense_media_open error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
+
+###################  Automate Media Upload ######################
+
+from datetime import datetime
+from PIL import Image, ExifTags
+import os
+
+def _extract_taken_at_from_exif(file_storage) -> datetime | None:
+    """
+    Reads EXIF DateTimeOriginal / DateTimeDigitized / DateTime.
+    Returns datetime or None.
+    """
+    try:
+        file_storage.stream.seek(0)
+        img = Image.open(file_storage.stream)
+
+        exif = getattr(img, "_getexif", None)
+        if not exif:
+            return None
+
+        exif_data = exif() or {}
+        # map tag numbers to names
+        tag_map = {ExifTags.TAGS.get(k, k): v for k, v in exif_data.items()}
+
+        # EXIF formats: "YYYY:MM:DD HH:MM:SS"
+        for key in ("DateTimeOriginal", "DateTimeDigitized", "DateTime"):
+            v = tag_map.get(key)
+            if v:
+                try:
+                    return datetime.strptime(v, "%Y:%m:%d %H:%M:%S")
+                except Exception:
+                    pass
+        return None
+    except Exception:
+        return None
+    finally:
+        try:
+            file_storage.stream.seek(0)
+        except Exception:
+            pass
+
+
+def upsert_gil_media(
+    insured_id: int,
+    media_type: str,
+    dropbox_path: str,
+    file_name: str | None,
+    uploaded_by_user_id: int | None,
+    taken_at: datetime | None,
+    note: str | None = None,
+):
+    """
+    Insert new media row. If same dropbox_path already exists, update taken_at/taken_date/note.
+    """
+    taken_date = taken_at.date() if taken_at else None
+
+    row = GilMedia.query.filter_by(dropbox_path=dropbox_path).first()
+    if row:
+        row.insured_id = insured_id
+        row.media_type = media_type
+        row.file_name = file_name
+        row.taken_at = taken_at or row.taken_at
+        row.taken_date = taken_date or row.taken_date
+        row.uploaded_by_user_id = uploaded_by_user_id or row.uploaded_by_user_id
+        if note:
+            row.note = note
+    else:
+        row = GilMedia(
+            insured_id=insured_id,
+            media_type=media_type,
+            dropbox_path=dropbox_path,
+            file_name=file_name,
+            taken_at=taken_at,
+            taken_date=taken_date,
+            uploaded_by_user_id=uploaded_by_user_id,
+            note=note
+        )
+        db.session.add(row)
+
+    db.session.commit()
+    return row.media_id
+
 
 
 
