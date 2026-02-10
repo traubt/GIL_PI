@@ -477,30 +477,41 @@
             בחר תמונות שיופיעו בדוח (סיעודי / דוח תמונות ביטוח חיים). התמונות נטענות מדרופבוקס המקומי.
           </div>
 
-          <div class="mb-2 d-flex justify-content-between align-items-center">
-            <span class="fw-semibold">ייבוא תמונות</span>
-            <div>
-              <button id="btnImportLocalDropbox"
-                      type="button"
-                      class="btn btn-outline-primary btn-sm">
-                ייבוא מדרופבוקס מקומי
-              </button>
+        <div class="mb-2 d-flex justify-content-between align-items-center">
+          <span class="fw-semibold">ייבוא תמונות</span>
 
-              <input id="localDropboxPicker"
-                     type="file"
-                     name="files[]"
-                     accept="image/*,video/*"
-                     multiple
-                     style="display:none;">
+          <div class="d-flex align-items-center gap-2">
+            <!-- ✅ EXISTING BUTTON (unchanged) -->
+            <button id="btnImportLocalDropbox"
+                    type="button"
+                    class="btn btn-outline-primary btn-sm">
+              ייבוא מדרופבוקס מקומי
+            </button>
 
-              <!-- שמור לשימוש עתידי, כמו שהיה קודם -->
-              <input id="filepicker"
-                     type="file"
-                     accept="image/*"
-                     multiple
-                     style="display:none;">
-            </div>
+            <!-- ✅ NEW BUTTON (cloud import by tracking date) -->
+            <button id="btnImportTrackingDate"
+                    type="button"
+                    class="btn btn-outline-success btn-sm"
+                    disabled>
+              ייבוא מתאריך מעקב
+            </button>
+
+            <input id="localDropboxPicker"
+                   type="file"
+                   name="files[]"
+                   accept="image/*,video/*"
+                   multiple
+                   style="display:none;">
+
+            <!-- שמור לשימוש עתידי, כמו שהיה קודם -->
+            <input id="filepicker"
+                   type="file"
+                   accept="image/*"
+                   multiple
+                   style="display:none;">
           </div>
+        </div>
+
 
           <input type="hidden" id="localToken" value="">
 
@@ -2916,6 +2927,123 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
     initAuthoritiesToggle('db_authorities_2', 'db_authorities_2_exists');
   });
 
+})();
+</script>
+
+<script>
+/* ================================
+   Import photos from Tracking Date
+   (COUNT ONLY – uses the stable endpoint)
+================================ */
+(function () {
+  const btn = document.getElementById("btnImportTrackingDate");
+  if (!btn) return;
+
+  // small bootstrap modal helper (self-contained)
+  const MODAL_ID = "trackingCountModal";
+  function showInfoModal(title, bodyText) {
+    try {
+      if (window.bootstrap && bootstrap.Modal) {
+        let el = document.getElementById(MODAL_ID);
+        if (!el) {
+          el = document.createElement("div");
+          el.id = MODAL_ID;
+          el.className = "modal fade";
+          el.tabIndex = -1;
+          el.innerHTML = `
+            <div class="modal-dialog modal-dialog-centered">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title"></h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body"></div>
+                <div class="modal-footer">
+                  <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
+                </div>
+              </div>
+            </div>`;
+          document.body.appendChild(el);
+        }
+        el.querySelector(".modal-title").textContent = title || "";
+        el.querySelector(".modal-body").textContent = bodyText || "";
+        new bootstrap.Modal(el).show();
+        return;
+      }
+    } catch (e) {}
+    alert((title ? title + "\n\n" : "") + (bodyText || ""));
+  }
+
+  function isoToDMY(iso) {
+    const m = (iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!m) return iso || "";
+    return `${m[3]}/${m[2]}/${m[1]}`;
+  }
+
+  function getInsuredId() {
+    const id = Number(window.state?.insured_id || 0);
+    return id > 0 ? id : 0;
+  }
+
+  function getTrackingIso() {
+    return (document.getElementById("db_tracking_date")?.value || "").trim();
+  }
+
+  // enable/disable button based on state
+  function refreshBtnEnabled() {
+    const insuredId = getInsuredId();
+    const iso = getTrackingIso();
+    btn.disabled = !(insuredId && iso);
+  }
+
+  // initial state
+  refreshBtnEnabled();
+
+  // when tracking date changes → enable button
+  const dd = document.getElementById("db_tracking_date");
+  if (dd) dd.addEventListener("change", refreshBtnEnabled);
+
+  // also try to enable after the page finishes loading state
+  document.addEventListener("DOMContentLoaded", refreshBtnEnabled);
+
+  btn.addEventListener("click", async function () {
+    const insuredId = getInsuredId();
+    const iso = getTrackingIso();
+
+    if (!insuredId) {
+      showInfoModal("שגיאה", "insured_id חסר (בחר מבוטח / רענן עמוד)");
+      return;
+    }
+    if (!iso) {
+      showInfoModal("שגיאה", "נא לבחור תאריך מעקב לפני ייבוא תמונות");
+      return;
+    }
+
+    const ref = (window.state?.ref_number || "").toString();
+    const url =
+      `/reports/api/insured/${insuredId}/dropbox/photos-count` +
+      `?date=${encodeURIComponent(iso)}` +
+      `&ref_number=${encodeURIComponent(ref)}`;
+
+    try {
+      const res = await fetch(url, { method: "GET" });
+      const j = await res.json();
+
+      if (!res.ok || !j || j.status !== "ok") {
+        const msg = (j && (j.message || j.error)) ? (j.message || j.error) : `HTTP ${res.status}`;
+        showInfoModal("שגיאה", msg);
+        return;
+      }
+
+      const n = Number(j.count || 0);
+      const dmy = j.date_dmy || isoToDMY(iso);
+      showInfoModal("תמונות נמצאו", `${n} תמונות נמצאו מתאריך ${dmy}`);
+
+    } catch (err) {
+      console.error("Tracking date photo count error:", err);
+      showInfoModal("שגיאה", "אירעה שגיאה בעת בדיקת תמונות מדרופבוקס");
+    }
+  });
 })();
 </script>
 
