@@ -2443,6 +2443,8 @@ def api_tracking_reports_list():
         return jsonify({"status": "error", "message": "Server error"}), 500
 
 
+from sqlalchemy import func
+
 @main.route("/api/tracking_reports/<int:report_id>", methods=["GET"])
 def api_tracking_report_get(report_id):
     try:
@@ -2452,9 +2454,29 @@ def api_tracking_report_get(report_id):
         if not allowed:
             return jsonify({"status": "error", "message": "Access denied"}), 403
 
-        items = GilTrackingReportActivity.query.filter_by(report_id=r.report_id) \
-            .order_by(GilTrackingReportActivity.sort_order.asc(), GilTrackingReportActivity.activity_id.asc()) \
-            .all()
+        req_source = (request.args.get("source") or "").strip().lower()
+        if req_source not in ("admin", "investigator", ""):
+            return jsonify({"status": "error", "message": "Invalid source"}), 400
+
+        items_q = GilTrackingReportActivity.query.filter_by(report_id=r.report_id)
+
+        # ✅ Filter by source (insured page = investigator, editor = admin)
+        if req_source:
+            items_q = items_q.filter(GilTrackingReportActivity.source == req_source)
+
+            # ✅ Show latest set for that source
+            max_set = db.session.query(func.max(GilTrackingReportActivity.set_no)) \
+                .filter(GilTrackingReportActivity.report_id == r.report_id,
+                        GilTrackingReportActivity.source == req_source) \
+                .scalar()
+
+            if max_set is not None:
+                items_q = items_q.filter(GilTrackingReportActivity.set_no == max_set)
+
+        items = items_q.order_by(
+            GilTrackingReportActivity.sort_order.asc(),
+            GilTrackingReportActivity.activity_id.asc()
+        ).all()
 
         expenses = GilTrackingExpense.query.filter_by(report_id=r.report_id, deleted_ind=False) \
             .order_by(GilTrackingExpense.expense_date.asc(), GilTrackingExpense.expense_id.asc()) \
@@ -2463,7 +2485,6 @@ def api_tracking_report_get(report_id):
         exp_out = []
         total = 0
         for e in expenses:
-            # one expense can have 0..N media rows, but UI uses first thumbnail
             media = GilTrackingExpenseMedia.query.filter_by(expense_id=e.expense_id) \
                 .order_by(GilTrackingExpenseMedia.media_id.asc()) \
                 .all()
@@ -2502,7 +2523,8 @@ def api_tracking_report_get(report_id):
                     "activity_id": it.activity_id,
                     "activity_time": normalize_time(it.activity_time),
                     "description": it.description or "",
-                    "sort_order": int(it.sort_order or 0)
+                    "sort_order": int(it.sort_order or 0),
+                    "source": it.source  # optional, but useful for debugging
                 } for it in items],
                 "expenses": exp_out,
                 "expenses_total": f"{total:.2f}"
@@ -2514,9 +2536,25 @@ def api_tracking_report_get(report_id):
         return jsonify({"status": "error", "message": "Server error"}), 500
 
 
+
 @main.route("/api/tracking_reports/save", methods=["POST"])
 def api_tracking_report_save():
+    """
+    Saves a tracking report + activities + expenses.
+
+    IMPORTANT BEHAVIOR (per your new rule):
+    - We KEEP Start/End in DB.
+    - We DO NOT delete all activities for the report.
+    - We version activities PER SOURCE using (source, set_no, is_current).
+      * Investigator save -> source='investigator'
+      * Admin/Manager save -> source='admin'
+    - On save: previous sets for that source are marked is_current=0, new set inserted as is_current=1.
+    """
     try:
+        from datetime import datetime
+        from decimal import Decimal, InvalidOperation
+        from sqlalchemy import func
+
         payload = request.get_json(silent=True) or {}
 
         insured_id = payload.get("insured_id")
@@ -2529,7 +2567,9 @@ def api_tracking_report_save():
         expenses_in = payload.get("expenses") or []
         deleted_expense_ids = payload.get("deleted_expense_ids") or []
 
-        # mileage
+        # -----------------------------
+        # mileage validation
+        # -----------------------------
         mileage_in = payload.get("mileage_km", None)
         mileage_km = None
         try:
@@ -2552,22 +2592,25 @@ def api_tracking_report_save():
             return jsonify({"status": "error", "message": "Access denied"}), 403
 
         # -----------------------------
-        # Load existing report
+        # Load existing report (by report_id OR by (insured_id, ref_number, report_date))
         # -----------------------------
         r = None
         if report_id:
             r = GilTrackingReport.query.get(report_id)
 
         if not r:
-            # ✅ SAFER: include insured_id as well (prevents cross-case collision if ref_number reused)
-            r = GilTrackingReport.query.filter_by(insured_id=int(insured_id), ref_number=ref_number, report_date=d).first()
+            r = GilTrackingReport.query.filter_by(
+                insured_id=int(insured_id),
+                ref_number=ref_number,
+                report_date=d
+            ).first()
 
-        # Final => cannot edit
+        # Final => cannot edit for non-admin/manager
         if r and (r.status == "Final") and (not user_is_admin_or_manager(user)):
             return jsonify({"status": "error", "message": "Report is Final and cannot be edited"}), 403
 
         # -----------------------------
-        # Determine investigator_id (no UI requirement)
+        # Determine investigator_id
         # -----------------------------
         investigator_id = None
 
@@ -2606,8 +2649,9 @@ def api_tracking_report_save():
                 mileage_km=mileage_km
             )
             db.session.add(r)
-            db.session.flush()  # ✅ ensures r.report_id exists
+            db.session.flush()  # ensures r.report_id exists
         else:
+            # Investigator cannot edit other investigator's report
             if (not user_is_admin_or_manager(user)) and (r.investigator_id != int(investigator_id)):
                 return jsonify({"status": "error", "message": "Cannot edit another investigator's report"}), 403
 
@@ -2616,13 +2660,34 @@ def api_tracking_report_save():
             r.updated_at = datetime.utcnow()
 
         # -----------------------------
-        # Replace activities
+        # Replace activities (PER SOURCE, versioned)
         # -----------------------------
-        GilTrackingReportActivity.query.filter_by(report_id=r.report_id).delete()
+        user_id = (user or {}).get("id") or None
+        source = "admin" if user_is_admin_or_manager(user) else "investigator"
 
+        # next set_no for this report+source
+        max_set = db.session.query(func.max(GilTrackingReportActivity.set_no)).filter(
+            GilTrackingReportActivity.report_id == r.report_id,
+            GilTrackingReportActivity.source == source
+        ).scalar()
+        next_set_no = int(max_set or 0) + 1
+
+        # mark previous current sets for this source as not current
+        GilTrackingReportActivity.query.filter(
+            GilTrackingReportActivity.report_id == r.report_id,
+            GilTrackingReportActivity.source == source,
+            GilTrackingReportActivity.is_current == 1
+        ).update(
+            {"is_current": 0, "updated_at": datetime.utcnow()},
+            synchronize_session=False
+        )
+
+        # insert new set
         for idx, it in enumerate(items):
             t = (it.get("activity_time") or "").strip()
             desc = (it.get("description") or "").strip()
+
+            # keep DB clean: ignore empty rows only
             if not t or not desc:
                 continue
 
@@ -2636,9 +2701,15 @@ def api_tracking_report_save():
 
             db.session.add(GilTrackingReportActivity(
                 report_id=r.report_id,
+                set_no=next_set_no,
+                is_current=1,
+                source=source,
+                created_by_user_id=user_id,
                 activity_time=t_parsed,
                 description=desc,
-                sort_order=int(sort_order)
+                sort_order=int(sort_order),
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
             ))
 
         # -----------------------------
@@ -2652,8 +2723,6 @@ def api_tracking_report_save():
                 {"deleted_ind": True, "updated_at": datetime.utcnow()},
                 synchronize_session=False
             )
-
-        user_id = (user or {}).get("id") or None
 
         for ex in expenses_in:
             ex_id = ex.get("expense_id")
@@ -2671,6 +2740,7 @@ def api_tracking_report_save():
 
             ex_date = parse_date_flexible(ex_date_in) if ex_date_in else None
 
+            # ignore empty expense rows
             if not ex_desc and ex_amount == 0:
                 continue
 
@@ -2696,13 +2766,17 @@ def api_tracking_report_save():
                     amount=ex_amount,
                     currency=ex_currency,
                     category=ex_category,
-                    deleted_ind=False
+                    deleted_ind=False,
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
                 )
                 db.session.add(row)
 
         db.session.commit()
 
-        # ✅ IMPORTANT: return expenses WITH DB IDs so UI can upload invoice immediately
+        # -----------------------------
+        # Return expenses WITH DB IDs so UI can upload invoice immediately
+        # -----------------------------
         expenses = GilTrackingExpense.query.filter_by(report_id=r.report_id, deleted_ind=False) \
             .order_by(GilTrackingExpense.expense_date.asc(), GilTrackingExpense.expense_id.asc()) \
             .all()
@@ -2739,6 +2813,8 @@ def api_tracking_report_save():
             "report_date": normalize_date(r.report_date),
             "status_value": r.status or "Draft",
             "mileage_km": r.mileage_km,
+            "saved_source": source,
+            "saved_set_no": next_set_no,
             "expenses": exp_out,
             "expenses_total": f"{total:.2f}"
         })
@@ -2747,6 +2823,7 @@ def api_tracking_report_save():
         db.session.rollback()
         current_app.logger.error(f"api_tracking_report_save error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
 
 
 
@@ -3341,6 +3418,304 @@ def upsert_gil_media(
     return row.media_id
 
 
+@main.route("/reports/api/insured/<int:insured_id>/dropbox/photos-count", methods=["GET"])
+def api_dropbox_photos_count_for_date(insured_id: int):
+    """
+    Baby step #1:
+    Given insured_id + ref_number + date (ISO or dd/mm/yyyy),
+    go to Dropbox folder .../תמונות and count how many photos match the date.
+
+    Matching rule (fast + reliable):
+    - We match filename containing YYYY-MM-DD (like your screenshot).
+    - Counts only image extensions: jpg/jpeg/png/heic/webp.
+    """
+    try:
+        ref_number = (request.args.get("ref_number") or "").strip()
+        date_in = (request.args.get("date") or "").strip()
+
+        if not ref_number:
+            return jsonify({"status": "error", "message": "ref_number missing"}), 400
+        if not date_in:
+            return jsonify({"status": "error", "message": "date missing"}), 400
+
+        # access control (same pattern you use)
+        allowed, inv_row, user = require_case_access_or_403(int(insured_id), ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        insured = GilInsured.query.get_or_404(insured_id)
+
+        # parse date (accept YYYY-MM-DD OR dd/mm/yyyy)
+        d = parse_date_flexible(date_in)
+        if not d:
+            return jsonify({"status": "error", "message": "Invalid date"}), 400
+
+        iso = d.strftime("%Y-%m-%d")
+        dmy = d.strftime("%d/%m/%Y")
+
+        base_path = build_dropbox_folder_path(
+            insured.insurance, insured.claim_type,
+            insured.last_name, insured.first_name,
+            insured.id_number, insured.claim_number
+        )
+        if not base_path:
+            return jsonify({"status": "ok", "count": 0, "date_iso": iso, "date_dmy": dmy, "folder": None})
+
+        photos_folder = f"{base_path}/תמונות"
+
+        exts = (".jpg", ".jpeg", ".png", ".heic", ".webp")
+        count = 0
+
+        try:
+            res = dbx.files_list_folder(photos_folder)
+            while True:
+                for entry in res.entries:
+                    # files only
+                    if not hasattr(entry, "name"):
+                        continue
+                    name = (entry.name or "").lower()
+                    if not name.endswith(exts):
+                        continue
+                    # match date in filename (your naming already includes YYYY-MM-DD)
+                    if iso in name:
+                        count += 1
+
+                if not res.has_more:
+                    break
+                res = dbx.files_list_folder_continue(res.cursor)
+
+        except ApiError as e:
+            # folder might not exist yet -> treat as 0 photos (not a hard error)
+            # (If you prefer strict behavior, return error instead)
+            return jsonify({
+                "status": "ok",
+                "count": 0,
+                "date_iso": iso,
+                "date_dmy": dmy,
+                "folder": photos_folder,
+                "note": "Folder not found or not accessible"
+            })
+
+        return jsonify({
+            "status": "ok",
+            "count": count,
+            "date_iso": iso,
+            "date_dmy": dmy,
+            "folder": photos_folder
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"api_dropbox_photos_count_for_date error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
+
+@main.route("/reports/api/tracking_reports/<int:report_id>/media/import-from-dropbox", methods=["POST"])
+def api_tracking_report_import_media_from_dropbox(report_id: int):
+    """
+    Baby step #2:
+    Import photos from insured Dropbox folder (/תמונות) for selected tracking date
+    into:
+      - gil_media (upsert by insured_id + dropbox_path)
+      - gil_tracking_report_media (link to report, unique prevents duplicates)
+
+    Request JSON:
+      {
+        "insured_id": 2581,
+        "ref_number": "67799",
+        "date": "29/09/2025"   # or "2025-09-29"
+      }
+
+    Response:
+      { imported_count, linked_count, already_linked_count, files_scanned, media: [...] }
+    """
+    try:
+        from datetime import datetime
+        from sqlalchemy import func
+        from dropbox.exceptions import ApiError
+
+        payload = request.get_json(silent=True) or {}
+
+        insured_id = payload.get("insured_id")
+        ref_number = (payload.get("ref_number") or "").strip()
+        date_in    = (payload.get("date") or "").strip()
+
+        if not insured_id or not ref_number or not date_in:
+            return jsonify({"status": "error", "message": "insured_id/ref_number/date missing"}), 400
+
+        # access control
+        allowed, inv_row, user = require_case_access_or_403(int(insured_id), ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        # parse date
+        d = parse_date_flexible(date_in)
+        if not d:
+            return jsonify({"status": "error", "message": "Invalid date"}), 400
+
+        date_iso = d.strftime("%Y-%m-%d")
+        date_dmy = d.strftime("%d/%m/%Y")
+
+        # load report
+        r = GilTrackingReport.query.get_or_404(report_id)
+        if int(r.insured_id) != int(insured_id):
+            return jsonify({"status": "error", "message": "Report/insured mismatch"}), 400
+
+        # derive dropbox photos folder
+        insured = GilInsured.query.get_or_404(int(insured_id))
+
+        base_path = build_dropbox_folder_path(
+            insured.insurance, insured.claim_type,
+            insured.last_name, insured.first_name,
+            insured.id_number, insured.claim_number
+        )
+        if not base_path:
+            return jsonify({"status": "error", "message": "Cannot build Dropbox path"}), 400
+
+        photos_folder = f"{base_path}/תמונות"
+
+        # file filter
+        allowed_exts = (".jpg", ".jpeg", ".png", ".heic", ".webp")
+
+        # For sort_order, append after current max
+        current_max_sort = db.session.query(func.max(GilTrackingReportMedia.sort_order)) \
+            .filter(GilTrackingReportMedia.tracking_report_id == r.report_id) \
+            .scalar()
+        next_sort = int(current_max_sort or 0) + 1
+
+        user_id = (user or {}).get("id") or None
+
+        # list dropbox folder (paged)
+        entries = []
+        try:
+            res = dbx.files_list_folder(photos_folder)
+            while True:
+                entries.extend(res.entries)
+                if not res.has_more:
+                    break
+                res = dbx.files_list_folder_continue(res.cursor)
+        except ApiError as e:
+            return jsonify({
+                "status": "error",
+                "message": "Dropbox folder not accessible",
+                "folder": photos_folder
+            }), 400
+
+        files_scanned = 0
+        matched_files = []
+
+        for entry in entries:
+            if not hasattr(entry, "name"):
+                continue
+
+            name = (entry.name or "")
+            low = name.lower()
+
+            if not low.endswith(allowed_exts):
+                continue
+
+            files_scanned += 1
+
+            # Match by date in filename (your naming includes YYYY-MM-DD)
+            if date_iso not in low:
+                continue
+
+            # Prefer path_display if present, else use path_lower
+            dropbox_path = getattr(entry, "path_display", None) or getattr(entry, "path_lower", None)
+            if not dropbox_path:
+                continue
+
+            matched_files.append({
+                "file_name": name,
+                "dropbox_path": dropbox_path
+            })
+
+        imported_count = 0        # new gil_media rows
+        linked_count = 0          # new links
+        already_linked_count = 0  # already linked to this report
+
+        media_out = []
+
+        # Upsert each matched file into gil_media and link to report
+        for f in matched_files:
+            file_name = f["file_name"]
+            dropbox_path = f["dropbox_path"]
+
+            # 1) Upsert/Find gil_media row
+            media_row = GilMedia.query.filter_by(
+                insured_id=int(insured_id),
+                dropbox_path=dropbox_path
+            ).first()
+
+            if not media_row:
+                media_row = GilMedia(
+                    insured_id=int(insured_id),
+                    media_type="photo",
+                    dropbox_path=dropbox_path,
+                    file_name=file_name,
+                    taken_date=d,
+                    uploaded_by_user_id=user_id,
+                    uploaded_at=datetime.utcnow(),
+                    created_at=datetime.utcnow(),
+                    updated_at=datetime.utcnow()
+                )
+                db.session.add(media_row)
+                db.session.flush()  # get media_id
+                imported_count += 1
+            else:
+                # keep metadata fresh (optional, safe)
+                media_row.file_name = media_row.file_name or file_name
+                media_row.taken_date = media_row.taken_date or d
+                media_row.updated_at = datetime.utcnow()
+
+            # 2) Link to tracking report (unique constraint prevents duplicates)
+            existing_link = GilTrackingReportMedia.query.filter_by(
+                tracking_report_id=r.report_id,
+                media_id=media_row.media_id
+            ).first()
+
+            if existing_link:
+                already_linked_count += 1
+            else:
+                link = GilTrackingReportMedia(
+                    tracking_report_id=r.report_id,
+                    media_id=media_row.media_id,
+                    tag=None,
+                    sort_order=next_sort,
+                    created_by_user_id=user_id,
+                    created_at=datetime.utcnow()
+                )
+                db.session.add(link)
+                linked_count += 1
+                next_sort += 1
+
+            media_out.append({
+                "media_id": media_row.media_id,
+                "file_name": media_row.file_name or file_name,
+                "dropbox_path": media_row.dropbox_path,
+                "taken_date": normalize_date(media_row.taken_date),
+            })
+
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "report_id": r.report_id,
+            "insured_id": int(insured_id),
+            "date_iso": date_iso,
+            "date_dmy": date_dmy,
+            "folder": photos_folder,
+            "files_scanned": files_scanned,
+            "matched_count": len(matched_files),
+            "imported_count": imported_count,
+            "linked_count": linked_count,
+            "already_linked_count": already_linked_count,
+            "media": media_out
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"api_tracking_report_import_media_from_dropbox error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
 
 
 

@@ -1538,7 +1538,7 @@ $(document).on('click', '.exp-view', async function () {
     if (!id) return;
 
     try {
-      const res = await $.getJSON(`/api/tracking_reports/${id}`);
+      const res = await $.getJSON(`/api/tracking_reports/${id}?source=investigator`);
       if (!res || res.status !== 'success') throw new Error(res?.message || 'שגיאה בטעינת הדוח');
 
       openTrackingModal('view', res.report);
@@ -1557,7 +1557,7 @@ $(document).on('click', '.exp-view', async function () {
     if (!id) return;
 
     try {
-      const res = await $.getJSON(`/api/tracking_reports/${id}`);
+      const res = await $.getJSON(`/api/tracking_reports/${id}?source=investigator`);
       if (!res || res.status !== 'success') throw new Error(res?.message || 'שגיאה בטעינת הדוח');
 
       openTrackingModal('edit', res.report);
