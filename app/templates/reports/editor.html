@@ -1559,6 +1559,8 @@ function applyTemplateSections() {
 
   applyTemplateSections();
   updateMetaBadges();
+  window.saveDraft = saveDraft;
+
 
   /* ============================== 4) PHOTOS: LOCAL DROPBOX IMPORT ============================== */
   (function(){
@@ -2932,47 +2934,15 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
 
 <script>
 /* ================================
-   Import photos from Tracking Date
-   (COUNT ONLY – uses the stable endpoint)
+   Import from Tracking Date (Cloud)
+   Flow: count -> confirm -> (ensure report_id) -> import -> reload
 ================================ */
 (function () {
+
   const btn = document.getElementById("btnImportTrackingDate");
   if (!btn) return;
 
-  // small bootstrap modal helper (self-contained)
-  const MODAL_ID = "trackingCountModal";
-  function showInfoModal(title, bodyText) {
-    try {
-      if (window.bootstrap && bootstrap.Modal) {
-        let el = document.getElementById(MODAL_ID);
-        if (!el) {
-          el = document.createElement("div");
-          el.id = MODAL_ID;
-          el.className = "modal fade";
-          el.tabIndex = -1;
-          el.innerHTML = `
-            <div class="modal-dialog modal-dialog-centered">
-              <div class="modal-content">
-                <div class="modal-header">
-                  <h5 class="modal-title"></h5>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body"></div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>
-                </div>
-              </div>
-            </div>`;
-          document.body.appendChild(el);
-        }
-        el.querySelector(".modal-title").textContent = title || "";
-        el.querySelector(".modal-body").textContent = bodyText || "";
-        new bootstrap.Modal(el).show();
-        return;
-      }
-    } catch (e) {}
-    alert((title ? title + "\n\n" : "") + (bodyText || ""));
-  }
+  const MODAL_ID = "trackingImportModal";
 
   function isoToDMY(iso) {
     const m = (iso || "").match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -2985,67 +2955,228 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
     return id > 0 ? id : 0;
   }
 
+  function getReportId() {
+    const id = Number(window.state?.report_id || 0);
+    return id > 0 ? id : 0;
+  }
+
+  function getRefNumber() {
+    return (window.state?.ref_number || "").toString().trim();
+  }
+
   function getTrackingIso() {
     return (document.getElementById("db_tracking_date")?.value || "").trim();
   }
 
-  // enable/disable button based on state
-  function refreshBtnEnabled() {
-    const insuredId = getInsuredId();
-    const iso = getTrackingIso();
-    btn.disabled = !(insuredId && iso);
+  function showModal(title, bodyHtml, footerHtml) {
+    let el = document.getElementById(MODAL_ID);
+    if (!el) {
+      el = document.createElement("div");
+      el.id = MODAL_ID;
+      el.className = "modal fade";
+      el.tabIndex = -1;
+      el.innerHTML = `
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title"></h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body"></div>
+            <div class="modal-footer"></div>
+          </div>
+        </div>`;
+      document.body.appendChild(el);
+    }
+
+    el.querySelector(".modal-title").textContent = title || "";
+    el.querySelector(".modal-body").innerHTML = bodyHtml || "";
+    el.querySelector(".modal-footer").innerHTML = footerHtml || "";
+
+    const m = new bootstrap.Modal(el);
+    m.show();
+    return { el, modal: m };
   }
 
-  // initial state
-  refreshBtnEnabled();
+  function showInfo(title, text) {
+    if (window.bootstrap && bootstrap.Modal) {
+      showModal(
+        title,
+        `<div style="white-space:pre-line">${(text || "").toString()}</div>`,
+        `<button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button>`
+      );
+    } else {
+      alert((title ? title + "\n\n" : "") + (text || ""));
+    }
+  }
 
-  // when tracking date changes → enable button
+  function showConfirm(title, text, onConfirm) {
+    const { el, modal } = showModal(
+      title,
+      `<div style="white-space:pre-line">${(text || "").toString()}</div>`,
+      `
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+        <button type="button" class="btn btn-success" id="btnTrackingConfirmImport">ייבא</button>
+      `
+    );
+
+    const confirmBtn = el.querySelector("#btnTrackingConfirmImport");
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", function () {
+        modal.hide();
+        if (typeof onConfirm === "function") onConfirm();
+      }, { once: true });
+    }
+  }
+
+  // ✅ Enable button when we have insured+ref+tracking date (report_id can be created on demand)
+  function refreshBtnEnabled() {
+    const ok = !!getInsuredId() && !!getRefNumber() && !!getTrackingIso();
+    btn.disabled = !ok;
+  }
+
+  refreshBtnEnabled();
   const dd = document.getElementById("db_tracking_date");
   if (dd) dd.addEventListener("change", refreshBtnEnabled);
 
-  // also try to enable after the page finishes loading state
-  document.addEventListener("DOMContentLoaded", refreshBtnEnabled);
+  async function fetchCount(insuredId, refNumber, iso) {
+    const url =
+      `/reports/api/insured/${insuredId}/dropbox/photos-count` +
+      `?ref_number=${encodeURIComponent(refNumber)}` +
+      `&date=${encodeURIComponent(iso)}`;
+
+    const res = await fetch(url, { method: "GET" });
+    const j = await res.json().catch(() => ({}));
+    return { res, j };
+  }
+
+  async function doImport(reportId, insuredId, refNumber, iso) {
+    const url = `/reports/api/tracking_reports/${reportId}/media/import-from-dropbox`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        insured_id: insuredId,
+        ref_number: refNumber,
+        date: iso
+      })
+    });
+
+    const j = await res.json().catch(() => ({}));
+    return { res, j };
+  }
+
+  // ✅ Ensure we have a report_id by saving draft if needed
+  async function ensureReportId() {
+    let rid = getReportId();
+    if (rid) return rid;
+
+    if (typeof window.saveDraft === "function") {
+      const ok = await window.saveDraft();
+      if (!ok) return 0;
+      rid = getReportId();
+      return rid || 0;
+    }
+
+    // fallback: call internal saveDraft if not exposed
+    if (typeof saveDraft === "function") {
+      const ok = await saveDraft();
+      if (!ok) return 0;
+      rid = getReportId();
+      return rid || 0;
+    }
+
+    return 0;
+  }
 
   btn.addEventListener("click", async function () {
     const insuredId = getInsuredId();
-    const iso = getTrackingIso();
+    const refNumber = getRefNumber();
+    const iso       = getTrackingIso();
 
-    if (!insuredId) {
-      showInfoModal("שגיאה", "insured_id חסר (בחר מבוטח / רענן עמוד)");
-      return;
-    }
-    if (!iso) {
-      showInfoModal("שגיאה", "נא לבחור תאריך מעקב לפני ייבוא תמונות");
+    if (!insuredId || !refNumber || !iso) {
+      showInfo("שגיאה", "חסר insured_id / ref_number / תאריך מעקב");
       return;
     }
 
-    const ref = (window.state?.ref_number || "").toString();
-    const url =
-      `/reports/api/insured/${insuredId}/dropbox/photos-count` +
-      `?date=${encodeURIComponent(iso)}` +
-      `&ref_number=${encodeURIComponent(ref)}`;
+    btn.disabled = true;
+    btn.classList.add("disabled");
 
     try {
-      const res = await fetch(url, { method: "GET" });
-      const j = await res.json();
+      // 1) COUNT
+      const { res: resCount, j: countJ } = await fetchCount(insuredId, refNumber, iso);
 
-      if (!res.ok || !j || j.status !== "ok") {
-        const msg = (j && (j.message || j.error)) ? (j.message || j.error) : `HTTP ${res.status}`;
-        showInfoModal("שגיאה", msg);
+      if (!resCount.ok || !countJ || countJ.status !== "ok") {
+        const msg = countJ?.message || countJ?.error || `HTTP ${resCount.status}`;
+        showInfo("שגיאה", msg);
         return;
       }
 
-      const n = Number(j.count || 0);
-      const dmy = j.date_dmy || isoToDMY(iso);
-      showInfoModal("תמונות נמצאו", `${n} תמונות נמצאו מתאריך ${dmy}`);
+      const n = Number(countJ.count || 0);
+      const dmy = countJ.date_dmy || isoToDMY(iso);
 
-    } catch (err) {
-      console.error("Tracking date photo count error:", err);
-      showInfoModal("שגיאה", "אירעה שגיאה בעת בדיקת תמונות מדרופבוקס");
+      showInfo("תמונות נמצאו", `${n} תמונות נמצאו מתאריך ${dmy}`);
+
+      if (n <= 0) return;
+
+      // 2) CONFIRM
+      showConfirm(
+        "אישור ייבוא תמונות",
+        `לייבא ${n} תמונות מתאריך ${dmy} אל "תמונות לדוח"?`,
+        async function () {
+
+          // 2.5) Ensure report_id exists (auto save draft)
+          const reportId = await ensureReportId();
+          if (!reportId) {
+            showInfo("שגיאה", "לא ניתן ליצור report_id (נסה לשמור טיוטה ידנית ואז נסה שוב).");
+            refreshBtnEnabled();
+            btn.classList.remove("disabled");
+            return;
+          }
+
+          // 3) IMPORT
+          btn.disabled = true;
+
+          const { res: resImp, j: impJ } = await doImport(reportId, insuredId, refNumber, iso);
+
+          if (!resImp.ok || !impJ || impJ.status !== "success") {
+            const msg = impJ?.message || impJ?.error || `HTTP ${resImp.status}`;
+            showInfo("שגיאה", msg);
+            refreshBtnEnabled();
+            btn.classList.remove("disabled");
+            return;
+          }
+
+          const linked  = Number(impJ.linked_count || 0);
+          const already = Number(impJ.already_linked_count || 0);
+          const matched = Number(impJ.matched_count || 0);
+
+          showInfo(
+            "ייבוא הושלם",
+            `נוספו לדוח: ${linked}\nכבר היו משויכות: ${already}\nסה"כ נמצאו: ${matched}`
+          );
+
+          setTimeout(() => location.reload(), 400);
+        }
+      );
+
+    } catch (e) {
+      console.error("Tracking import error:", e);
+      showInfo("שגיאה", "אירעה שגיאה בעת ייבוא תמונות מדרופבוקס");
+    } finally {
+      // Re-enable if we didn't proceed into import flow
+      setTimeout(() => {
+        refreshBtnEnabled();
+        btn.classList.remove("disabled");
+      }, 200);
     }
   });
+
 })();
+
 </script>
+
 
 
 

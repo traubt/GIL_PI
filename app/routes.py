@@ -3518,20 +3518,15 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
       - gil_media (upsert by insured_id + dropbox_path)
       - gil_tracking_report_media (link to report, unique prevents duplicates)
 
-    Request JSON:
-      {
-        "insured_id": 2581,
-        "ref_number": "67799",
-        "date": "29/09/2025"   # or "2025-09-29"
-      }
-
-    Response:
-      { imported_count, linked_count, already_linked_count, files_scanned, media: [...] }
+    IMPORTANT:
+    The <report_id> in the URL might NOT be a GilTrackingReport id (editor save_draft id, etc.).
+    So we fallback to locate/create the tracking report by (insured_id, ref_number, report_date).
     """
     try:
         from datetime import datetime
         from sqlalchemy import func
         from dropbox.exceptions import ApiError
+        from werkzeug.exceptions import NotFound
 
         payload = request.get_json(silent=True) or {}
 
@@ -3555,14 +3550,65 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
         date_iso = d.strftime("%Y-%m-%d")
         date_dmy = d.strftime("%d/%m/%Y")
 
-        # load report
-        r = GilTrackingReport.query.get_or_404(report_id)
+        # --- load insured (must exist) ---
+        insured = GilInsured.query.get_or_404(int(insured_id))
+
+        # --- Resolve tracking report safely ---
+        r = GilTrackingReport.query.get(report_id)
+
+        if not r:
+            r = GilTrackingReport.query.filter_by(
+                insured_id=int(insured_id),
+                ref_number=ref_number,
+                report_date=d
+            ).first()
+
+        # If still missing -> create tracking report draft now
+        if not r:
+            # Determine investigator_id
+            investigator_id = None
+
+            # If user is investigator, inv_row exists
+            if inv_row:
+                investigator_id = inv_row.id
+            else:
+                # admin flow: allow passing investigator_id (optional)
+                investigator_id = payload.get("investigator_id")
+
+                if not investigator_id:
+                    # fallback to your existing helper if available
+                    try:
+                        inv2 = get_current_investigator_row()
+                        if inv2:
+                            investigator_id = inv2.id
+                    except Exception:
+                        investigator_id = None
+
+            if not investigator_id:
+                return jsonify({
+                    "status": "error",
+                    "message": "Cannot determine investigator_id for new tracking report (pass investigator_id or open as investigator)"
+                }), 400
+
+            r = GilTrackingReport(
+                insured_id=int(insured_id),
+                ref_number=ref_number,
+                investigator_id=int(investigator_id),
+                report_date=d,
+                status="Draft",
+                note="",
+                mileage_km=None,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            db.session.add(r)
+            db.session.flush()  # gets r.report_id
+
+        # If report exists but belongs to different insured -> block
         if int(r.insured_id) != int(insured_id):
             return jsonify({"status": "error", "message": "Report/insured mismatch"}), 400
 
-        # derive dropbox photos folder
-        insured = GilInsured.query.get_or_404(int(insured_id))
-
+        # --- derive dropbox photos folder ---
         base_path = build_dropbox_folder_path(
             insured.insurance, insured.claim_type,
             insured.last_name, insured.first_name,
@@ -3573,7 +3619,6 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
 
         photos_folder = f"{base_path}/תמונות"
 
-        # file filter
         allowed_exts = (".jpg", ".jpeg", ".png", ".heic", ".webp")
 
         # For sort_order, append after current max
@@ -3593,7 +3638,7 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
                 if not res.has_more:
                     break
                 res = dbx.files_list_folder_continue(res.cursor)
-        except ApiError as e:
+        except ApiError:
             return jsonify({
                 "status": "error",
                 "message": "Dropbox folder not accessible",
@@ -3619,7 +3664,6 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
             if date_iso not in low:
                 continue
 
-            # Prefer path_display if present, else use path_lower
             dropbox_path = getattr(entry, "path_display", None) or getattr(entry, "path_lower", None)
             if not dropbox_path:
                 continue
@@ -3629,18 +3673,15 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
                 "dropbox_path": dropbox_path
             })
 
-        imported_count = 0        # new gil_media rows
-        linked_count = 0          # new links
-        already_linked_count = 0  # already linked to this report
-
+        imported_count = 0
+        linked_count = 0
+        already_linked_count = 0
         media_out = []
 
-        # Upsert each matched file into gil_media and link to report
         for f in matched_files:
             file_name = f["file_name"]
             dropbox_path = f["dropbox_path"]
 
-            # 1) Upsert/Find gil_media row
             media_row = GilMedia.query.filter_by(
                 insured_id=int(insured_id),
                 dropbox_path=dropbox_path
@@ -3659,15 +3700,13 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
                     updated_at=datetime.utcnow()
                 )
                 db.session.add(media_row)
-                db.session.flush()  # get media_id
+                db.session.flush()
                 imported_count += 1
             else:
-                # keep metadata fresh (optional, safe)
                 media_row.file_name = media_row.file_name or file_name
                 media_row.taken_date = media_row.taken_date or d
                 media_row.updated_at = datetime.utcnow()
 
-            # 2) Link to tracking report (unique constraint prevents duplicates)
             existing_link = GilTrackingReportMedia.query.filter_by(
                 tracking_report_id=r.report_id,
                 media_id=media_row.media_id
@@ -3699,7 +3738,7 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
 
         return jsonify({
             "status": "success",
-            "report_id": r.report_id,
+            "tracking_report_id": r.report_id,
             "insured_id": int(insured_id),
             "date_iso": date_iso,
             "date_dmy": date_dmy,
@@ -3716,6 +3755,7 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
         db.session.rollback()
         current_app.logger.error(f"api_tracking_report_import_media_from_dropbox error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
 
 
 
