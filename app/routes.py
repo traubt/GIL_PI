@@ -3757,6 +3757,112 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
         return jsonify({"status": "error", "message": "Server error"}), 500
 
 
+@main.route("/reports/api/insured/<int:insured_id>/dropbox/list-photos", methods=["GET"])
+def api_list_dropbox_photos(insured_id: int):
+    """
+    Returns Dropbox photo files for insured + selected date (YYYY-MM-DD).
+    Used by editor Auto Load Photos.
+    Response:
+      { status: "ok", files: [{name,url,mime_type}] }
+    """
+    try:
+        iso_date = (request.args.get("date") or "").strip()
+        if not iso_date:
+            return jsonify({"status": "error", "message": "Missing date"}), 400
+
+        # Parse date (accept YYYY-MM-DD)
+        d = parse_date_flexible(iso_date)
+        if not d:
+            return jsonify({"status": "error", "message": "Invalid date format"}), 400
+
+        date_iso = d.strftime("%Y-%m-%d")
+        date_dmy = d.strftime("%d/%m/%Y")
+
+        insured = GilInsured.query.get_or_404(insured_id)
+        ref_number = (insured.ref_number or "").strip()
+        if not ref_number:
+            return jsonify({"status": "error", "message": "Missing ref_number for insured"}), 400
+
+        # ✅ Access control (same pattern as your other /reports/api routes)
+        allowed, inv_row, user = require_case_access_or_403(int(insured_id), ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        # ✅ Build the SAME Dropbox base path convention you already use
+        base_path = build_dropbox_folder_path(
+            insured.insurance, insured.claim_type,
+            insured.last_name, insured.first_name,
+            insured.id_number, insured.claim_number
+        )
+        if not base_path:
+            return jsonify({"status": "ok", "files": [], "folder": None, "date_iso": date_iso, "date_dmy": date_dmy})
+
+        photos_folder = f"{base_path}/תמונות"
+
+        # List folder (paged)
+        entries = []
+        try:
+            res = dbx.files_list_folder(photos_folder)
+            entries.extend(res.entries)
+            while res.has_more:
+                res = dbx.files_list_folder_continue(res.cursor)
+                entries.extend(res.entries)
+        except ApiError:
+            # folder may not exist yet -> return empty (no hard error)
+            return jsonify({"status": "ok", "files": [], "folder": photos_folder, "date_iso": date_iso, "date_dmy": date_dmy})
+
+        def guess_mime(name: str) -> str:
+            n = (name or "").lower()
+            if n.endswith((".jpg", ".jpeg")): return "image/jpeg"
+            if n.endswith(".png"): return "image/png"
+            if n.endswith(".webp"): return "image/webp"
+            if n.endswith(".heic"): return "image/heic"
+            return "application/octet-stream"
+
+        allowed_exts = (".jpg", ".jpeg", ".png", ".heic", ".webp")
+
+        files = []
+        for e in entries:
+            # file entries only
+            if not hasattr(e, "name") or not hasattr(e, "path_lower"):
+                continue
+
+            name = (e.name or "")
+            low = name.lower()
+
+            if not low.endswith(allowed_exts):
+                continue
+
+            # ✅ Match date in filename (same rule as photos-count)
+            if date_iso not in low:
+                continue
+
+            try:
+                tmp = dbx.files_get_temporary_link(e.path_lower)
+                url = tmp.link
+            except ApiError:
+                continue
+
+            files.append({
+                "name": name,
+                "url": url,
+                "mime_type": guess_mime(name),
+                "width": 0,
+                "height": 0
+            })
+
+        return jsonify({
+            "status": "ok",
+            "files": files,
+            "folder": photos_folder,
+            "date_iso": date_iso,
+            "date_dmy": date_dmy
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"api_list_dropbox_photos error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
 
 
 if __name__ == '__main__':

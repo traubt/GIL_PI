@@ -1712,6 +1712,62 @@ function applyTemplateSections() {
         e.target.value = '';
       }
     });
+
+    // ================= TRACKING DATE IMPORT (CLIENT ONLY) =================
+    async function importTrackingPhotosToEditor(insuredId, isoDate) {
+
+      if (!insuredId || !isoDate) return;
+
+      setStatus('טוען תמונות מדרופבוקס בענן…');
+      clearGrids();
+      picked.splice(0, picked.length);
+
+      try {
+        const res = await fetch(
+          `/reports/api/insured/${insuredId}/dropbox/list-photos?date=${encodeURIComponent(isoDate)}`
+        );
+        const j = await res.json();
+
+        if (!j || j.status !== 'ok' || !Array.isArray(j.files)) {
+          setStatus('שגיאה בטעינת תמונות');
+          return;
+        }
+
+        for (const f of j.files) {
+
+          const orientation =
+            (f.height && f.width && f.height > f.width)
+              ? 'portrait'
+              : 'landscape';
+
+          const item = {
+            id: (window.safeUUID ? window.safeUUID() : Date.now() + Math.random()),
+            name: f.name,
+            type: 'image/jpeg',
+            url: f.url,
+            serverUrl: f.url,
+            serverName: f.name,
+            width: f.width || 0,
+            height: f.height || 0,
+            orientation: orientation,
+            selected: true
+          };
+
+          picked.push(item);
+          addItemToGrid(item);
+        }
+
+        setStatus(`יובאו ${picked.length} תמונות לתצוגה`);
+
+      } catch (e) {
+        console.error(e);
+        setStatus('שגיאה בטעינת תמונות מהענן');
+      }
+    }
+
+    window.importTrackingPhotosToEditor = importTrackingPhotosToEditor;
+
+
   })();
 
   /* ============================== 5) BUILD QUERY FOR PREVIEW ============================== */
@@ -3091,94 +3147,18 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
   }
 
   btn.addEventListener("click", async function () {
-    const insuredId = getInsuredId();
-    const refNumber = getRefNumber();
-    const iso       = getTrackingIso();
 
-    if (!insuredId || !refNumber || !iso) {
-      showInfo("שגיאה", "חסר insured_id / ref_number / תאריך מעקב");
-      return;
-    }
+      const insuredId = getInsuredId();
+      const iso = getTrackingIso();
 
-    btn.disabled = true;
-    btn.classList.add("disabled");
+      if (!insuredId || !iso) return;
 
-    try {
-      // 1) COUNT
-      const { res: resCount, j: countJ } = await fetchCount(insuredId, refNumber, iso);
-
-      if (!resCount.ok || !countJ || countJ.status !== "ok") {
-        const msg = countJ?.message || countJ?.error || `HTTP ${resCount.status}`;
-        showInfo("שגיאה", msg);
-        return;
-      }
-
-      const n = Number(countJ.count || 0);
-      const dmy = countJ.date_dmy || isoToDMY(iso);
-
-      showInfo("תמונות נמצאו", `${n} תמונות נמצאו מתאריך ${dmy}`);
-
-      if (n <= 0) return;
-
-      // 2) CONFIRM
-      showConfirm(
-        "אישור ייבוא תמונות",
-        `לייבא ${n} תמונות מתאריך ${dmy} אל "תמונות לדוח"?`,
-        async function () {
-
-          // 2.5) Ensure report_id exists (auto save draft)
-          const reportId = await ensureReportId();
-          if (!reportId) {
-            showInfo("שגיאה", "לא ניתן ליצור report_id (נסה לשמור טיוטה ידנית ואז נסה שוב).");
-            refreshBtnEnabled();
-            btn.classList.remove("disabled");
-            return;
-          }
-
-          // 3) IMPORT
-          btn.disabled = true;
-
-          const { res: resImp, j: impJ } = await doImport(reportId, insuredId, refNumber, iso);
-
-          if (!resImp.ok || !impJ || impJ.status !== "success") {
-            const msg = impJ?.message || impJ?.error || `HTTP ${resImp.status}`;
-            showInfo("שגיאה", msg);
-            refreshBtnEnabled();
-            btn.classList.remove("disabled");
-            return;
-          }
-
-          const linked  = Number(impJ.linked_count || 0);
-          const already = Number(impJ.already_linked_count || 0);
-          const matched = Number(impJ.matched_count || 0);
-
-          showInfo(
-            "ייבוא הושלם",
-            `נוספו לדוח: ${linked}\nכבר היו משויכות: ${already}\nסה"כ נמצאו: ${matched}`
-          );
-
-          setTimeout(() => location.reload(), 400);
-        }
-      );
-
-    } catch (e) {
-      console.error("Tracking import error:", e);
-      showInfo("שגיאה", "אירעה שגיאה בעת ייבוא תמונות מדרופבוקס");
-    } finally {
-      // Re-enable if we didn't proceed into import flow
-      setTimeout(() => {
-        refreshBtnEnabled();
-        btn.classList.remove("disabled");
-      }, 200);
-    }
+      await importTrackingPhotosToEditor(insuredId, iso);
   });
 
 })();
 
 </script>
-
-
-
 
 
 {% endblock %}
