@@ -1192,31 +1192,115 @@ def preview_docx_as_pdf(report_id: int):
     # ------------------------------------------------------------
     #              RESOLVE PHOTO FILENAMES
     # ------------------------------------------------------------
-    case_id = (request.args.get("insured_id") or request.args.get("case_id") or "").strip()
-    rep_id = str(report_id)
+    # --- common media root + resolver (photos + 'טבלת רשויות') ---
+
+    case_id = str(insured_id or "").strip()
+    rep_id  = str(report_id)
+
     media_root = current_app.config.get(
         "REPORT_MEDIA_DIR",
         os.path.join(current_app.instance_path, "report_media"),
     )
 
+    # The “normal” place where local-dropbox photos are stored
+    base_dir = os.path.join(media_root, case_id, rep_id)
+
+    # Where to search first (local storage)
+    candidate_dirs = [
+        base_dir,                       # <media_root>/<insured>/<report>
+        os.path.join(media_root, case_id)  # <media_root>/<insured> (legacy / safety)
+    ]
+
     def resolve_one(name: str) -> str | None:
+        """
+        Resolve a selected image name to a local filesystem path.
+
+        Supports:
+          1) already-local files under REPORT_MEDIA_DIR/<insured>/<report>
+          2) Dropbox-backed GilMedia rows (downloads to a local cache on-demand)
+        """
         if not name:
             return None
+
         base = os.path.basename(name)
 
-        # try exact under report folder
-        exact = os.path.join(media_root, case_id, rep_id, base)
-        if os.path.isfile(exact):
-            return exact
+        # 1) Already stored locally (old/local-dropbox flow)
+        for d in candidate_dirs:
+            p = os.path.join(d, base)
+            if os.path.exists(p):
+                return p
 
-        # walk entire case folder
-        case_root = os.path.join(media_root, case_id)
-        if os.path.isdir(case_root):
-            for root, dirs, files in os.walk(case_root):
-                if base in files:
-                    return os.path.join(root, base)
+        # 2) Dropbox-backed media: download to a cache folder and return that path
+        try:
+            insured_int = int(case_id)
+        except Exception:
+            insured_int = None
 
-        return None
+        if not insured_int:
+            return None
+
+        # ✅ IMPORTANT: db is not guaranteed to exist in this module unless imported
+        try:
+            from . import db  # <-- your Flask SQLAlchemy instance
+        except Exception as ex:
+            current_app.logger.warning("[PHOTOS] cannot import db in reports_docx.py: %s", ex)
+            return None
+
+        # Fetch GilMedia row by insured_id + file_name
+        media_row = None
+        try:
+            from .models import GilMedia
+            media_row = (
+                db.session.query(GilMedia)
+                .filter(
+                    GilMedia.insured_id == insured_int,
+                    GilMedia.file_name == base
+                )
+                .order_by(GilMedia.media_id.desc())
+                .first()
+            )
+        except Exception as ex:
+            current_app.logger.warning("[PHOTOS] GilMedia query failed for %s: %s", base, ex)
+            media_row = None
+
+        if not media_row:
+            current_app.logger.info("[PHOTOS] no GilMedia row for file_name=%s insured_id=%s", base, insured_int)
+            return None
+
+        dropbox_path = getattr(media_row, "dropbox_path", None)
+        if not dropbox_path:
+            current_app.logger.info("[PHOTOS] GilMedia row found but missing dropbox_path for %s", base)
+            return None
+
+        # Local cache path
+        cache_dir = os.path.join(base_dir, "_dropbox_cache")
+        os.makedirs(cache_dir, exist_ok=True)
+        cache_path = os.path.join(cache_dir, base)
+
+        if os.path.exists(cache_path):
+            return cache_path
+
+        # Download from Dropbox using the same client as routes.py
+        try:
+            try:
+                from .routes import dbx  # lazy import
+            except Exception as ex:
+                current_app.logger.warning("[PHOTOS] cannot import dbx from routes.py: %s", ex)
+                return None
+
+            current_app.logger.info("[PHOTOS] downloading from Dropbox: %s -> %s", dropbox_path, cache_path)
+            dbx.files_download_to_file(cache_path, dropbox_path)
+
+            if os.path.exists(cache_path):
+                return cache_path
+
+            current_app.logger.warning("[PHOTOS] download finished but file missing: %s", cache_path)
+            return None
+
+        except Exception as ex:
+            current_app.logger.warning("[PHOTOS] Dropbox download failed for %s: %s", base, ex)
+            return None
+
 
     # ------------------------------------------------------------
     #            DEBUG: which photo sets received?
@@ -1452,28 +1536,85 @@ def render_docx_download(report_id: int):
     # --- common media root + resolver (photos + 'טבלת רשויות') ---
     case_id = str(insured_id or payload.get("case_id", "")).strip()
     rep_id = str(report_id)
+
     media_root = current_app.config.get(
         "REPORT_MEDIA_DIR",
         os.path.join(current_app.instance_path, "report_media"),
     )
 
+    # The “normal” place where local-dropbox photos are stored
+    base_dir = os.path.join(media_root, case_id, rep_id)
+
+    # Where to search first (local storage)
+    candidate_dirs = [
+        base_dir,  # <media_root>/<insured>/<report>
+        os.path.join(media_root, case_id)  # <media_root>/<insured>  (legacy / safety)
+    ]
+
     def resolve_one(name: str) -> str | None:
-        """Resolve a basename to a real file under REPORT_MEDIA_DIR."""
+        """Resolve a selected image name to a local filesystem path.
+
+        Supports:
+          1) already-local files under REPORT_MEDIA_ROOT/<insured>/<report>
+          2) Dropbox-backed GilMedia rows (downloads to a local cache on-demand)
+        """
         if not name:
             return None
-        name = os.path.basename(name)
 
-        exact = os.path.join(media_root, case_id, rep_id, name)
-        if os.path.isfile(exact):
-            return exact
+        # Normalize (UI sometimes sends full paths)
+        base = os.path.basename(name)
 
-        case_root = os.path.join(media_root, case_id)
-        if os.path.isdir(case_root):
-            for root, _dirs, files in os.walk(case_root):
-                if name in files:
-                    return os.path.join(root, name)
+        # 1) Already stored locally (old/local-dropbox flow)
+        for d in candidate_dirs:
+            p = os.path.join(d, base)
+            if os.path.exists(p):
+                return p
 
-        current_app.logger.warning("[PHOTOS] not found: %s", name)
+        # 2) Dropbox-backed media: download to a cache folder and return that path
+        try:
+            insured_int = int(case_id)
+        except Exception:
+            insured_int = None
+
+        if insured_int:
+            media_row = None
+            try:
+                from .models import GilMedia
+                media_row = (
+                    db.session.query(GilMedia)
+                    .filter(
+                        GilMedia.insured_id == insured_int,
+                        GilMedia.file_name == base
+                    )
+                    .order_by(GilMedia.media_id.desc())
+                    .first()
+                )
+            except Exception:
+                media_row = None
+
+            if media_row and getattr(media_row, "dropbox_path", None):
+                cache_dir = os.path.join(base_dir, "_dropbox_cache")
+                os.makedirs(cache_dir, exist_ok=True)
+                cache_path = os.path.join(cache_dir, base)
+
+                # already downloaded
+                if os.path.exists(cache_path):
+                    return cache_path
+
+                # Download from Dropbox
+                try:
+                    try:
+                        from .routes import dbx  # lazy import
+                    except Exception:
+                        dbx = None
+
+                    if dbx:
+                        dbx.files_download_to_file(cache_path, media_row.dropbox_path)
+                        if os.path.exists(cache_path):
+                            return cache_path
+                except Exception:
+                    return None
+
         return None
 
     # --- Menora Life: two authorities-table images ---

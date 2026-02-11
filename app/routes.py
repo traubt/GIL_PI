@@ -3757,111 +3757,204 @@ def api_tracking_report_import_media_from_dropbox(report_id: int):
         return jsonify({"status": "error", "message": "Server error"}), 500
 
 
+
+def build_dropbox_folder_for_insured(insured_id: int) -> str:
+    """
+    Builds the insured Dropbox base folder path (WITHOUT /תמונות).
+    """
+    insured = GilInsured.query.get_or_404(insured_id)
+
+    insurance_company = (
+        getattr(insured, "insurance_company", None)
+        or getattr(insured, "insurance", None)
+        or getattr(insured, "insurance_name", None)
+        or ""
+    )
+
+    claim_type = (
+        getattr(insured, "claim_type", None)
+        or getattr(insured, "injury_type", None)
+        or getattr(insured, "case_type", None)
+        or ""
+    )
+
+    first_name = getattr(insured, "first_name", None) or ""
+    last_name  = getattr(insured, "last_name", None) or ""
+
+    if not (first_name or last_name):
+        full_name = (
+            getattr(insured, "full_name", None)
+            or getattr(insured, "name", None)
+            or ""
+        ).strip()
+        parts = full_name.split()
+        if len(parts) >= 2:
+            first_name = parts[0]
+            last_name = " ".join(parts[1:])
+        else:
+            last_name = full_name
+
+    id_number = (
+        str(getattr(insured, "id_number", None) or "")
+        or str(getattr(insured, "tz", None) or "")
+        or ""
+    ).strip()
+
+    claim_number = (
+        str(getattr(insured, "claim_number", None) or "")
+        or str(getattr(insured, "claim_no", None) or "")
+        or ""
+    ).strip()
+
+    return build_dropbox_folder_path(
+        insurance_company,
+        claim_type,
+        last_name,
+        first_name,
+        id_number,
+        claim_number
+    )
+
+
 @main.route("/reports/api/insured/<int:insured_id>/dropbox/list-photos", methods=["GET"])
 def api_list_dropbox_photos(insured_id: int):
     """
-    Returns Dropbox photo files for insured + selected date (YYYY-MM-DD).
-    Used by editor Auto Load Photos.
-    Response:
-      { status: "ok", files: [{name,url,mime_type}] }
+    List photo files from the insured Dropbox folder (/תמונות) for a given YYYY-MM-DD date.
+    Returns temporary links for client preview,
+    AND upserts each file into GilMedia so reports_docx.resolve_one() can download on-demand.
     """
     try:
-        iso_date = (request.args.get("date") or "").strip()
-        if not iso_date:
+        # (optional) ref_number used for access check if provided
+        ref_number = (request.args.get("ref_number") or "").strip()
+        user = require_case_access_or_403(ref_number, session) if ref_number else None
+        user_id = (user or {}).get("id") or 0
+
+        date_iso = (request.args.get("date") or "").strip()  # YYYY-MM-DD
+        if not date_iso:
             return jsonify({"status": "error", "message": "Missing date"}), 400
 
-        # Parse date (accept YYYY-MM-DD)
-        d = parse_date_flexible(iso_date)
-        if not d:
-            return jsonify({"status": "error", "message": "Invalid date format"}), 400
+        # ✅ Build insured base folder, then go into /תמונות
+        base_folder = build_dropbox_folder_for_insured(insured_id)
+        photos_folder = f"{base_folder}/תמונות"
 
-        date_iso = d.strftime("%Y-%m-%d")
-        date_dmy = d.strftime("%d/%m/%Y")
-
-        insured = GilInsured.query.get_or_404(insured_id)
-        ref_number = (insured.ref_number or "").strip()
-        if not ref_number:
-            return jsonify({"status": "error", "message": "Missing ref_number for insured"}), 400
-
-        # ✅ Access control (same pattern as your other /reports/api routes)
-        allowed, inv_row, user = require_case_access_or_403(int(insured_id), ref_number)
-        if not allowed:
-            return jsonify({"status": "error", "message": "Access denied"}), 403
-
-        # ✅ Build the SAME Dropbox base path convention you already use
-        base_path = build_dropbox_folder_path(
-            insured.insurance, insured.claim_type,
-            insured.last_name, insured.first_name,
-            insured.id_number, insured.claim_number
-        )
-        if not base_path:
-            return jsonify({"status": "ok", "files": [], "folder": None, "date_iso": date_iso, "date_dmy": date_dmy})
-
-        photos_folder = f"{base_path}/תמונות"
-
-        # List folder (paged)
-        entries = []
+        # list folder (paged)
         try:
             res = dbx.files_list_folder(photos_folder)
+        except Exception:
+            # folder may not exist yet
+            return jsonify({"status": "ok", "count": 0, "files": [], "folder": photos_folder})
+
+        entries = list(res.entries)
+        while res.has_more:
+            res = dbx.files_list_folder_continue(res.cursor)
             entries.extend(res.entries)
-            while res.has_more:
-                res = dbx.files_list_folder_continue(res.cursor)
-                entries.extend(res.entries)
-        except ApiError:
-            # folder may not exist yet -> return empty (no hard error)
-            return jsonify({"status": "ok", "files": [], "folder": photos_folder, "date_iso": date_iso, "date_dmy": date_dmy})
+
+        # keep only image files that contain the requested date in the filename
+        exts = (".jpg", ".jpeg", ".png", ".webp", ".heic")
+        matched = []
+        for e in entries:
+            name = getattr(e, "name", "") or ""
+            if not name:
+                continue
+            low = name.lower()
+            if low.endswith(exts) and (date_iso in low):
+                matched.append(e)
 
         def guess_mime(name: str) -> str:
             n = (name or "").lower()
-            if n.endswith((".jpg", ".jpeg")): return "image/jpeg"
-            if n.endswith(".png"): return "image/png"
-            if n.endswith(".webp"): return "image/webp"
-            if n.endswith(".heic"): return "image/heic"
-            return "application/octet-stream"
+            if n.endswith(".png"):
+                return "image/png"
+            if n.endswith(".webp"):
+                return "image/webp"
+            if n.endswith(".heic"):
+                return "image/heic"
+            return "image/jpeg"
 
-        allowed_exts = (".jpg", ".jpeg", ".png", ".heic", ".webp")
+        files_out = []
 
-        files = []
-        for e in entries:
-            # file entries only
-            if not hasattr(e, "name") or not hasattr(e, "path_lower"):
+        # ✅ Upsert into GilMedia so resolve_one(base_name) works later
+        for e in matched:
+            dropbox_path = getattr(e, "path_lower", None)
+            if not dropbox_path:
                 continue
 
-            name = (e.name or "")
-            low = name.lower()
-
-            if not low.endswith(allowed_exts):
-                continue
-
-            # ✅ Match date in filename (same rule as photos-count)
-            if date_iso not in low:
-                continue
+            # temp link for UI preview
+            try:
+                tmp = dbx.files_get_temporary_link(dropbox_path)
+                url = tmp.link
+            except Exception:
+                url = None
 
             try:
-                tmp = dbx.files_get_temporary_link(e.path_lower)
-                url = tmp.link
-            except ApiError:
-                continue
+                # Prefer your helper if it exists
+                if "upsert_gil_media" in globals() and callable(globals()["upsert_gil_media"]):
+                    upsert_gil_media(
+                        insured_id=insured_id,
+                        media_type="photo",
+                        file_name=e.name,
+                        dropbox_path=dropbox_path,
+                        uploaded_by_user_id=user_id,
+                        taken_at=None,
+                        note="dropbox-cloud",
+                    )
+                else:
+                    # fallback: upsert by (insured_id, file_name)
+                    row = (
+                        GilMedia.query
+                        .filter_by(insured_id=insured_id, file_name=e.name)
+                        .order_by(GilMedia.media_id.desc())
+                        .first()
+                    )
+                    if row:
+                        if hasattr(row, "dropbox_path"):
+                            row.dropbox_path = dropbox_path
+                        if hasattr(row, "media_type"):
+                            row.media_type = "photo"
+                        if hasattr(row, "note") and not row.note:
+                            row.note = "dropbox-cloud"
+                    else:
+                        kwargs = {}
+                        if hasattr(GilMedia, "insured_id"): kwargs["insured_id"] = insured_id
+                        if hasattr(GilMedia, "media_type"): kwargs["media_type"] = "photo"
+                        if hasattr(GilMedia, "file_name"):  kwargs["file_name"] = e.name
+                        if hasattr(GilMedia, "dropbox_path"): kwargs["dropbox_path"] = dropbox_path
+                        if hasattr(GilMedia, "uploaded_by_user_id"): kwargs["uploaded_by_user_id"] = user_id
+                        if hasattr(GilMedia, "note"): kwargs["note"] = "dropbox-cloud"
+                        db.session.add(GilMedia(**kwargs))
 
-            files.append({
-                "name": name,
+                    db.session.commit()
+
+            except Exception as ex:
+                db.session.rollback()
+                current_app.logger.warning(
+                    "[DROPBOX][list-photos] GilMedia upsert failed for %s: %s",
+                    e.name, ex
+                )
+
+            files_out.append({
+                "name": e.name,
+                "mime": guess_mime(e.name),
                 "url": url,
-                "mime_type": guess_mime(name),
-                "width": 0,
-                "height": 0
+                "dropbox_path": dropbox_path,
             })
+
+        files_out.sort(key=lambda x: x.get("name") or "")
 
         return jsonify({
             "status": "ok",
-            "files": files,
-            "folder": photos_folder,
-            "date_iso": date_iso,
-            "date_dmy": date_dmy
+            "count": len(files_out),
+            "files": files_out,
+            "folder": photos_folder
         })
 
     except Exception as e:
-        current_app.logger.error(f"api_list_dropbox_photos error: {e}")
+        current_app.logger.exception("[DROPBOX][list-photos] failed: %s", e)
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+
+
 
 
 
