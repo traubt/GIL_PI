@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>GIL PI - Investigator</title>
+
+  <!-- Favicons (reuse what you have) -->
+  <link href="static/assets/img/toc_logo.png" rel="icon">
+
+  <!-- Google Fonts (same as TOC) -->
+  <link href="https://fonts.gstatic.com" rel="preconnect">
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700|Nunito:300,400,600,700|Poppins:300,400,500,600,700" rel="stylesheet">
+
+  <!-- Vendor CSS Files -->
+  <link href="static/assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="static/assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+
+  <!-- NiceAdmin base (optional but keeps consistency) -->
+  <link href="static/assets/css/style.css" rel="stylesheet">
+
+  <style>
+    /* ===== Mobile-first “app-like” dashboard ===== */
+
+    :root{
+      --card-radius: 16px;
+      --soft-shadow: 0 10px 24px rgba(0,0,0,.06);
+      --muted: #6c757d;
+      --bg: #f6f9ff;
+      --brand: #0d6efd;
+    }
+
+    body{
+      background: var(--bg);
+      font-family: "Open Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+
+    .inv-shell{
+      max-width: 980px;
+      margin: 0 auto;
+      padding-bottom: 92px; /* space for bottom nav */
+    }
+
+    /* Top app bar */
+    .inv-topbar{
+      position: sticky;
+      top: 0;
+      z-index: 1020;
+      backdrop-filter: blur(8px);
+      background: rgba(246, 249, 255, .92);
+      border-bottom: 1px solid rgba(13,110,253,.08);
+    }
+
+    .inv-topbar-inner{
+      padding: 12px 12px 10px 12px;
+    }
+
+    .inv-title{
+      font-size: 18px;
+      font-weight: 800;
+      margin: 0;
+      line-height: 1.1;
+    }
+    .inv-subtitle{
+      margin: 2px 0 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Date controls */
+    .date-strip{
+      margin-top: 10px;
+      border-radius: var(--card-radius);
+      background: #fff;
+      box-shadow: var(--soft-shadow);
+      padding: 10px;
+    }
+    .date-strip label{
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .date-strip .form-control,
+    .date-strip .form-select{
+      height: 38px;
+      font-size: 13px;
+      border-radius: 12px;
+    }
+
+    /* KPI cards */
+    .kpi-grid{
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 768px){
+      .kpi-grid{ grid-template-columns: repeat(4, 1fr); }
+    }
+
+    .kpi{
+      background: #fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--soft-shadow);
+      padding: 12px;
+      min-height: 92px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      border: 1px solid rgba(13,110,253,.06);
+    }
+    .kpi:hover{ transform: translateY(-1px); transition: .12s ease; }
+
+    .kpi .label{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .kpi .value{
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: .2px;
+    }
+    .kpi .hint{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .kpi .icon{
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(13,110,253,.10);
+      color: var(--brand);
+    }
+
+    /* Action tiles */
+    .action-grid{
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 768px){
+      .action-grid{ grid-template-columns: repeat(4, 1fr); }
+    }
+
+    .action-tile{
+      background: #fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--soft-shadow);
+      padding: 12px;
+      border: 1px solid rgba(13,110,253,.06);
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .action-tile .tile-icon{
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(25,135,84,.10);
+      color: #198754;
+      flex: 0 0 auto;
+      font-size: 18px;
+    }
+    .action-tile.secondary .tile-icon{
+      background: rgba(13,110,253,.10);
+      color: var(--brand);
+    }
+    .action-tile.warn .tile-icon{
+      background: rgba(255,193,7,.16);
+      color: #b8860b;
+    }
+    .action-tile.danger .tile-icon{
+      background: rgba(220,53,69,.12);
+      color: #dc3545;
+    }
+    .action-tile .tile-title{
+      font-weight: 900;
+      font-size: 13px;
+      margin: 0;
+      line-height: 1.15;
+    }
+    .action-tile .tile-sub{
+      font-size: 12px;
+      margin: 2px 0 0 0;
+      color: var(--muted);
+    }
+
+    /* Sections */
+    .section-card{
+      margin-top: 14px;
+      background: #fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--soft-shadow);
+      border: 1px solid rgba(13,110,253,.06);
+    }
+    .section-card .section-head{
+      padding: 12px 12px 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .section-title{
+      margin: 0;
+      font-weight: 900;
+      font-size: 14px;
+    }
+    .section-link{
+      font-size: 12px;
+      text-decoration: none;
+      font-weight: 800;
+    }
+    .section-body{ padding: 0 12px 12px 12px; }
+
+    .list-item{
+      padding: 10px 0;
+      border-bottom: 1px dashed rgba(0,0,0,.08);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .list-item:last-child{ border-bottom: none; }
+    .li-title{
+      font-weight: 800;
+      margin: 0;
+      font-size: 13px;
+    }
+    .li-sub{
+      margin: 2px 0 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .badge-soft{
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 800;
+      font-size: 11px;
+      white-space: nowrap;
+      align-self: center;
+    }
+    .badge-soft.blue{ background: rgba(13,110,253,.10); color: #0d6efd; }
+    .badge-soft.green{ background: rgba(25,135,84,.12); color: #198754; }
+    .badge-soft.yellow{ background: rgba(255,193,7,.18); color: #b8860b; }
+    .badge-soft.red{ background: rgba(220,53,69,.12); color: #dc3545; }
+
+    /* Bottom nav */
+    .bottom-nav{
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border-top: 1px solid rgba(0,0,0,.08);
+      box-shadow: 0 -10px 24px rgba(0,0,0,.06);
+      z-index: 1030;
+    }
+    .bottom-nav .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 2px;
+      padding: 8px 8px 10px 8px;
+    }
+    .bottom-nav a{
+      text-decoration: none;
+      color: #111;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 6px 0;
+      border-radius: 12px;
+    }
+    .bottom-nav a .bi{ display: block; font-size: 18px; margin-bottom: 2px; color: #0d6efd; }
+    .bottom-nav a.active{ background: rgba(13,110,253,.08); }
+  </style>
+</head>
+
+<body>
+
+  <!-- Top Bar -->
+  <div class="inv-topbar">
+    <div class="inv-topbar-inner inv-shell">
+      <div class="d-flex align-items-start justify-content-between gap-2">
+        <div>
+          <h1 class="inv-title">דשבורד חוקר</h1>
+          <p class="inv-subtitle">שלום, <strong>דוגמה: יעקב כהן</strong> · עדכון אחרון: <span id="lastUpdate">08:20</span></p>
+        </div>
+
+        <!-- Small profile button (demo) -->
+        <button class="btn btn-sm btn-outline-primary rounded-pill px-3" type="button" onclick="alert('UI Demo: Profile / Settings')">
+          <i class="bi bi-person-circle me-1"></i>פרופיל
+        </button>
+      </div>
+
+      <!-- Date Range Strip (TOC-like but mobile compact) -->
+      <div class="date-strip">
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-4">
+            <label class="form-label mb-1">טווח תאריכים</label>
+            <select id="datePreset" class="form-select">
+              <option value="today">היום</option>
+              <option value="wtd">מתחילת שבוע</option>
+              <option value="mtd" selected>מתחילת חודש</option>
+              <option value="custom">מותאם</option>
+            </select>
+          </div>
+
+          <div class="col-6 col-md-4">
+            <label class="form-label mb-1">מ־</label>
+            <input type="date" id="fromDate" class="form-control">
+          </div>
+
+          <div class="col-6 col-md-4">
+            <label class="form-label mb-1">עד</label>
+            <input type="date" id="toDate" class="form-control">
+          </div>
+
+          <div class="col-12 d-flex justify-content-between align-items-center mt-1">
+            <small class="text-muted">
+              <i class="bi bi-info-circle"></i>
+              נתונים בדוגמה בלבד (UI)
+            </small>
+            <button class="btn btn-primary btn-sm rounded-pill px-3" type="button" id="btnRefresh">
+              <i class="bi bi-arrow-repeat me-1"></i>רענן
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Page Body -->
+  <div class="inv-shell px-2 px-sm-3">
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+      <div class="kpi" onclick="alert('UI Demo: Open Cases list (filtered)')">
+        <div class="label">
+          <span>תיקים פעילים</span>
+          <span class="icon"><i class="bi bi-folder2-open"></i></span>
+        </div>
+        <div class="value" id="kpiCases">12</div>
+        <div class="hint">3 דחופים</div>
+      </div>
+
+      <div class="kpi" onclick="alert('UI Demo: Open Tasks list')">
+        <div class="label">
+          <span>משימות פתוחות</span>
+          <span class="icon"><i class="bi bi-check2-square"></i></span>
+        </div>
+        <div class="value" id="kpiTasks">18</div>
+        <div class="hint">4 באיחור</div>
+      </div>
+
+      <div class="kpi" onclick="alert('UI Demo: Time reports / work hours')">
+        <div class="label">
+          <span>שעות עבודה</span>
+          <span class="icon"><i class="bi bi-clock-history"></i></span>
+        </div>
+        <div class="value" id="kpiHours">34.5</div>
+        <div class="hint">בשבוע הנוכחי</div>
+      </div>
+
+      <div class="kpi" onclick="alert('UI Demo: Distance / mileage')">
+        <div class="label">
+          <span>ק״מ</span>
+          <span class="icon"><i class="bi bi-geo-alt"></i></span>
+        </div>
+        <div class="value" id="kpiKm">216</div>
+        <div class="hint">במסלולים</div>
+      </div>
+    </div>
+
+    <!-- Actions (big, thumb-friendly) -->
+    <div class="action-grid">
+      <a class="action-tile secondary" href="javascript:void(0)" onclick="alert('UI Demo: Go to My Cases')">
+        <div class="tile-icon"><i class="bi bi-briefcase"></i></div>
+        <div>
+          <p class="tile-title">התיקים שלי</p>
+          <p class="tile-sub">רשימת תיקים מוקצים</p>
+        </div>
+      </a>
+
+      <a class="action-tile warn" href="javascript:void(0)" onclick="alert('UI Demo: Open Calendar')">
+        <div class="tile-icon"><i class="bi bi-calendar3"></i></div>
+        <div>
+          <p class="tile-title">יומן</p>
+          <p class="tile-sub">אירועים ותזכורות</p>
+        </div>
+      </a>
+
+      <a class="action-tile danger" href="javascript:void(0)" onclick="alert('UI Demo: Open Tasks')">
+        <div class="tile-icon"><i class="bi bi-list-task"></i></div>
+        <div>
+          <p class="tile-title">משימות</p>
+          <p class="tile-sub">פתוחות / בוצעו / איחורים</p>
+        </div>
+      </a>
+
+      <a class="action-tile secondary" href="javascript:void(0)" onclick="alert('UI Demo: Search Insured / Open insured page')">
+        <div class="tile-icon"><i class="bi bi-person-vcard"></i></div>
+        <div>
+          <p class="tile-title">מבוטחים</p>
+          <p class="tile-sub">חיפוש + צפייה בלבד</p>
+        </div>
+      </a>
+    </div>
+
+    <!-- Tasks List -->
+    <div class="section-card">
+      <div class="section-head">
+        <h3 class="section-title"><i class="bi bi-check2-circle text-primary"></i> המשימות שלי</h3>
+        <a class="section-link" href="javascript:void(0)" onclick="alert('UI Demo: View all tasks')">הצג הכל</a>
+      </div>
+      <div class="section-body">
+        <div class="list-item">
+          <div>
+            <p class="li-title">אימות כתובת + צילום חזית בניין</p>
+            <p class="li-sub">תיק 67590 · יעד: היום 16:00</p>
+          </div>
+          <span class="badge-soft red">איחור</span>
+        </div>
+
+        <div class="list-item">
+          <div>
+            <p class="li-title">העלאת קבלות חניה + כביש אגרה</p>
+            <p class="li-sub">טווח נוכחי · 3 קבלות חסרות</p>
+          </div>
+          <span class="badge-soft yellow">ממתין</span>
+        </div>
+
+        <div class="list-item">
+          <div>
+            <p class="li-title">סיכום יומי בדשבורד</p>
+            <p class="li-sub">דוח · היום 20:00</p>
+          </div>
+          <span class="badge-soft blue">חדש</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upcoming Events -->
+    <div class="section-card">
+      <div class="section-head">
+        <h3 class="section-title"><i class="bi bi-calendar-event text-primary"></i> אירועים קרובים</h3>
+        <a class="section-link" href="javascript:void(0)" onclick="alert('UI Demo: View calendar')">יומן</a>
+      </div>
+      <div class="section-body">
+        <div class="list-item">
+          <div>
+            <p class="li-title">ביקור שטח · תל אביב</p>
+            <p class="li-sub">היום · 11:30–12:30 · תיק 67799</p>
+          </div>
+          <span class="badge-soft green">מתוזמן</span>
+        </div>
+
+        <div class="list-item">
+          <div>
+            <p class="li-title">שיחת תיאום עם מנהל תביעה</p>
+            <p class="li-sub">מחר · 09:00 · טלפון</p>
+          </div>
+          <span class="badge-soft blue">תזכורת</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Active Cases Snapshot -->
+    <div class="section-card">
+      <div class="section-head">
+        <h3 class="section-title"><i class="bi bi-folder2 text-primary"></i> תיקים פעילים (תצוגה מהירה)</h3>
+        <a class="section-link" href="javascript:void(0)" onclick="alert('UI Demo: View cases list')">כל התיקים</a>
+      </div>
+      <div class="section-body">
+        <div class="list-item">
+          <div>
+            <p class="li-title">67590 · יעקב שמואל שי</p>
+            <p class="li-sub">סטטוס: בעבודה · עדכון אחרון: אתמול</p>
+          </div>
+          <span class="badge-soft yellow">פתוח</span>
+        </div>
+
+        <div class="list-item">
+          <div>
+            <p class="li-title">67799 · חואגה סעד</p>
+            <p class="li-sub">סטטוס: בעבודה · משימה: ביקור שטח</p>
+          </div>
+          <span class="badge-soft green">בתהליך</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="bottom-nav">
+    <div class="wrap">
+      <a class="active" href="javascript:void(0)" onclick="alert('UI Demo: Dashboard')">
+        <i class="bi bi-grid-1x2"></i>
+        דשבורד
+      </a>
+      <a href="javascript:void(0)" onclick="alert('UI Demo: Cases')">
+        <i class="bi bi-briefcase"></i>
+        תיקים
+      </a>
+      <a href="javascript:void(0)" onclick="alert('UI Demo: Tasks')">
+        <i class="bi bi-list-task"></i>
+        משימות
+      </a>
+      <a href="javascript:void(0)" onclick="alert('UI Demo: Calendar')">
+        <i class="bi bi-calendar3"></i>
+        יומן
+      </a>
+      <a href="javascript:void(0)" onclick="alert('UI Demo: Insured search')">
+        <i class="bi bi-person-vcard"></i>
+        מבוטחים
+      </a>
+    </div>
+  </div>
+
+  <script src="static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // UI-only demo logic (no endpoints)
+
+    function isoDate(d){
+      const tz = new Date(d.getTime() - d.getTimezoneOffset()*60000);
+      return tz.toISOString().slice(0,10);
+    }
+
+    function setPreset(preset){
+      const today = new Date();
+      let from = new Date(today);
+
+      if(preset === 'today'){
+        from = new Date(today);
+      } else if(preset === 'wtd'){
+        // Sunday start (can adjust to Monday if you prefer)
+        const day = today.getDay();
+        from.setDate(today.getDate() - day);
+      } else if(preset === 'mtd'){
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+      } else {
+        // custom: do nothing
+        return;
+      }
+
+      document.getElementById('fromDate').value = isoDate(from);
+      document.getElementById('toDate').value   = isoDate(today);
+    }
+
+    function refreshDemo(){
+      // Fake “last update”
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,'0');
+      const mm = String(now.getMinutes()).padStart(2,'0');
+      document.getElementById('lastUpdate').innerText = `${hh}:${mm}`;
+
+      // Slightly change numbers to feel alive (demo)
+      const bump = () => Math.floor(Math.random() * 3) - 1;
+      const bumpFloat = () => (Math.random() * 1.2 - 0.4);
+
+      const cases = Math.max(0, parseInt(document.getElementById('kpiCases').innerText,10) + bump());
+      const tasks = Math.max(0, parseInt(document.getElementById('kpiTasks').innerText,10) + bump());
+      const hours = Math.max(0, (parseFloat(document.getElementById('kpiHours').innerText) + bumpFloat()).toFixed(1));
+      const km    = Math.max(0, parseInt(document.getElementById('kpiKm').innerText,10) + (Math.floor(Math.random()*11)-5));
+
+      document.getElementById('kpiCases').innerText = cases;
+      document.getElementById('kpiTasks').innerText = tasks;
+      document.getElementById('kpiHours').innerText = hours;
+      document.getElementById('kpiKm').innerText    = km;
+    }
+
+    // Init defaults
+    (function init(){
+      setPreset('mtd');
+      document.getElementById('datePreset').addEventListener('change', (e) => {
+        if(e.target.value !== 'custom') setPreset(e.target.value);
+      });
+      document.getElementById('btnRefresh').addEventListener('click', refreshDemo);
+    })();
+  </script>
+
+</body>
+</html>

@@ -425,7 +425,7 @@ def login_post():
 
     # Redirect based on role
     if user.role == "Investigator":
-        return redirect(url_for('main.investigators'))
+        return redirect(url_for("main.investigator_dashboard"))
     else:
         return redirect(url_for('main.admin_insured'))
 
@@ -854,15 +854,25 @@ def get_user_activity():
 
 @main.route("/update_user_login", methods=["POST"])
 def update_user_login():
-    user_data = session.get('user')
-    user = json.loads(user_data)
-    user_id = user["id"]
-    user = User.query.get(user_id)
+    user_data = session.get("user")
+    if not user_data:
+        # Not logged in (or session not set yet) -> don't crash
+        return jsonify({"success": False, "error": "Not logged in"}), 401
 
+    try:
+        user_session = json.loads(user_data)
+    except Exception:
+        return jsonify({"success": False, "error": "Invalid session user"}), 400
+
+    user_id = user_session.get("id")
+    if not user_id:
+        return jsonify({"success": False, "error": "Missing user id in session"}), 400
+
+    user = User.query.get(user_id)
     if not user:
         return jsonify({"success": False, "error": "User not found"}), 404
 
-    data = request.get_json()
+    data = request.get_json(silent=True) or {}
 
     try:
         user.last_login_date = datetime.now(timezone.utc)
@@ -878,9 +888,12 @@ def update_user_login():
 
         db.session.commit()
         return jsonify({"success": True}), 200
+
     except Exception as e:
         db.session.rollback()
-        return jsonify({"success": False, "error": str(e)}), 500
+        print(f"update_user_login failed: {e}")
+        return jsonify({"success": False, "error": "Failed to update login"}), 500
+
 
 #########################  OPENAI section  #####################
 @main.route('/api/ask_business', methods=['POST'])
@@ -3953,6 +3966,29 @@ def api_list_dropbox_photos(insured_id: int):
 
 
 
+@main.route("/investigator_dashboard", methods=["GET"])
+def investigator_dashboard():
+    # Must be logged in
+    user_data = session.get("user")
+    if not user_data:
+        return redirect(url_for("main.login"))
+
+    user = json.loads(user_data)
+
+    # Investigators only
+    if user.get("role") != "Investigator":
+        return redirect(url_for("main.login"))
+
+    # Keep same roles pattern used everywhere
+    roles = TocRole.query.all()
+    roles_list = [{"role": r.role, "exclusions": r.exclusions} for r in roles]
+
+    # UI-only page (hard-coded metrics in the template for now)
+    return render_template(
+        "investigator_dashboard.html",
+        user=user,
+        roles=roles_list
+    )
 
 
 
