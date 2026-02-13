@@ -3990,8 +3990,38 @@ def investigator_dashboard():
         roles=roles_list
     )
 
+@main.route("/investigator_cases", methods=["GET"])
+def investigator_cases():
+    return render_template("investigator_cases.html")
 
 
+@main.route("/investigator/insured/<int:id>")
+def investigator_insured(id):
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+
+    if not user or user.get("role") != "Investigator":
+        return redirect(url_for("main.login"))
+
+    # Real data
+    insured = GilInsured.query.get_or_404(id)
+
+    # Lists used in insured.html (even if we render read-only)
+    clinics = GilClinics.query.all()
+    koopa = GilKoopa.query.all()
+
+    # roles (keeps your base pattern consistent)
+    roles = db.session.query(TocRole).all()
+    roles_list = [{"role": r.role, "exclusions": r.exclusions} for r in roles]
+
+    return render_template(
+        "investigator_insured.html",
+        user=user,
+        roles=roles_list,
+        insured=insured,
+        clinics=clinics,
+        koopa=koopa,
+    )
 
 
 if __name__ == '__main__':

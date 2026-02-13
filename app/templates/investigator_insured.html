@@ -1,0 +1,448 @@
+{% extends "base.html" %}
+{% block content %}
+
+<style>
+  :root{
+    --inv-bg: #f6f9ff;
+    --inv-card: #ffffff;
+    --inv-border: #e9eefc;
+    --inv-text: #0f172a;
+    --inv-muted:#64748b;
+    --inv-primary:#2563eb;
+    --inv-shadow: 0 10px 28px rgba(15, 23, 42, .06);
+    --inv-radius: 16px;
+  }
+
+  body { background: var(--inv-bg) !important; }
+
+  .inv-wrap{
+    max-width: 980px;
+    margin: 0 auto;
+    padding: 14px 14px 96px; /* bottom space for nav */
+    direction: rtl;
+  }
+
+  .inv-topbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding: 6px 2px 10px;
+  }
+
+  .inv-title{
+    font-size: 18px;
+    font-weight: 800;
+    color: var(--inv-text);
+    margin:0;
+    line-height:1.15;
+  }
+
+  .inv-subtitle{
+    font-size: 12px;
+    color: var(--inv-muted);
+    margin-top: 3px;
+  }
+
+  .inv-pill-btn{
+    border:1px solid var(--inv-border);
+    background: #fff;
+    padding: 8px 12px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--inv-primary);
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    text-decoration:none;
+    box-shadow: 0 6px 18px rgba(37, 99, 235, .06);
+    white-space:nowrap;
+  }
+  .inv-pill-btn:hover{ text-decoration:none; opacity:.95; }
+
+  .inv-card{
+    background: var(--inv-card);
+    border:1px solid var(--inv-border);
+    border-radius: var(--inv-radius);
+    box-shadow: var(--inv-shadow);
+  }
+
+  .inv-card-header{
+    padding: 12px 14px;
+    border-bottom:1px solid var(--inv-border);
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+  }
+
+  .inv-card-header h6{
+    margin:0;
+    font-weight: 800;
+    color: var(--inv-text);
+    font-size: 14px;
+  }
+
+  .inv-badge{
+    font-size:12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #3730a3;
+    font-weight: 800;
+    border: 1px solid #e0e7ff;
+    white-space:nowrap;
+  }
+
+  .inv-card-body{
+    padding: 14px;
+  }
+
+  .inv-grid{
+    display:grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  @media (min-width: 860px){
+    .inv-grid.two{ grid-template-columns: 1fr 1fr; }
+    .inv-grid.three{ grid-template-columns: 1fr 1fr 1fr; }
+  }
+
+  .inv-field label{
+    font-size: 12px;
+    color: var(--inv-muted);
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .inv-field .form-control,
+  .inv-field .form-select{
+    border-radius: 12px;
+    border-color: var(--inv-border);
+  }
+
+  .inv-readonly-hint{
+    font-size: 12px;
+    color: var(--inv-muted);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+
+  .inv-photo{
+    width: 92px;
+    height: 92px;
+    border-radius: 18px;
+    object-fit: cover;
+    border: 1px solid var(--inv-border);
+    background: #fff;
+  }
+
+  .inv-quick-actions{
+    display:grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  @media (min-width: 560px){
+    .inv-quick-actions{ grid-template-columns: 1fr 1fr 1fr 1fr; }
+  }
+
+  .inv-action{
+    border:1px solid var(--inv-border);
+    background:#fff;
+    border-radius: 14px;
+    padding: 12px 10px;
+    text-align:center;
+    font-weight: 800;
+    font-size: 13px;
+    color: var(--inv-text);
+    box-shadow: 0 8px 18px rgba(2,6,23,.04);
+    text-decoration:none;
+  }
+  .inv-action small{
+    display:block;
+    font-weight:700;
+    color: var(--inv-muted);
+    margin-top: 4px;
+  }
+
+  .inv-bottom-nav{
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background: rgba(255,255,255,.92);
+    border-top: 1px solid var(--inv-border);
+    backdrop-filter: blur(10px);
+    padding: 10px 14px;
+    z-index: 999;
+  }
+  .inv-bottom-nav .inner{
+    max-width: 980px;
+    margin: 0 auto;
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    direction: rtl;
+  }
+  .inv-nav-item{
+    flex:1;
+    text-align:center;
+    text-decoration:none;
+    padding: 10px 8px;
+    border-radius: 14px;
+    color: var(--inv-muted);
+    font-weight: 800;
+    font-size: 12px;
+  }
+  .inv-nav-item.active{
+    background: #eef2ff;
+    color: var(--inv-primary);
+    border: 1px solid #e0e7ff;
+  }
+
+  .inv-note{
+    font-size: 12px;
+    color: var(--inv-muted);
+    line-height: 1.4;
+  }
+</style>
+
+<div class="inv-wrap">
+
+  <!-- Topbar -->
+  <div class="inv-topbar">
+    <a class="inv-pill-btn" href="{{ url_for('main.investigators') }}">
+      <span>חזרה</span>
+    </a>
+
+    <div style="text-align:right; flex:1;">
+      <h1 class="inv-title">כרטיס מבוטח</h1>
+      <div class="inv-subtitle">
+        תיק {{ insured.ref_number or insured.id }} · {{ insured.first_name }} {{ insured.last_name }}
+      </div>
+    </div>
+
+    <span class="inv-badge">קריאה בלבד</span>
+  </div>
+
+  <!-- Header card (photo + key status) -->
+  <div class="inv-card mb-3">
+    <div class="inv-card-body" style="display:flex; align-items:center; gap:12px; justify-content:space-between;">
+      <div style="display:flex; align-items:center; gap:12px;">
+        {% if insured.photo %}
+          <img class="inv-photo" src="/static/uploads/insured_photos/{{ insured.photo }}" alt="תמונה">
+        {% else %}
+          <img class="inv-photo" src="/static/img/default_avatar.png" alt="תמונה">
+        {% endif %}
+
+        <div>
+          <div style="font-weight:900; font-size:16px; color:var(--inv-text);">
+            {{ insured.first_name }} {{ insured.last_name }}
+          </div>
+          <div class="inv-note">
+            סטטוס: <b>{{ insured.status or 'פתוחה' }}</b>
+            {% if insured.received_date %}
+              · התקבל: <b>{{ insured.received_date.strftime('%d/%m/%Y') }}</b>
+            {% endif %}
+          </div>
+          <div class="inv-readonly-hint mt-2">
+            <span>🔒</span>
+            <span>למבצעים/מנהלים יש הרשאת עדכון פרטים. לחוקר זה תצוגה בלבד.</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="min-width: 140px; text-align:left;">
+        <div class="inv-badge" style="background:#ecfeff; border-color:#cffafe; color:#0e7490;">
+          {{ insured.insurance or '—' }}
+        </div>
+        <div class="inv-note mt-2" style="text-align:left;">
+          סוג: <b>{{ insured.claim_type or '—' }}</b><br>
+          מס' תביעה: <b>{{ insured.claim_number or '—' }}</b>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Quick actions (UI only) -->
+  <div class="inv-card mb-3">
+    <div class="inv-card-header">
+      <h6>פעולות מהירות</h6>
+      <div class="inv-note">דמו UI — נחבר נתונים/מסכים בהמשך</div>
+    </div>
+    <div class="inv-card-body">
+      <div class="inv-quick-actions">
+        <a href="javascript:void(0)" class="inv-action">דוח חוקר <small>יצירה / עדכון</small></a>
+        <a href="javascript:void(0)" class="inv-action">פעילות <small>מעקב / תיעוד</small></a>
+        <a href="javascript:void(0)" class="inv-action">מסמכים <small>צפייה / העלאה</small></a>
+        <a href="javascript:void(0)" class="inv-action">פגישות <small>יומן / אירועים</small></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Read-only details (we keep “form-like” look for familiarity) -->
+  <form id="investigatorInsuredReadonlyForm" onsubmit="return false;">
+    <!-- Case details -->
+    <div class="inv-card mb-3">
+      <div class="inv-card-header">
+        <h6>פרטי תיק</h6>
+        <span class="inv-badge">תצוגה</span>
+      </div>
+      <div class="inv-card-body">
+        <div class="inv-grid three">
+          <div class="inv-field">
+            <label>מספר תיק</label>
+            <input class="form-control" value="{{ insured.ref_number or '' }}" readonly>
+          </div>
+          <div class="inv-field">
+            <label>סטטוס</label>
+            <input class="form-control" value="{{ insured.status or 'פתוחה' }}" readonly>
+          </div>
+          <div class="inv-field">
+            <label>תאריך קבלה</label>
+            <input class="form-control" value="{% if insured.received_date %}{{ insured.received_date.strftime('%d/%m/%Y') }}{% endif %}" readonly>
+          </div>
+        </div>
+
+        <div class="inv-grid two mt-2">
+          <div class="inv-field">
+            <label>חברת ביטוח</label>
+            <input class="form-control" value="{{ insured.insurance or '' }}" readonly>
+          </div>
+          <div class="inv-field">
+            <label>סוג תביעה</label>
+            <input class="form-control" value="{{ insured.claim_type or '' }}" readonly>
+          </div>
+        </div>
+
+        <div class="inv-grid two mt-2">
+          <div class="inv-field">
+            <label>מספר תביעה</label>
+            <input class="form-control" value="{{ insured.claim_number or '' }}" readonly>
+          </div>
+          <div class="inv-field">
+            <label>הערות</label>
+            <input class="form-control" value="{{ insured.notes or '' }}" readonly>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Personal details (disabled) -->
+    <div class="inv-card mb-3">
+      <div class="inv-card-header">
+        <h6>פרטים אישיים</h6>
+        <span class="inv-badge">נעול לחוקר</span>
+      </div>
+      <div class="inv-card-body">
+        <div class="inv-grid two">
+          <div class="inv-field">
+            <label>שם פרטי</label>
+            <input class="form-control" value="{{ insured.first_name or '' }}" readonly>
+          </div>
+          <div class="inv-field">
+            <label>שם משפחה</label>
+            <input class="form-control" value="{{ insured.last_name or '' }}" readonly>
+          </div>
+        </div>
+
+        <div class="inv-grid three mt-2">
+          <div class="inv-field">
+            <label>ת"ז</label>
+            <input class="form-control" value="{{ insured.id_number or '' }}" readonly>
+          </div>
+          <div class="inv-field">
+            <label>תאריך לידה</label>
+            <input class="form-control" value="{% if insured.birth_date %}{{ insured.birth_date.strftime('%d/%m/%Y') }}{% endif %}" readonly>
+          </div>
+          <div class="inv-field">
+            <label>מין</label>
+            <input class="form-control" value="{{ insured.gender or '' }}" readonly>
+          </div>
+        </div>
+
+        <div class="inv-grid two mt-2">
+          <div class="inv-field">
+            <label>טלפון</label>
+            <input class="form-control" value="{{ insured.phone or '' }}" readonly>
+          </div>
+          <div class="inv-field">
+            <label>עיר</label>
+            <input class="form-control" value="{{ insured.city or '' }}" readonly>
+          </div>
+        </div>
+
+        <div class="inv-grid mt-2">
+          <div class="inv-field">
+            <label>כתובת</label>
+            <input class="form-control" value="{{ insured.address or '' }}" readonly>
+          </div>
+        </div>
+
+        <div class="inv-grid two mt-2">
+          <div class="inv-field">
+            <label>קופה</label>
+            <input class="form-control" value="{{ insured.koopa or '' }}" readonly>
+          </div>
+          <div class="inv-field">
+            <label>מרפאה</label>
+            <input class="form-control" value="{{ insured.clinic or '' }}" readonly>
+          </div>
+        </div>
+
+        <div class="inv-readonly-hint mt-3">
+          <span>ℹ️</span>
+          <span>במידה ויש צורך בתיקון פרטים אישיים — נא לפנות למנהל המשרד.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Placeholder sections to keep the structure familiar -->
+    <div class="inv-card mb-3">
+      <div class="inv-card-header">
+        <h6>מסמכים / מדיה</h6>
+        <span class="inv-badge">דמו</span>
+      </div>
+      <div class="inv-card-body">
+        <div class="inv-note">
+          כאן יופיעו מסמכים/תמונות של התיק + אפשרות העלאה (לחוקר) בשלב הבא.
+        </div>
+        <div class="mt-3 d-flex gap-2" style="flex-wrap:wrap;">
+          <button type="button" class="btn btn-primary" style="border-radius:12px;">העלה תמונה</button>
+          <button type="button" class="btn btn-outline-primary" style="border-radius:12px;">צפה בגלריה</button>
+          <button type="button" class="btn btn-outline-secondary" style="border-radius:12px;">קבצים</button>
+        </div>
+      </div>
+    </div>
+
+  </form>
+
+</div>
+
+<!-- Bottom nav (for consistency; you said not to hook insured from nav yet) -->
+<div class="inv-bottom-nav">
+  <div class="inner">
+    <a class="inv-nav-item" href="javascript:void(0)">מבוטחים</a>
+    <a class="inv-nav-item" href="javascript:void(0)">יומן</a>
+    <a class="inv-nav-item" href="javascript:void(0)">משימות</a>
+    <a class="inv-nav-item" href="{{ url_for('main.investigators') }}">תיקים</a>
+    <a class="inv-nav-item active" href="javascript:void(0)">דשבורד</a>
+  </div>
+</div>
+
+<script>
+  // Safety: ensure this page never submits anything even if someone adds inputs later.
+  document.addEventListener("DOMContentLoaded", function(){
+    const form = document.getElementById("investigatorInsuredReadonlyForm");
+    if (form) {
+      form.addEventListener("submit", function(e){
+        e.preventDefault();
+        return false;
+      });
+    }
+  });
+</script>
+
+{% endblock %}

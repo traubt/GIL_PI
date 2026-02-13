@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>GIL PI - תיקים</title>
+
+  <link href="static/assets/img/toc_logo.png" rel="icon">
+
+  <link href="https://fonts.gstatic.com" rel="preconnect">
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700|Nunito:300,400,600,700|Poppins:300,400,500,600,700" rel="stylesheet">
+
+  <link href="static/assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="static/assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+  <link href="static/assets/css/style.css" rel="stylesheet">
+
+  <style>
+    :root{
+      --card-radius: 16px;
+      --soft-shadow: 0 10px 24px rgba(0,0,0,.06);
+      --muted: #6c757d;
+      --bg: #f6f9ff;
+      --brand: #0d6efd;
+    }
+
+    body{ background: var(--bg); font-family: "Open Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+
+    .inv-shell{ max-width: 980px; margin: 0 auto; padding-bottom: 92px; }
+    .inv-topbar{
+      position: sticky; top: 0; z-index: 1020;
+      backdrop-filter: blur(8px);
+      background: rgba(246, 249, 255, .92);
+      border-bottom: 1px solid rgba(13,110,253,.08);
+    }
+    .inv-topbar-inner{ padding: 12px 12px 10px 12px; }
+    .inv-title{ font-size: 18px; font-weight: 900; margin: 0; line-height: 1.1; }
+    .inv-subtitle{ margin: 2px 0 0 0; font-size: 12px; color: var(--muted); }
+
+    .panel{
+      margin-top: 10px;
+      background:#fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--soft-shadow);
+      border: 1px solid rgba(13,110,253,.06);
+      padding: 10px;
+    }
+    .panel .form-control, .panel .form-select{
+      height: 40px; font-size: 13px; border-radius: 12px;
+    }
+
+    .chip-row{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+    .chip{
+      border-radius: 999px;
+      padding: 7px 12px;
+      font-weight: 900;
+      font-size: 12px;
+      border: 1px solid rgba(0,0,0,.08);
+      background: #fff;
+      cursor: pointer;
+      user-select: none;
+    }
+    .chip.active{
+      background: rgba(13,110,253,.10);
+      border-color: rgba(13,110,253,.18);
+      color: var(--brand);
+    }
+
+    .section-card{
+      margin-top: 14px;
+      background: #fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--soft-shadow);
+      border: 1px solid rgba(13,110,253,.06);
+    }
+    .section-head{
+      padding: 12px 12px 8px 12px;
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .section-title{ margin:0; font-weight: 900; font-size: 14px; }
+    .count-pill{
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 900;
+      font-size: 12px;
+      background: rgba(13,110,253,.10);
+      color: var(--brand);
+      white-space: nowrap;
+    }
+    .section-body{ padding: 0 12px 12px 12px; }
+
+    .case-card{
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid rgba(0,0,0,.08);
+      background: #fff;
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      align-items: flex-start;
+      cursor: pointer;
+      transition: .12s ease;
+    }
+    .case-card:hover{ transform: translateY(-1px); box-shadow: 0 12px 24px rgba(0,0,0,.06); }
+    .case-main{ min-width: 0; }
+    .case-title{
+      margin: 0;
+      font-weight: 900;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+    .case-sub{
+      margin: 4px 0 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .case-meta{
+      display:flex; flex-wrap:wrap; gap:8px;
+      margin-top: 8px;
+    }
+    .mini-pill{
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 900;
+      font-size: 11px;
+      white-space: nowrap;
+    }
+    .mini-pill.blue{ background: rgba(13,110,253,.10); color: #0d6efd; }
+    .mini-pill.green{ background: rgba(25,135,84,.12); color: #198754; }
+    .mini-pill.yellow{ background: rgba(255,193,7,.18); color: #b8860b; }
+    .mini-pill.red{ background: rgba(220,53,69,.12); color: #dc3545; }
+    .mini-pill.gray{ background: rgba(108,117,125,.12); color: #6c757d; }
+
+    .case-side{
+      display:flex; flex-direction: column; gap: 8px; align-items: flex-end;
+      flex: 0 0 auto;
+    }
+    .btn-open{
+      border-radius: 999px;
+      font-weight: 900;
+      font-size: 12px;
+      padding: 8px 12px;
+    }
+
+    /* Bottom nav */
+    .bottom-nav{
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #fff;
+      border-top: 1px solid rgba(0,0,0,.08);
+      box-shadow: 0 -10px 24px rgba(0,0,0,.06);
+      z-index: 1030;
+    }
+    .bottom-nav .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 2px;
+      padding: 8px 8px 10px 8px;
+    }
+    .bottom-nav a{
+      text-decoration: none; color: #111; text-align: center;
+      font-size: 11px; font-weight: 900;
+      padding: 6px 0; border-radius: 12px;
+    }
+    .bottom-nav a .bi{ display:block; font-size: 18px; margin-bottom: 2px; color: #0d6efd; }
+    .bottom-nav a.active{ background: rgba(13,110,253,.08); }
+
+    /* Small helper to keep titles from overflowing on narrow screens */
+    .truncate-1{
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 62vw;
+    }
+    @media(min-width:768px){
+      .truncate-1{ max-width: 520px; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- Top Bar -->
+  <div class="inv-topbar">
+    <div class="inv-topbar-inner inv-shell">
+      <div class="d-flex align-items-start justify-content-between gap-2">
+        <div>
+          <h1 class="inv-title">תיקים</h1>
+          <p class="inv-subtitle">רשימת תיקים מוקצים · UI דמו</p>
+        </div>
+
+        <a class="btn btn-sm btn-outline-primary rounded-pill px-3" href="/investigator_dashboard">
+          <i class="bi bi-arrow-right-circle me-1"></i>דשבורד
+        </a>
+      </div>
+
+      <!-- Search + Sort -->
+      <div class="panel">
+        <div class="row g-2">
+          <div class="col-12 col-md-7">
+            <div class="input-group">
+              <span class="input-group-text rounded-start-0 rounded-end-3"><i class="bi bi-search"></i></span>
+              <input id="q" type="text" class="form-control rounded-start-3 rounded-end-0" placeholder="חיפוש לפי מספר תיק / שם מבוטח / הערה…">
+            </div>
+          </div>
+
+          <div class="col-12 col-md-5">
+            <select id="sortBy" class="form-select">
+              <option value="recent" selected>מיון: עדכון אחרון</option>
+              <option value="urgent">מיון: דחופים קודם</option>
+              <option value="name">מיון: שם מבוטח</option>
+              <option value="case">מיון: מספר תיק</option>
+            </select>
+          </div>
+
+          <!-- Status Chips -->
+          <div class="col-12">
+            <div class="chip-row">
+              <div class="chip active" data-filter="all">הכל</div>
+              <div class="chip" data-filter="active">פעילים</div>
+              <div class="chip" data-filter="urgent">דחופים</div>
+              <div class="chip" data-filter="waiting">ממתין</div>
+              <div class="chip" data-filter="closed">סגור</div>
+            </div>
+          </div>
+
+          <div class="col-12 d-flex justify-content-between align-items-center">
+            <small class="text-muted"><i class="bi bi-info-circle"></i> כרגע נתונים לדוגמה בלבד</small>
+            <button class="btn btn-primary btn-sm rounded-pill px-3" type="button" id="btnDemoRefresh">
+              <i class="bi bi-arrow-repeat me-1"></i>רענן דמו
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="inv-shell px-2 px-sm-3">
+
+    <div class="section-card">
+      <div class="section-head">
+        <h3 class="section-title"><i class="bi bi-briefcase text-primary"></i> התיקים שלי</h3>
+        <div class="count-pill"><span id="casesCount">6</span> תיקים</div>
+      </div>
+
+      <div class="section-body" id="casesList">
+
+        <!-- Demo cards -->
+        <div class="case-card" data-status="urgent" data-case="67590" data-name="יעקב שמואל שי" data-updated="2026-02-11">
+          <div class="case-main">
+            <p class="case-title truncate-1">67590 · יעקב שמואל שי</p>
+            <p class="case-sub">סטטוס: בעבודה · עדכון אחרון: אתמול</p>
+            <div class="case-meta">
+              <span class="mini-pill red">דחוף</span>
+              <span class="mini-pill yellow">משימה: ביקור</span>
+              <span class="mini-pill gray">אזור: תל אביב</span>
+            </div>
+          </div>
+          <div class="case-side">
+            <button class="btn btn-outline-primary btn-sm btn-open" type="button"
+                    onclick="openCaseDemo(67590)">
+              פתח תיק
+            </button>
+            <small class="text-muted">11/02</small>
+          </div>
+        </div>
+
+        <div class="case-card" data-status="active" data-case="67799" data-name="חואגה סעד" data-updated="2026-02-12">
+          <div class="case-main">
+            <p class="case-title truncate-1">67799 · חואגה סעד</p>
+            <p class="case-sub">סטטוס: בעבודה · משימה: צילום שטח</p>
+            <div class="case-meta">
+              <span class="mini-pill green">בתהליך</span>
+              <span class="mini-pill blue">תזכורת היום</span>
+              <span class="mini-pill gray">אזור: הרצליה</span>
+            </div>
+          </div>
+          <div class="case-side">
+            <button class="btn btn-outline-primary btn-sm btn-open" type="button"
+                    onclick="openCaseDemo(67799)">
+              פתח תיק
+            </button>
+            <small class="text-muted">12/02</small>
+          </div>
+        </div>
+
+        <div class="case-card" data-status="waiting" data-case="68102" data-name="אורן כהן" data-updated="2026-02-10">
+          <div class="case-main">
+            <p class="case-title truncate-1">68102 · אורן כהן</p>
+            <p class="case-sub">סטטוס: ממתין · חסר מסמך</p>
+            <div class="case-meta">
+              <span class="mini-pill yellow">ממתין</span>
+              <span class="mini-pill gray">הערה: חסר אישור</span>
+            </div>
+          </div>
+          <div class="case-side">
+            <button class="btn btn-outline-primary btn-sm btn-open" type="button"
+                    onclick="openCaseDemo(68102)">
+              פתח תיק
+            </button>
+            <small class="text-muted">10/02</small>
+          </div>
+        </div>
+
+        <div class="case-card" data-status="active" data-case="68211" data-name="נטע לוי" data-updated="2026-02-09">
+          <div class="case-main">
+            <p class="case-title truncate-1">68211 · נטע לוי</p>
+            <p class="case-sub">סטטוס: בעבודה · 2 משימות פתוחות</p>
+            <div class="case-meta">
+              <span class="mini-pill green">בתהליך</span>
+              <span class="mini-pill yellow">2 משימות</span>
+              <span class="mini-pill gray">אזור: רמת גן</span>
+            </div>
+          </div>
+          <div class="case-side">
+            <button class="btn btn-outline-primary btn-sm btn-open" type="button"
+                    onclick="openCaseDemo(68211)">
+              פתח תיק
+            </button>
+            <small class="text-muted">09/02</small>
+          </div>
+        </div>
+
+        <div class="case-card" data-status="closed" data-case="67001" data-name="יעל מזרחי" data-updated="2026-01-28">
+          <div class="case-main">
+            <p class="case-title truncate-1">67001 · יעל מזרחי</p>
+            <p class="case-sub">סטטוס: סגור · הוגש דוח</p>
+            <div class="case-meta">
+              <span class="mini-pill gray">סגור</span>
+              <span class="mini-pill blue">PDF הוגש</span>
+            </div>
+          </div>
+          <div class="case-side">
+            <button class="btn btn-outline-primary btn-sm btn-open" type="button"
+                    onclick="openCaseDemo(67001)">
+              פתח תיק
+            </button>
+            <small class="text-muted">28/01</small>
+          </div>
+        </div>
+
+        <div class="case-card" data-status="urgent" data-case="68444" data-name="דניאל רוזן" data-updated="2026-02-12">
+          <div class="case-main">
+            <p class="case-title truncate-1">68444 · דניאל רוזן</p>
+            <p class="case-sub">סטטוס: בעבודה · יעד היום 18:00</p>
+            <div class="case-meta">
+              <span class="mini-pill red">דחוף</span>
+              <span class="mini-pill yellow">דדליין היום</span>
+              <span class="mini-pill gray">אזור: ראשון</span>
+            </div>
+          </div>
+          <div class="case-side">
+            <button class="btn btn-outline-primary btn-sm btn-open" type="button"
+                    onclick="openCaseDemo(68444)">
+              פתח תיק
+            </button>
+            <small class="text-muted">12/02</small>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="bottom-nav">
+    <div class="wrap">
+      <a href="/investigator_dashboard">
+        <i class="bi bi-grid-1x2"></i>
+        דשבורד
+      </a>
+      <a class="active" href="/investigator_cases">
+        <i class="bi bi-briefcase"></i>
+        תיקים
+      </a>
+      <a href="javascript:void(0)" onclick="alert('בקרוב: משימות (UI בלבד)')">
+        <i class="bi bi-list-task"></i>
+        משימות
+      </a>
+      <a href="javascript:void(0)" onclick="alert('בקרוב: יומן (UI בלבד)')">
+        <i class="bi bi-calendar3"></i>
+        יומן
+      </a>
+      <a href="javascript:void(0)" onclick="alert('בקרוב: מבוטחים (UI בלבד)')">
+        <i class="bi bi-person-vcard"></i>
+        מבוטחים
+      </a>
+    </div>
+  </div>
+
+  <script src="static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // UI-only demo filtering/sorting
+
+    const chips = document.querySelectorAll(".chip");
+    const qInput = document.getElementById("q");
+    const sortBy = document.getElementById("sortBy");
+    const list = document.getElementById("casesList");
+    const countEl = document.getElementById("casesCount");
+
+    let activeFilter = "all";
+
+    function openCaseDemo(caseNumber){
+      // IMPORTANT:
+      // In the real system, admin "עדכן" opens the insured by GilInsured.id (PK), NOT by "מספר תיק".
+      // In production you can have: case_number=67799 but insured_id=2581.
+      // So /insured/67799/edit can be a 404 even though the route exists.
+      const demoMap = {
+        67799: 2581, // חואגה סעד (adjust if your local insured id differs)
+      };
+
+      const insuredId = demoMap[caseNumber];
+      if(insuredId){
+        window.location.href = `/insured/${insuredId}/edit`;
+        return;
+      }
+
+      alert("UI Demo: פתיחת תיק " + caseNumber + "\\n(כעת אין מיפוי ל-insured_id בדמו. נבצע חיבור אמיתי בהמשך.)");
+    }
+
+    function apply(){
+      const query = (qInput.value || "").trim().toLowerCase();
+      const cards = Array.from(list.querySelectorAll(".case-card"));
+
+      // filter visibility
+      let visible = [];
+      for(const c of cards){
+        const status = c.dataset.status;
+        const caseNo = (c.dataset.case || "").toLowerCase();
+        const name = (c.dataset.name || "").toLowerCase();
+
+        const matchFilter = (activeFilter === "all") || (status === activeFilter);
+        const matchQuery = !query || caseNo.includes(query) || name.includes(query);
+
+        const show = matchFilter && matchQuery;
+        c.style.display = show ? "" : "none";
+        if(show) visible.push(c);
+      }
+
+      // sort visible
+      const mode = sortBy.value;
+      visible.sort((a,b) => {
+        if(mode === "name"){
+          return (a.dataset.name || "").localeCompare((b.dataset.name || ""), "he");
+        }
+        if(mode === "case"){
+          return parseInt(b.dataset.case,10) - parseInt(a.dataset.case,10);
+        }
+        if(mode === "urgent"){
+          const pr = (x) => x.dataset.status === "urgent" ? 0 : (x.dataset.status === "active" ? 1 : 2);
+          return pr(a) - pr(b);
+        }
+        // recent
+        return (b.dataset.updated || "").localeCompare(a.dataset.updated || "");
+      });
+
+      // re-append in sorted order (only visible ones affect order)
+      for(const c of visible){ list.appendChild(c); }
+
+      countEl.innerText = visible.length;
+    }
+
+    chips.forEach(ch => {
+      ch.addEventListener("click", () => {
+        chips.forEach(x => x.classList.remove("active"));
+        ch.classList.add("active");
+        activeFilter = ch.dataset.filter;
+        apply();
+      });
+    });
+
+    qInput.addEventListener("input", apply);
+    sortBy.addEventListener("change", apply);
+
+    document.getElementById("btnDemoRefresh").addEventListener("click", () => {
+      // just a small demo “feel alive” nudge
+      const now = new Date();
+      const hh = String(now.getHours()).padStart(2,"0");
+      const mm = String(now.getMinutes()).padStart(2,"0");
+      alert("UI Demo: רענון רשימת תיקים (" + hh + ":" + mm + ")");
+    });
+
+    // initial
+    apply();
+  </script>
+
+</body>
+</html>
