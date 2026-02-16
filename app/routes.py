@@ -4197,6 +4197,181 @@ def investigator_complete_task(task_id):
 
     return jsonify({"status": "success", "task_id": task.id, "new_status": task.status})
 
+##################### Investigator Calendar #######################
+
+
+
+@main.route("/investigator/calendar", methods=["GET"])
+def investigator_calendar():
+
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+
+    if not user:
+        return redirect(url_for("main.login"))
+
+    return render_template("investigator_calendar.html", user=user)
+
+
+
+def _combine_date_time(d, t):
+    """
+    d: date or 'YYYY-MM-DD'
+    t: datetime.time OR timedelta (common from MySQL TIME) OR string 'HH:MM'/'HH:MM:SS'
+    returns ISO string 'YYYY-MM-DDTHH:MM:SS'
+    """
+    if d is None:
+        return None
+
+    if isinstance(d, str):
+        d = datetime.strptime(d, "%Y-%m-%d").date()
+
+    if t is None:
+        return datetime.combine(d, time(0, 0, 0)).isoformat()
+
+    # MySQL TIME often arrives as timedelta
+    if isinstance(t, timedelta):
+        total_seconds = int(t.total_seconds())
+        if total_seconds < 0:
+            total_seconds = 0
+        h = (total_seconds // 3600) % 24
+        m = (total_seconds % 3600) // 60
+        s = total_seconds % 60
+        t = time(h, m, s)
+
+    if isinstance(t, str):
+        s = t.strip()
+        fmt = "%H:%M:%S" if len(s) == 8 else "%H:%M"
+        t = datetime.strptime(s, fmt).time()
+
+    # already datetime.time => ok
+    return datetime.combine(d, t).isoformat()
+
+
+
+
+@main.route("/api/investigator/calendar/events", methods=["GET"])
+def api_investigator_calendar_events():
+    """
+    Returns FullCalendar events for the logged-in investigator.
+    Pulls from:
+      - gil_appointments
+      - gil_investigator_appointments (assignment table)
+    """
+
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    # IMPORTANT: adjust this to your session structure
+    inv_row = get_current_investigator_row()
+    if not inv_row:
+        return jsonify({"status": "error", "message": "Investigator not found for this user"}), 400
+
+    investigator_id = inv_row.id
+
+    if not investigator_id:
+        return jsonify({"status": "error", "message": "Missing investigator_id in session"}), 400
+
+    # FullCalendar passes start/end as ISO strings; optional but good for performance
+    start = (request.args.get("start") or "").strip()
+    end = (request.args.get("end") or "").strip()
+
+    # We'll filter by appointment_date BETWEEN start/end (date portion)
+    start_date = None
+    end_date = None
+    try:
+        if start:
+            start_date = datetime.fromisoformat(start.replace("Z", "+00:00")).date()
+        if end:
+            end_date = datetime.fromisoformat(end.replace("Z", "+00:00")).date()
+    except Exception:
+        start_date = None
+        end_date = None
+
+    # Build SQL with optional date filters
+    sql = """
+        SELECT
+            a.id,
+            a.case_id,
+            a.status,
+            a.appointment_date,
+            a.time_from,
+            a.time_to,
+            a.address,
+            a.place,
+            a.doctor,
+            a.koopa,
+            a.notes
+        FROM gil_appointments a
+        JOIN gil_investigator_appointments ia
+          ON ia.appointment_id = a.id
+        WHERE ia.investigator_id = :investigator_id
+    """
+
+    params = {"investigator_id": investigator_id}
+
+    if start_date and end_date:
+        # end_date from FullCalendar is exclusive; keep it simple and use < end_date
+        sql += " AND a.appointment_date >= :start_date AND a.appointment_date < :end_date "
+        params["start_date"] = start_date
+        params["end_date"] = end_date
+
+    sql += " ORDER BY a.appointment_date ASC, a.time_from ASC "
+
+    rows = db.session.execute(text(sql), params).mappings().all()
+
+    events = []
+    for r in rows:
+        appt_date = r["appointment_date"]
+        time_from = r["time_from"]
+        time_to = r["time_to"]
+
+        start_iso = _combine_date_time(appt_date, time_from)
+        end_iso = _combine_date_time(appt_date, time_to) if time_to else None
+
+        # Title shown on calendar
+        title_parts = []
+        if r["case_id"]:
+            title_parts.append(f"תיק {r['case_id']}")
+        if r["place"]:
+            title_parts.append(str(r["place"]))
+        elif r["address"]:
+            title_parts.append(str(r["address"]))
+        title = " · ".join(title_parts) if title_parts else "אירוע"
+
+        # Optional: color by status
+        status = (r["status"] or "").strip()
+        color = None
+        if status in ("נוצר", "חדש", "פתוח"):
+            color = "#0d6efd"   # blue
+        elif status in ("בתהליך", "מאושר"):
+            color = "#198754"   # green
+        elif status in ("בוטל", "ביטול", "סגור"):
+            color = "#dc3545"   # red
+
+        events.append({
+            "id": f"appt-{r['id']}",
+            "title": title,
+            "start": start_iso,
+            "end": end_iso,
+            "backgroundColor": color,
+            "borderColor": color,
+            "extendedProps": {
+                "appointment_id": r["id"],
+                "case_id": r["case_id"],
+                "status": status,
+                "address": r["address"],
+                "place": r["place"],
+                "doctor": r["doctor"],
+                "koopa": r["koopa"],
+                "notes": r["notes"],
+            }
+        })
+
+    return jsonify(events)
+
 
 
 if __name__ == '__main__':

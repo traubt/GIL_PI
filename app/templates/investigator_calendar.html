@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+  <title>GIL PI - יומן חוקר</title>
+
+  <!-- Same CSS stack as your investigator_dashboard.html -->
+  <link href="static/assets/img/toc_logo.png" rel="icon">
+  <link href="https://fonts.gstatic.com" rel="preconnect">
+  <link href="https://fonts.googleapis.com/css?family=Open+Sans:300,400,600,700|Nunito:300,400,600,700|Poppins:300,400,500,600,700" rel="stylesheet">
+  <link href="/static/assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/static/assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+  <link href="/static/assets/css/style.css" rel="stylesheet">
+
+  <script src="/static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/locales-all.global.min.js"></script>
+
+
+
+  <!-- FullCalendar -->
+  <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+
+  <style>
+    :root{
+      --card-radius: 16px;
+      --soft-shadow: 0 10px 24px rgba(0,0,0,.06);
+      --muted: #6c757d;
+      --bg: #f6f9ff;
+      --brand: #0d6efd;
+    }
+    body{ background: var(--bg); font-family: "Open Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    .inv-shell{ max-width: 980px; margin: 0 auto; padding-bottom: 92px; }
+
+    .inv-topbar{
+      position: sticky; top: 0; z-index: 1020;
+      backdrop-filter: blur(8px);
+      background: rgba(246, 249, 255, .92);
+      border-bottom: 1px solid rgba(13,110,253,.08);
+    }
+    .inv-topbar-inner{ padding: 12px 12px 10px 12px; }
+    .inv-title{ font-size: 18px; font-weight: 800; margin: 0; line-height: 1.1; }
+    .inv-subtitle{ margin: 2px 0 0 0; font-size: 12px; color: var(--muted); }
+
+    .calendar-card{
+      margin-top: 14px;
+      background: #fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--soft-shadow);
+      padding: 12px;
+      border: 1px solid rgba(13,110,253,.06);
+    }
+
+    /* Make toolbar mobile friendly */
+    .fc .fc-toolbar{ gap: 10px; }
+    @media (max-width: 768px){
+      .fc .fc-toolbar{ flex-direction: column; align-items: stretch; }
+      .fc .fc-toolbar-chunk{ display:flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+      .fc .fc-button{ border-radius: 12px; }
+      .fc-toolbar-title{ font-size: 16px !important; font-weight: 800; }
+    }
+
+    /* Bottom nav (same style) */
+    .bottom-nav{
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: #fff;
+      border-top: 1px solid rgba(0,0,0,.08);
+      box-shadow: 0 -10px 24px rgba(0,0,0,.06);
+      z-index: 1030;
+    }
+    .bottom-nav .wrap{
+      max-width: 980px; margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 2px;
+      padding: 8px 8px 10px 8px;
+    }
+    .bottom-nav a{
+      text-decoration: none; color: #111; text-align: center;
+      font-size: 11px; font-weight: 800;
+      padding: 6px 0; border-radius: 12px;
+    }
+    .bottom-nav a .bi{ display:block; font-size: 18px; margin-bottom: 2px; color: #0d6efd; }
+    .bottom-nav a.active{ background: rgba(13,110,253,.08); }
+  </style>
+</head>
+
+<body>
+
+  <!-- Top Bar -->
+  <div class="inv-topbar">
+    <div class="inv-topbar-inner inv-shell">
+      <div class="d-flex align-items-start justify-content-between gap-2">
+        <div>
+          <h1 class="inv-title">יומן</h1>
+          <p class="inv-subtitle">תצוגת יומן (Phase 1) — ללא אירועים עדיין</p>
+        </div>
+
+        <a class="btn btn-sm btn-outline-primary rounded-pill px-3" href="/investigator">
+          <i class="bi bi-arrow-right-short"></i> חזרה
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- Body -->
+  <div class="inv-shell px-2 px-sm-3">
+    <div class="calendar-card">
+      <div id="calendar"></div>
+    </div>
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="bottom-nav">
+    <div class="wrap">
+      <a href="/investigator">
+        <i class="bi bi-grid-1x2"></i>
+        דשבורד
+      </a>
+      <a href="/investigator_cases">
+        <i class="bi bi-briefcase"></i>
+        תיקים
+      </a>
+      <a href="javascript:void(0)" onclick="alert('Coming soon: Tasks')">
+        <i class="bi bi-list-task"></i>
+        משימות
+      </a>
+      <a class="active" href="{{ url_for('main.investigator_calendar') }}">
+        <i class="bi bi-calendar3"></i>
+        יומן
+      </a>
+      <a href="javascript:void(0)" onclick="alert('Coming soon: Insured search')">
+        <i class="bi bi-person-vcard"></i>
+        מבוטחים
+      </a>
+    </div>
+  </div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    try {
+      const calendarEl = document.getElementById('calendar');
+      if (!calendarEl) {
+        console.error("Calendar container #calendar not found");
+        return;
+      }
+
+      const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
+
+      const calendar = new FullCalendar.Calendar(calendarEl, {
+        locale: 'he',
+        direction: 'rtl',
+        firstDay: 0, // Sunday (Israel)
+        initialView: isMobile() ? 'timeGridDay' : 'timeGridWeek',
+
+        headerToolbar: {
+          left: 'prev,next today',
+          center: 'title',
+          right: 'timeGridDay,timeGridWeek,dayGridMonth'
+        },
+
+        buttonText: {
+          today: 'היום',
+          month: 'חודש',
+          week: 'שבוע',
+          day: 'יום'
+        },
+
+        height: "auto",
+        nowIndicator: true,
+        navLinks: true,
+        editable: false,
+        selectable: false,
+
+        slotMinTime: "06:00:00",
+        slotMaxTime: "22:00:00",
+        scrollTime: "07:00:00",
+        dayMaxEvents: true,
+
+        // Load events from Flask
+        events: async function (fetchInfo, successCallback, failureCallback) {
+          try {
+            const url = `/api/investigator/calendar/events?start=${encodeURIComponent(fetchInfo.startStr)}&end=${encodeURIComponent(fetchInfo.endStr)}`;
+            const res = await fetch(url, { headers: { "Accept": "application/json" } });
+
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+            const data = await res.json();
+            if (!Array.isArray(data)) throw new Error("Calendar API did not return an array");
+
+            successCallback(data);
+          } catch (err) {
+            console.error("Failed to load calendar events:", err);
+            failureCallback(err);
+          }
+        }
+      });
+
+      calendar.render();
+
+      // Switch view automatically when resizing (mobile <-> desktop)
+      let resizeTimer = null;
+      window.addEventListener("resize", function () {
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+          const desiredView = isMobile() ? 'timeGridDay' : 'timeGridWeek';
+          if (calendar.view && calendar.view.type !== desiredView) {
+            calendar.changeView(desiredView);
+          }
+        }, 150);
+      });
+
+    } catch (e) {
+      console.error("Calendar init failed:", e);
+    }
+  });
+</script>
+
+
+</body>
+</html>

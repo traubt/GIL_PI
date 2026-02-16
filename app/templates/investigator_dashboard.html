@@ -289,6 +289,49 @@
     }
     .bottom-nav a .bi{ display: block; font-size: 18px; margin-bottom: 2px; color: #0d6efd; }
     .bottom-nav a.active{ background: rgba(13,110,253,.08); }
+
+    .event-card {
+    padding: 10px 0;
+    border-bottom: 1px dashed rgba(0,0,0,.08);
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .event-card:last-child {
+    border-bottom: none;
+  }
+
+  .event-info {
+    flex: 1;
+  }
+
+  .event-title {
+    font-weight: 900;
+    font-size: 13px;
+    margin: 0;
+  }
+
+  .event-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .event-left-indicator {
+    width: 4px;
+    border-radius: 8px;
+  }
+
+  .event-left-indicator.visit { background: #0d6efd; }
+  .event-left-indicator.call { background: #198754; }
+  .event-left-indicator.meeting { background: #ffc107; }
+  .event-left-indicator.default { background: #adb5bd; }
+
+
+
+
   </style>
 </head>
 
@@ -398,13 +441,16 @@
         </div>
       </a>
 
-      <a class="action-tile warn" href="javascript:void(0)" onclick="alert('UI Demo: Open Calendar')">
-        <div class="tile-icon"><i class="bi bi-calendar3"></i></div>
-        <div>
-          <p class="tile-title">יומן</p>
-          <p class="tile-sub">אירועים ותזכורות</p>
-        </div>
-      </a>
+<a class="action-tile secondary" href="{{ url_for('main.investigator_calendar') }}">
+  <div class="tile-icon">
+    <i class="bi bi-calendar3"></i>
+  </div>
+  <div>
+    <p class="tile-title">יומן</p>
+    <p class="tile-sub">אירועים ותזכורות</p>
+  </div>
+</a>
+
 
       <a class="action-tile danger" href="javascript:void(0)" onclick="alert('UI Demo: Open Tasks')">
         <div class="tile-icon"><i class="bi bi-list-task"></i></div>
@@ -442,30 +488,23 @@
       </div>
     </div>
 
-    <!-- Upcoming Events -->
-    <div class="section-card">
-      <div class="section-head">
-        <h3 class="section-title"><i class="bi bi-calendar-event text-primary"></i> אירועים קרובים</h3>
-        <a class="section-link" href="javascript:void(0)" onclick="alert('UI Demo: View calendar')">יומן</a>
-      </div>
-      <div class="section-body">
-        <div class="list-item">
-          <div>
-            <p class="li-title">ביקור שטח · תל אביב</p>
-            <p class="li-sub">היום · 11:30–12:30 · תיק 67799</p>
-          </div>
-          <span class="badge-soft green">מתוזמן</span>
-        </div>
+<!-- Upcoming Events -->
+<div class="section-card">
+  <div class="section-head">
+    <h3 class="section-title">
+      <i class="bi bi-calendar-event text-primary"></i> אירועים קרובים
+    </h3>
+    <a class="section-link" href="{{ url_for('main.investigator_calendar') }}">
+      ליומן
+    </a>
+  </div>
 
-        <div class="list-item">
-          <div>
-            <p class="li-title">שיחת תיאום עם מנהל תביעה</p>
-            <p class="li-sub">מחר · 09:00 · טלפון</p>
-          </div>
-          <span class="badge-soft blue">תזכורת</span>
-        </div>
-      </div>
-    </div>
+  <div class="section-body" id="upcomingEventsContainer">
+    <!-- Dynamic events will load here -->
+  </div>
+</div>
+
+
 
     <!-- Active Cases Snapshot -->
     <div class="section-card">
@@ -509,7 +548,7 @@
         <i class="bi bi-list-task"></i>
         משימות
       </a>
-      <a href="javascript:void(0)" onclick="alert('UI Demo: Calendar')">
+      <a href="{{ url_for('main.investigator_calendar') }}">
         <i class="bi bi-calendar3"></i>
         יומן
       </a>
@@ -593,6 +632,7 @@
   document.addEventListener("DOMContentLoaded", function(){
       loadTaskSummary();
       loadRecentTasks();
+      loadUpcomingEvents();
   });
 </script>
 
@@ -727,6 +767,98 @@ function openFirstTaskFromList(){
   const first = document.querySelector("#myTasksContainer .list-item");
   if (first) first.click();
 }
+
+function getEventBadge(startIso) {
+  const now = new Date();
+  const eventDate = new Date(startIso);
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+
+  const diffDays = Math.floor((eventDay - today) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return '<span class="badge-soft red">עבר</span>';
+  }
+  if (diffDays === 0) {
+    return '<span class="badge-soft green">היום</span>';
+  }
+  if (diffDays === 1) {
+    return '<span class="badge-soft blue">מחר</span>';
+  }
+  if (diffDays <= 3) {
+    return `<span class="badge-soft yellow">עוד ${diffDays} ימים</span>`;
+  }
+
+  return `<span class="badge-soft blue">${eventDay.toLocaleDateString('he-IL')}</span>`;
+}
+
+async function loadUpcomingEvents() {
+  try {
+    const now = new Date();
+    const future = new Date();
+    future.setDate(future.getDate() + 14); // next 14 days
+
+    const url = `/api/investigator/calendar/events?start=${now.toISOString()}&end=${future.toISOString()}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed loading events");
+
+    const events = await res.json();
+    const container = document.getElementById("upcomingEventsContainer");
+    container.innerHTML = "";
+
+    if (!events.length) {
+      container.innerHTML = `
+        <div class="text-center text-muted py-3">
+          אין אירועים קרובים
+        </div>
+      `;
+      return;
+    }
+
+    // sort by start time
+    events.sort((a,b) => new Date(a.start) - new Date(b.start));
+
+    events.slice(0,5).forEach(ev => {
+
+      const div = document.createElement("div");
+      div.className = "event-card";
+
+      const typeClass =
+        ev.extendedProps?.place?.includes("טלפון") ? "call" :
+        ev.extendedProps?.place?.includes("בית") ? "meeting" :
+        "visit";
+
+      div.innerHTML = `
+        <div class="event-left-indicator ${typeClass}"></div>
+
+        <div class="event-info">
+          <p class="event-title">${ev.title}</p>
+          <p class="event-sub">
+            ${new Date(ev.start).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}
+            –
+            ${new Date(ev.end).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}
+            · ${ev.extendedProps?.address || ev.extendedProps?.place || ""}
+          </p>
+        </div>
+
+        ${getEventBadge(ev.start)}
+      `;
+
+      div.style.cursor = "pointer";
+      div.onclick = () => window.location.href = "{{ url_for('main.investigator_calendar') }}";
+
+      container.appendChild(div);
+    });
+
+  } catch (err) {
+    console.error("loadUpcomingEvents error:", err);
+  }
+}
+
+
+
 </script>
 
 
