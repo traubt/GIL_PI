@@ -2116,20 +2116,32 @@ def get_case_tasks(case_id):
     return jsonify(results)
 
 
-@main.route('/tasks/<int:id>/json', methods=['GET'])
-def get_task_json(id):
-    task = GilTask.query.get_or_404(id)
+@main.route('/tasks/<int:task_id>/json', methods=['GET'])
+def get_task_json(task_id):
+    task = GilTask.query.get_or_404(task_id)
+
+    insured = GilInsured.query.get(task.case_id)  # task.case_id -> gil_insured.id
+
+    insured_name = "—"
+    case_ref = None
+
+    if insured:
+        insured_name = f"{(insured.first_name or '').strip()} {(insured.last_name or '').strip()}".strip() or "—"
+        case_ref = (insured.ref_number or "").strip() or None
+
     return jsonify({
         "id": task.id,
         "case_id": task.case_id,
         "title": task.title,
         "description": task.description or "",
-        "due_date": str(task.due_date) if task.due_date else "",
+        "due_date": task.due_date.strftime("%Y-%m-%d") if task.due_date else None,
         "status": task.status or "",
-        "investigator_id": task.investigator_id
+        "investigator_id": task.investigator_id,
+
+        # ✅ for UI
+        "insured_name": insured_name,
+        "case_ref": case_ref,   # e.g. 67799
     })
-
-
 
 @main.route('/tasks/create', methods=['POST'])
 def create_task():
@@ -4022,6 +4034,169 @@ def investigator_insured(id):
         clinics=clinics,
         koopa=koopa,
     )
+
+# ==========================================
+# Investigator Tasks API
+# ==========================================
+
+@main.route("/api/investigator/tasks/summary")
+def investigator_tasks_summary():
+    user_data = session.get("user")
+    if not user_data:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    user = json.loads(user_data)
+    investigator = GilInvestigator.query.filter_by(user_id=user["id"]).first()
+    if not investigator:
+        return jsonify({"error": "No investigator profile"}), 403
+
+    today = date.today()
+
+    open_statuses = ["פתוחה", "בתהליך"]
+
+    open_count = GilTask.query.filter(
+        GilTask.investigator_id == investigator.id,
+        GilTask.status.in_(open_statuses)
+    ).count()
+
+    overdue_count = GilTask.query.filter(
+        GilTask.investigator_id == investigator.id,
+        GilTask.status.in_(open_statuses),
+        GilTask.due_date != None,
+        GilTask.due_date < today
+    ).count()
+
+    return jsonify({
+        "open_count": open_count,
+        "overdue_count": overdue_count
+    })
+
+
+from sqlalchemy import case
+
+@main.route("/api/investigator/tasks/recent")
+def investigator_tasks_recent():
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    investigator = GilInvestigator.query.filter_by(user_id=user.get("id")).first()
+    if not investigator:
+        return jsonify([])
+
+    # toggle param from frontend
+    show_all = (request.args.get("show_all", "0") == "1")
+
+    default_statuses = ["פתוחה", "חדש", "בתהליך"]
+
+    # Base query
+    q = (
+        db.session.query(GilTask, GilInsured)
+        .outerjoin(GilInsured, GilInsured.id == GilTask.case_id)
+        .filter(GilTask.investigator_id == investigator.id)
+    )
+
+    # Apply status filter only when NOT show_all
+    if not show_all:
+        q = q.filter(GilTask.status.in_(default_statuses))
+
+    tasks = (
+        q.order_by(
+            case(
+                (GilTask.status == "הושלמה", 1),
+                else_=0
+            ),  # completed last
+            GilTask.due_date.is_(None),      # NULL due_date last (MySQL safe)
+            GilTask.due_date.asc(),
+            GilTask.date_created.desc()
+        )
+        .limit(5)
+        .all()
+    )
+
+    out = []
+    for task, insured in tasks:
+        insured_name = None
+        case_ref = None
+
+        if insured:
+            first = (insured.first_name or "").strip()
+            last  = (insured.last_name or "").strip()
+            insured_name = f"{first} {last}".strip() or None
+            case_ref = (getattr(insured, "ref_number", None) or "").strip() or None
+
+        out.append({
+            "id": task.id,
+            "case_id": task.case_id,
+            "title": task.title,
+            "description": task.description or "",
+            "due_date": task.due_date.strftime("%Y-%m-%d") if task.due_date else None,
+            "status": task.status or "",
+            "insured_name": insured_name,
+            "case_ref": case_ref,
+        })
+
+    return jsonify(out)
+
+
+
+
+@main.route("/api/investigator/tasks/<int:task_id>/accept", methods=["POST"])
+def investigator_accept_task(task_id):
+    user_data = session.get("user")
+    if not user_data:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    user = json.loads(user_data)
+
+    investigator = GilInvestigator.query.filter_by(user_id=user["id"]).first()
+    if not investigator:
+        return jsonify({"status": "error", "message": "No investigator profile"}), 403
+
+    task = GilTask.query.get_or_404(task_id)
+
+    # Security: investigator can accept only their own task
+    if task.investigator_id != investigator.id:
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+
+    # Only accept if currently open
+    if task.status not in ("פתוחה", "חדש"):
+        return jsonify({"status": "error", "message": "Task not open"}), 400
+
+    task.status = "בתהליך"
+    db.session.commit()
+
+    return jsonify({"status": "success", "task_id": task.id, "new_status": task.status})
+
+
+@main.route("/api/investigator/tasks/<int:task_id>/complete", methods=["POST"])
+def investigator_complete_task(task_id):
+    user_data = session.get("user")
+    if not user_data:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    user = json.loads(user_data)
+
+    investigator = GilInvestigator.query.filter_by(user_id=user["id"]).first()
+    if not investigator:
+        return jsonify({"status": "error", "message": "No investigator profile"}), 403
+
+    task = GilTask.query.get_or_404(task_id)
+
+    # Security: investigator can complete only their own task
+    if task.investigator_id != investigator.id:
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+
+    # Only complete if currently in progress (prevents completing "חדש" without accepting)
+    if task.status != "בתהליך":
+        return jsonify({"status": "error", "message": "Task not in progress"}), 400
+
+    task.status = "הושלמה"
+    db.session.commit()
+
+    return jsonify({"status": "success", "task_id": task.id, "new_status": task.status})
+
 
 
 if __name__ == '__main__':

@@ -426,33 +426,19 @@
     <!-- Tasks List -->
     <div class="section-card">
       <div class="section-head">
-        <h3 class="section-title"><i class="bi bi-check2-circle text-primary"></i> המשימות שלי</h3>
-        <a class="section-link" href="javascript:void(0)" onclick="alert('UI Demo: View all tasks')">הצג הכל</a>
+        <h3 class="section-title">
+          <i class="bi bi-check2-circle text-primary"></i> המשימות שלי
+        </h3>
+
+        <a class="section-link"
+           href="javascript:void(0)"
+           id="toggleTasksView">
+           הצג הכל
+        </a>
+
       </div>
-      <div class="section-body">
-        <div class="list-item">
-          <div>
-            <p class="li-title">אימות כתובת + צילום חזית בניין</p>
-            <p class="li-sub">תיק 67590 · יעד: היום 16:00</p>
-          </div>
-          <span class="badge-soft red">איחור</span>
-        </div>
+      <div class="section-body" id="myTasksContainer">
 
-        <div class="list-item">
-          <div>
-            <p class="li-title">העלאת קבלות חניה + כביש אגרה</p>
-            <p class="li-sub">טווח נוכחי · 3 קבלות חסרות</p>
-          </div>
-          <span class="badge-soft yellow">ממתין</span>
-        </div>
-
-        <div class="list-item">
-          <div>
-            <p class="li-title">סיכום יומי בדשבורד</p>
-            <p class="li-sub">דוח · היום 20:00</p>
-          </div>
-          <span class="badge-soft blue">חדש</span>
-        </div>
       </div>
     </div>
 
@@ -536,66 +522,247 @@
 
   <script src="static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
-  <script>
-    // UI-only demo logic (no endpoints)
+<script>
+  let showAllTasks = false;
 
-    function isoDate(d){
-      const tz = new Date(d.getTime() - d.getTimezoneOffset()*60000);
-      return tz.toISOString().slice(0,10);
-    }
 
-    function setPreset(preset){
-      const today = new Date();
-      let from = new Date(today);
+  async function loadTaskSummary() {
+    const res = await fetch("/api/investigator/tasks/summary");
+    const data = await res.json();
 
-      if(preset === 'today'){
-        from = new Date(today);
-      } else if(preset === 'wtd'){
-        // Sunday start (can adjust to Monday if you prefer)
-        const day = today.getDay();
-        from.setDate(today.getDate() - day);
-      } else if(preset === 'mtd'){
-        from = new Date(today.getFullYear(), today.getMonth(), 1);
-      } else {
-        // custom: do nothing
-        return;
+    document.getElementById("kpiTasks").innerText = data.open_count;
+    document.querySelector("#kpiTasks").closest(".kpi").querySelector(".hint").innerText =   data.overdue_count + " באיחור";
+
+  }
+
+  function statusBadge(status) {
+    if (status === "הושלמה") return "badge-soft green";
+    if (status === "בתהליך") return "badge-soft green";
+    if (status === "פתוחה" || status === "חדש") return "badge-soft yellow";
+    return "badge-soft red";
+  }
+
+
+  async function loadRecentTasks() {
+    const res = await fetch(`/api/investigator/tasks/recent?show_all=${showAllTasks ? 1 : 0}`);
+    const tasks = await res.json();
+    const container = document.getElementById("myTasksContainer");
+    container.innerHTML = "";
+
+    const today = new Date();
+    // compare dates by day (avoids timezone edge cases)
+    const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    tasks.forEach(t => {
+      const div = document.createElement("div");
+      div.className = "list-item";
+
+      let isOverdue = false;
+      if (t.due_date) {
+        const due = new Date(t.due_date); // expects "YYYY-MM-DD"
+        const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+        if (todayDay > dueDay && (t.status || "").trim() !== "הושלמה") {
+          isOverdue = true;
+        }
       }
 
-      document.getElementById('fromDate').value = isoDate(from);
-      document.getElementById('toDate').value   = isoDate(today);
-    }
+      div.innerHTML = `
+        <div>
+          <p class="li-title">${t.title}</p>
+          <p class="li-sub">${(t.insured_name || "—")} · ${(t.case_ref || t.case_id)} · יעד: ${t.due_date || "—"}</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+          ${isOverdue ? `<span class="badge-soft red">באיחור</span>` : ``}
+          <span class="${statusBadge(t.status)}">${t.status}</span>
+        </div>
+      `;
 
-    function refreshDemo(){
-      // Fake “last update”
-      const now = new Date();
-      const hh = String(now.getHours()).padStart(2,'0');
-      const mm = String(now.getMinutes()).padStart(2,'0');
-      document.getElementById('lastUpdate').innerText = `${hh}:${mm}`;
+      div.style.cursor = "pointer";
 
-      // Slightly change numbers to feel alive (demo)
-      const bump = () => Math.floor(Math.random() * 3) - 1;
-      const bumpFloat = () => (Math.random() * 1.2 - 0.4);
-
-      const cases = Math.max(0, parseInt(document.getElementById('kpiCases').innerText,10) + bump());
-      const tasks = Math.max(0, parseInt(document.getElementById('kpiTasks').innerText,10) + bump());
-      const hours = Math.max(0, (parseFloat(document.getElementById('kpiHours').innerText) + bumpFloat()).toFixed(1));
-      const km    = Math.max(0, parseInt(document.getElementById('kpiKm').innerText,10) + (Math.floor(Math.random()*11)-5));
-
-      document.getElementById('kpiCases').innerText = cases;
-      document.getElementById('kpiTasks').innerText = tasks;
-      document.getElementById('kpiHours').innerText = hours;
-      document.getElementById('kpiKm').innerText    = km;
-    }
-
-    // Init defaults
-    (function init(){
-      setPreset('mtd');
-      document.getElementById('datePreset').addEventListener('change', (e) => {
-        if(e.target.value !== 'custom') setPreset(e.target.value);
+      div.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openTaskModal(t.id);
       });
-      document.getElementById('btnRefresh').addEventListener('click', refreshDemo);
-    })();
-  </script>
+
+      container.appendChild(div);
+    });
+  }
+
+
+  document.addEventListener("DOMContentLoaded", function(){
+      loadTaskSummary();
+      loadRecentTasks();
+  });
+</script>
+
+<script>
+let taskModal;
+
+async function openTaskModal(taskId) {
+  try {
+    const res = await fetch(`/tasks/${taskId}/json`, {
+      headers: { "Accept": "application/json" }
+    });
+
+    if (!res.ok) {
+      console.error("openTaskModal: bad response", res.status);
+      return;
+    }
+
+    // If server returned HTML (e.g. 404 page), this will fail safely
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const txt = await res.text();
+      console.error("openTaskModal: expected JSON, got:", txt.slice(0, 200));
+      return;
+    }
+
+    const t = await res.json();
+
+    // Basic fields
+    const idEl = document.getElementById("tm_id");
+    if (idEl) idEl.value = t.id ?? "";
+
+    document.getElementById("tm_title").innerText  = t.title || "";
+    document.getElementById("tm_case").innerText   = t.case_id || "—";
+    document.getElementById("tm_due").innerText    = t.due_date || "—";
+    document.getElementById("tm_status").innerText = t.status || "—";
+
+    // ✅ Insured + ref
+    document.getElementById("tm_insured").innerText  = t.insured_name || "—";
+    document.getElementById("tm_case_ref").innerText = t.case_ref || "—";
+
+    // ✅ Description
+    document.getElementById("taskDesc").innerText = t.description || "—";
+
+    // Accept button visibility
+    const status = (t.status || "").trim();
+    const btn = document.getElementById("btnAcceptTask");
+    if (btn) {
+      btn.style.display = (status === "פתוחה" || status === "חדש") ? "inline-block" : "none";
+    }
+
+    const btnComplete = document.getElementById("btnCompleteTask");
+    if (btnComplete) {
+      // show complete only when task is in progress
+      btnComplete.style.display = (status === "בתהליך") ? "inline-block" : "none";
+    }
+
+
+    taskModal.show();
+  } catch (err) {
+    console.error("openTaskModal error:", err);
+  }
+}
+
+
+async function acceptTask(){
+  const taskId = document.getElementById("tm_id").value;
+
+  const res = await fetch(`/api/investigator/tasks/${taskId}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const data = await res.json();
+
+  if(data.status !== "success"){
+    alert(data.message || "שגיאה בקבלת משימה");
+    return;
+  }
+
+  // refresh dashboard numbers + list
+  await loadTaskSummary();
+  await loadRecentTasks();
+
+  taskModal.hide();
+}
+
+async function completeTask(){
+  const taskId = document.getElementById("tm_id").value;
+
+  const res = await fetch(`/api/investigator/tasks/${taskId}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const data = await res.json();
+
+  if(data.status !== "success"){
+    alert(data.message || "שגיאה בהשלמת משימה");
+    return;
+  }
+
+  // refresh dashboard numbers + list
+  await loadTaskSummary();
+  await loadRecentTasks();
+
+  taskModal.hide();
+}
+
+
+document.addEventListener("DOMContentLoaded", function(){
+  taskModal = new bootstrap.Modal(document.getElementById("taskModal"));
+  document.getElementById("btnAcceptTask").addEventListener("click", acceptTask);
+  document.getElementById("btnCompleteTask").addEventListener("click", completeTask);
+
+  const toggleLink = document.getElementById("toggleTasksView");
+  if (toggleLink) {
+    toggleLink.addEventListener("click", async function(e){
+      e.preventDefault();
+      showAllTasks = !showAllTasks;
+
+      // toggle text
+      toggleLink.textContent = showAllTasks ? "הצג בעבודה" : "הצג הכל";
+
+      // refresh only tasks list
+      await loadRecentTasks();
+    });
+  }
+
+});
+
+function openFirstTaskFromList(){
+  const first = document.querySelector("#myTasksContainer .list-item");
+  if (first) first.click();
+}
+</script>
+
+
+<div class="modal fade" id="taskModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">פרטי משימה</h5>
+        <button type="button" class="btn-close ms-0" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2"><strong id="tm_title"></strong></div>
+        <div class="mb-2 text-end" id="taskDesc" style="font-weight:600;"></div>
+
+        <div class="text-muted small mb-1">תיק: <span id="tm_case"></span></div>
+        <div class="text-muted small mb-1">מבוטח: <span id="tm_insured"></span></div>
+        <div class="text-muted small mb-1">מס' תיק: <span id="tm_case_ref"></span></div>
+        <div class="text-muted small mb-1">יעד: <span id="tm_due"></span></div>
+        <div class="text-muted small">סטטוס: <span id="tm_status"></span></div>
+        <input type="hidden" id="tm_id">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">סגור</button>
+
+        <button type="button" class="btn btn-success rounded-pill" id="btnCompleteTask" style="display:none;">
+          השלם משימה
+        </button>
+
+        <button type="button" class="btn btn-primary rounded-pill" id="btnAcceptTask">קבל משימה</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+
 
 </body>
 </html>
