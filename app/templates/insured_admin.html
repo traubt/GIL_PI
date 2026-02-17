@@ -20,6 +20,7 @@
           <a href="{{ url_for('main.create_insured') }}" class="btn btn-primary">צור תיק חקירה</a>
           <button id="bulkAssignBtn" class="btn btn-outline-primary" type="button" disabled>הצב חוקר</button>
           <button id="btnExportSelected" class="btn btn-success ms-2" disabled>צור אקסל</button>
+          <button id="bulkTasksBtn" class="btn btn-warning ms-2" type="button" disabled>צור משימות</button>
         </div>
 
         <table id="insuredTable" class="table table-bordered display nowrap" style="width:100%">
@@ -197,6 +198,67 @@
   </div>
 </div>
 
+
+<!-- Bulk Tasks modal -->
+<div class="modal fade" id="bulkTasksModal" tabindex="-1" aria-hidden="true" dir="rtl">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">יצירת משימה למספר תיקים</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-secondary py-2">
+          המשימה שתיצור כאן תשוכפל לכל התיקים שסומנו בטבלה.
+          <span id="bulkTasksSelectedCount" class="fw-bold"></span>
+        </div>
+
+        <form id="bulkTasksForm">
+          <div class="mb-3">
+            <label class="form-label">כותרת</label>
+            <input type="text" name="title" class="form-control" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">תיאור</label>
+            <textarea name="description" class="form-control" rows="3"></textarea>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <label class="form-label">חוקר</label>
+              <select name="investigator_id" class="form-select">
+                <option value="">בחר חוקר</option>
+                {% for inv in investigators %}
+                  <option value="{{ inv.id }}" data-user-id="{{ inv.user_id }}">{{ inv.full_name }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6 mb-3">
+              <label class="form-label">תאריך יעד</label>
+              <input type="date" name="due_date" class="form-control">
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">סטטוס</label>
+            <select name="status" class="form-select">
+              <option value="פתוחה" selected>פתוחה</option>
+              <option value="בעבודה">בעבודה</option>
+              <option value="הושלמה">הושלמה</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
+        <button type="button" id="saveBulkTasksBtn" class="btn btn-warning">שמור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 {% include 'appointment_modal.html' %}
 {% include 'tasks_modal.html' %}
 
@@ -235,7 +297,7 @@ $(function () {
   // --- bulk button + select all sync ---
   function updateBulkButton() {
     var selectedCount = table.rows({ selected: true }).count();
-    $('#bulkAssignBtn, #btnExportSelected').prop('disabled', selectedCount === 0);
+    $('#bulkAssignBtn, #btnExportSelected, #bulkTasksBtn').prop('disabled', selectedCount === 0);
   }
   function syncSelectAllCheckbox() {
     var total = table.rows({ search: 'applied' }).count();
@@ -306,7 +368,82 @@ $(function () {
     table.rows().deselect();
     $('#selectAll').prop('checked', false);
     $('#exportModal').modal('hide');
-    $('#bulkAssignBtn, #btnExportSelected').prop('disabled', true);
+    $('#bulkAssignBtn, #btnExportSelected, #bulkTasksBtn').prop('disabled', true);
+  });
+
+
+
+  // ==== Bulk Tasks ====
+  function getSelectedCaseIds() {
+    return table.rows({ selected: true }).nodes().toArray()
+      .map(n => $(n).data('id'))
+      .filter(Boolean);
+  }
+
+  $('#bulkTasksBtn').on('click', function () {
+    const ids = getSelectedCaseIds();
+    if (!ids.length) return;
+
+    $('#bulkTasksForm')[0].reset();
+    $('#bulkTasksSelectedCount').text(`(${ids.length} תיקים נבחרו)`);
+    new bootstrap.Modal(document.getElementById('bulkTasksModal')).show();
+  });
+
+  $('#saveBulkTasksBtn').on('click', async function () {
+    const ids = getSelectedCaseIds();
+    if (!ids.length) return;
+
+    const $form = $('#bulkTasksForm');
+    const payload = {
+      case_ids: ids,
+      title: ($form.find('[name="title"]').val() || '').trim(),
+      description: ($form.find('[name="description"]').val() || '').trim(),
+      investigator_id: $form.find('[name="investigator_id"]').val() || null,
+      due_date: $form.find('[name="due_date"]').val() || null,
+      status: $form.find('[name="status"]').val() || 'פתוחה'
+    };
+
+    if (!payload.title) {
+      alert('כותרת היא שדה חובה');
+      return;
+    }
+
+    try {
+      const res = await fetch('/tasks/bulk_create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.status !== 'success') {
+        alert(data.message || 'שגיאה ביצירת משימות');
+        return;
+      }
+
+      // Optional notification (once) to assigned investigator
+      const invUserId = $form.find('[name="investigator_id"] option:selected').data('user-id');
+      const invName = $form.find('[name="investigator_id"] option:selected').text();
+      if (invUserId && typeof createNotification === 'function') {
+        await createNotification(
+          parseInt(invUserId),
+          "משימות חדשות",
+          `נוצרו ${data.created} משימות חדשות עבור ${invName}: ${payload.title}`
+        );
+      }
+
+      $('#bulkTasksModal').modal('hide');
+      alert(`נוצרו ${data.created} משימות בהצלחה ✅`);
+
+      // clear selection (avoids accidental re-submit)
+      table.rows().deselect();
+      $('#selectAll').prop('checked', false);
+      $('#bulkAssignBtn, #btnExportSelected, #bulkTasksBtn').prop('disabled', true);
+
+    } catch (err) {
+      console.error(err);
+      alert('שגיאת רשת ביצירת משימות');
+    }
   });
 
   // ==== Appointments Modal ====

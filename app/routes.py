@@ -2167,6 +2167,68 @@ def create_task():
         return jsonify({"status": "error", "message": str(e)})
 
 
+@main.route('/tasks/bulk_create', methods=['POST'])
+def bulk_create_tasks():
+    """Create the same task for multiple insured cases (admin bulk action)."""
+    try:
+        user_data = json.loads(session.get('user')) if session.get('user') else {}
+        creator_id = user_data.get('id') if user_data else None
+        if not creator_id:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        payload = request.get_json(silent=True) or {}
+        case_ids = payload.get("case_ids") or []
+
+        # basic validation
+        if not isinstance(case_ids, list) or not case_ids:
+            return jsonify({"status": "error", "message": "case_ids is required"}), 400
+
+        title = (payload.get("title") or "").strip()
+        if not title:
+            return jsonify({"status": "error", "message": "title is required"}), 400
+
+        investigator_id = payload.get("investigator_id") or None
+        description = (payload.get("description") or "").strip()
+        status = (payload.get("status") or "פתוחה").strip() or "פתוחה"
+
+        due_date = None
+        due_date_str = (payload.get("due_date") or "").strip()
+        if due_date_str:
+            try:
+                due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
+            except ValueError:
+                return jsonify({"status": "error", "message": "Invalid due_date format (expected YYYY-MM-DD)"}), 400
+
+        created = 0
+        # create tasks
+        for cid in case_ids:
+            try:
+                cid_int = int(cid)
+            except Exception:
+                continue
+
+            task = GilTask(
+                case_id=cid_int,
+                investigator_id=int(investigator_id) if investigator_id else None,
+                title=title,
+                description=description,
+                due_date=due_date,
+                status=status,
+                creator_id=creator_id
+            )
+            db.session.add(task)
+            created += 1
+
+        db.session.commit()
+        return jsonify({"status": "success", "created": created})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"bulk_create_tasks error: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
 @main.route('/tasks/<int:id>/update', methods=['POST'])
 def update_task(id):
     try:
