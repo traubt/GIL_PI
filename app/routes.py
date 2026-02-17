@@ -4257,6 +4257,7 @@ def api_investigator_calendar_events():
     Pulls from:
       - gil_appointments
       - gil_investigator_appointments (assignment table)
+      - gil_insured (for ref_number + name)
     """
 
     user_data = session.get("user")
@@ -4264,21 +4265,18 @@ def api_investigator_calendar_events():
     if not user:
         return jsonify({"status": "error", "message": "Not logged in"}), 401
 
-    # IMPORTANT: adjust this to your session structure
     inv_row = get_current_investigator_row()
     if not inv_row:
         return jsonify({"status": "error", "message": "Investigator not found for this user"}), 400
 
     investigator_id = inv_row.id
-
     if not investigator_id:
         return jsonify({"status": "error", "message": "Missing investigator_id in session"}), 400
 
-    # FullCalendar passes start/end as ISO strings; optional but good for performance
+    # FullCalendar passes start/end as ISO strings
     start = (request.args.get("start") or "").strip()
     end = (request.args.get("end") or "").strip()
 
-    # We'll filter by appointment_date BETWEEN start/end (date portion)
     start_date = None
     end_date = None
     try:
@@ -4290,7 +4288,7 @@ def api_investigator_calendar_events():
         start_date = None
         end_date = None
 
-    # Build SQL with optional date filters
+    # ✅ Join gil_insured to get ref_number + names
     sql = """
         SELECT
             a.id,
@@ -4303,17 +4301,21 @@ def api_investigator_calendar_events():
             a.place,
             a.doctor,
             a.koopa,
-            a.notes
+            a.notes,
+            ins.ref_number       AS ref_number,
+            ins.first_name       AS insured_first_name,
+            ins.last_name        AS insured_last_name
         FROM gil_appointments a
         JOIN gil_investigator_appointments ia
           ON ia.appointment_id = a.id
+        LEFT JOIN gil_insured ins
+          ON ins.id = a.case_id
         WHERE ia.investigator_id = :investigator_id
     """
 
     params = {"investigator_id": investigator_id}
 
     if start_date and end_date:
-        # end_date from FullCalendar is exclusive; keep it simple and use < end_date
         sql += " AND a.appointment_date >= :start_date AND a.appointment_date < :end_date "
         params["start_date"] = start_date
         params["end_date"] = end_date
@@ -4331,25 +4333,22 @@ def api_investigator_calendar_events():
         start_iso = _combine_date_time(appt_date, time_from)
         end_iso = _combine_date_time(appt_date, time_to) if time_to else None
 
-        # Title shown on calendar
-        title_parts = []
-        if r["case_id"]:
-            title_parts.append(f"תיק {r['case_id']}")
-        if r["place"]:
-            title_parts.append(str(r["place"]))
-        elif r["address"]:
-            title_parts.append(str(r["address"]))
-        title = " · ".join(title_parts) if title_parts else "אירוע"
+        # ✅ Event title should be the "event title" only (place/address)
+        # so dashboard can show: ref_number - full_name - <title>
+        title = (r["place"] or r["address"] or "אירוע").strip()
 
-        # Optional: color by status
         status = (r["status"] or "").strip()
         color = None
         if status in ("נוצר", "חדש", "פתוח"):
-            color = "#0d6efd"   # blue
+            color = "#0d6efd"
         elif status in ("בתהליך", "מאושר"):
-            color = "#198754"   # green
+            color = "#198754"
         elif status in ("בוטל", "ביטול", "סגור"):
-            color = "#dc3545"   # red
+            color = "#dc3545"
+
+        first_name = (r["insured_first_name"] or "").strip()
+        last_name = (r["insured_last_name"] or "").strip()
+        insured_name = f"{first_name} {last_name}".strip()
 
         events.append({
             "id": f"appt-{r['id']}",
@@ -4361,6 +4360,11 @@ def api_investigator_calendar_events():
             "extendedProps": {
                 "appointment_id": r["id"],
                 "case_id": r["case_id"],
+
+                # ✅ what you need for dashboard title:
+                "case_ref": r["ref_number"] or "",
+                "insured_name": insured_name,
+
                 "status": status,
                 "address": r["address"],
                 "place": r["place"],
@@ -4371,6 +4375,7 @@ def api_investigator_calendar_events():
         })
 
     return jsonify(events)
+
 
 @main.route("/api/investigator/appointments/<int:appointment_id>/json", methods=["GET"])
 def api_investigator_appointment_json(appointment_id: int):

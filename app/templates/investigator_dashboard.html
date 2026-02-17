@@ -329,6 +329,14 @@
   .event-left-indicator.meeting { background: #ffc107; }
   .event-left-indicator.default { background: #adb5bd; }
 
+  .event-card{
+    cursor: pointer;
+  }
+
+  .event-card:hover{
+    background: rgba(13,110,253,.04);
+    border-radius: 12px;
+  }
 
 
 
@@ -820,8 +828,8 @@ async function openEventDetailsModal(appointmentId){
     }
 
     // Title like your screenshot
-    const title = `תיק ${data.case_id || ""} · ${data.place || ""}`.trim();
-    document.getElementById("eventModalTitle").innerText = title;
+    const fullName = data.insured_name || data.insured_full_name || "";
+    const refNum   = data.case_ref || data.case_id || "";
 
     document.getElementById("ev_id").value = data.id || "";
     document.getElementById("ev_date").value = formatIsoDateToIL(data.appointment_date);
@@ -881,11 +889,20 @@ async function loadUpcomingEvents() {
         ev.extendedProps?.place?.includes("בית") ? "meeting" :
         "visit";
 
+      // ✅ header text we will reuse for modal title (from the UI)
+      const headerText = `${(ev.extendedProps?.case_ref || "")} - ${(ev.extendedProps?.insured_name || "")} - ${(ev.title || "")}`
+        .replace(/\s+/g, " ")
+        .trim();
+
       div.innerHTML = `
         <div class="event-left-indicator ${typeClass}"></div>
 
         <div class="event-info">
-          <p class="event-title">${ev.title || "אירוע"}</p>
+          <p class="event-title" data-modal-title="${headerText.replace(/"/g, "&quot;")}">
+            ${(ev.extendedProps?.case_ref || "")} - ${(ev.extendedProps?.insured_name || "")} -
+            <strong>${ev.title || ""}</strong>
+          </p>
+
           <p class="event-sub">
             ${new Date(ev.start).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}
             –
@@ -899,6 +916,7 @@ async function loadUpcomingEvents() {
 
       container.appendChild(div);
     });
+
 
   } catch (err) {
     console.error("loadUpcomingEvents error:", err);
@@ -922,8 +940,19 @@ document.addEventListener("DOMContentLoaded", function(){
       const apptId = card.getAttribute("data-appointment-id");
       if (!apptId) return;
 
+      // ✅ Get exact header text from clicked card
+      const titleEl = card.querySelector(".event-title");
+      const modalHeader = titleEl ? titleEl.innerText : "";
+
+      document.getElementById("eventModalTitle").innerText = modalHeader;
+
+      // show immediately (better UX)
+      eventDetailsModal.show();
+
+      // then load rest of data
       openEventDetailsModal(apptId);
     });
+
   }
 });
 
