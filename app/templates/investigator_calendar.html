@@ -99,9 +99,11 @@
 <!--          <p class="inv-subtitle">תצוגת יומן (Phase 1) — ללא אירועים עדיין</p>-->
         </div>
 
-        <a class="btn btn-sm btn-outline-primary rounded-pill px-3" href="/investigator">
+        <a class="btn btn-sm btn-outline-primary rounded-pill px-3"
+           href="{{ url_for('main.investigator_dashboard') }}">
           <i class="bi bi-arrow-right-short"></i> חזרה
         </a>
+
       </div>
     </div>
   </div>
@@ -116,10 +118,11 @@
   <!-- Bottom Navigation -->
   <div class="bottom-nav">
     <div class="wrap">
-      <a href="/investigator">
+      <a href="/investigator_dashboard">
         <i class="bi bi-grid-1x2"></i>
         דשבורד
       </a>
+
       <a href="/investigator_cases">
         <i class="bi bi-briefcase"></i>
         תיקים

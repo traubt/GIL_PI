@@ -338,6 +338,13 @@
     border-radius: 12px;
   }
 
+  .btn-open{
+    border-radius: 999px;
+    font-weight: 900;
+    font-size: 12px;
+    padding: 8px 12px;
+    line-height: 1;
+  }
 
 
   </style>
@@ -386,7 +393,7 @@
           <div class="col-12 d-flex justify-content-between align-items-center mt-1">
             <small class="text-muted">
               <i class="bi bi-info-circle"></i>
-              נתונים בדוגמה בלבד (UI)
+              טווח תאריכים משפיע על שעות עבודה וק"מ
             </small>
             <button class="btn btn-primary btn-sm rounded-pill px-3" type="button" id="btnRefresh">
               <i class="bi bi-arrow-repeat me-1"></i>רענן
@@ -426,7 +433,7 @@
           <span class="icon"><i class="bi bi-clock-history"></i></span>
         </div>
         <div class="value" id="kpiHours">34.5</div>
-        <div class="hint">בשבוע הנוכחי</div>
+        <div class="hint" id="hintHours">בשבוע הנוכחי</div>
       </div>
 
       <div class="kpi" onclick="alert('UI Demo: Distance / mileage')">
@@ -435,11 +442,11 @@
           <span class="icon"><i class="bi bi-geo-alt"></i></span>
         </div>
         <div class="value" id="kpiKm">216</div>
-        <div class="hint">במסלולים</div>
+        <div class="hint" id="hintKm">במסלולים</div>
       </div>
     </div>
 
-    <!-- Actions (big, thumb-friendly) -->
+    <!--
     <div class="action-grid">
       <a class="action-tile secondary" href="/investigator_cases">
         <div class="tile-icon"><i class="bi bi-briefcase"></i></div>
@@ -476,6 +483,8 @@
         </div>
       </a>
     </div>
+
+    -->
 
     <!-- Tasks List -->
     <div class="section-card">
@@ -518,7 +527,7 @@
     <div class="section-card">
       <div class="section-head">
         <h3 class="section-title"><i class="bi bi-folder2 text-primary"></i> תיקים פעילים (תצוגה מהירה)</h3>
-        <a class="section-link" href="javascript:void(0)" onclick="alert('UI Demo: View cases list')">כל התיקים</a>
+        <a class="section-link" href="/investigator_cases">כל התיקים</a>
       </div>
       <div class="section-body">
         <div class="list-item">
@@ -544,10 +553,11 @@
   <!-- Bottom Navigation -->
   <div class="bottom-nav">
     <div class="wrap">
-      <a class="active" href="javascript:void(0)" onclick="alert('UI Demo: Dashboard')">
+      <a class="active" href="{{ url_for('main.investigator_dashboard') }}">
         <i class="bi bi-grid-1x2"></i>
         דשבורד
       </a>
+
       <a href="/investigator_cases">
         <i class="bi bi-briefcase"></i>
         תיקים
@@ -570,6 +580,86 @@
   <script src="static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
 
 <script>
+  function formatDateForInput(date){
+    // returns YYYY-MM-DD
+    const y = date.getFullYear();
+    const m = String(date.getMonth()+1).padStart(2,'0');
+    const d = String(date.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function getStartOfWeek(date){
+    const d = new Date(date);
+    const day = d.getDay(); // 0 = Sunday
+    const diff = d.getDate() - day;
+    return new Date(d.setDate(diff));
+  }
+
+  function applyDatePreset(preset){
+    const today = new Date();
+    let from = new Date();
+    let to   = new Date();
+
+    switch(preset){
+      case "today":
+        from = new Date(today);
+        to   = new Date(today);
+        break;
+
+      case "wtd":
+        from = getStartOfWeek(today);
+        to   = new Date(today);
+        break;
+
+      case "mtd":
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+        to   = new Date(today);
+        break;
+
+      case "custom":
+        return; // don't auto change
+    }
+
+    document.getElementById("fromDate").value = formatDateForInput(from);
+    document.getElementById("toDate").value   = formatDateForInput(to);
+  }
+
+  function formatDateIL(isoYmd){
+    // isoYmd = "YYYY-MM-DD" from <input type="date">
+    if(!isoYmd) return "";
+    const [y,m,d] = isoYmd.split("-");
+    return `${d}/${m}/${y}`;
+  }
+
+  function updateKpiDateRangeHints(){
+    const presetEl = document.getElementById("datePreset");
+    const hintHoursEl = document.getElementById("hintHours");
+    const hintKmEl = document.getElementById("hintKm");
+
+    if(!presetEl || !hintHoursEl || !hintKmEl) return;
+
+    const presetValue = presetEl.value;
+
+    let text = "";
+    if(presetValue === "custom"){
+      const from = document.getElementById("fromDate")?.value || "";
+      const to   = document.getElementById("toDate")?.value || "";
+      if(from && to){
+        text = `${formatDateIL(from)} - ${formatDateIL(to)}`;
+      } else {
+        text = "טווח מותאם";
+      }
+    } else {
+      // use the exact visible label text from the dropdown
+      text = presetEl.options[presetEl.selectedIndex]?.text || "";
+    }
+
+    hintHoursEl.innerText = text;
+    hintKmEl.innerText = text;
+  }
+
+
+
   let showAllTasks = false;
 
 
@@ -613,16 +703,41 @@
         }
       }
 
-      div.innerHTML = `
-        <div>
-          <p class="li-title">${t.title}</p>
-          <p class="li-sub">${(t.insured_name || "—")} · ${(t.case_ref || t.case_id)} · יעד: ${t.due_date || "—"}</p>
-        </div>
-        <div class="d-flex align-items-center gap-2">
-          ${isOverdue ? `<span class="badge-soft red">באיחור</span>` : ``}
-          <span class="${statusBadge(t.status)}">${t.status}</span>
-        </div>
-      `;
+    div.innerHTML = `
+      <div>
+        <p class="li-title">${t.title}</p>
+        <p class="li-sub">${(t.insured_name || "—")} · ${(t.case_ref || t.case_id)} · יעד: ${t.due_date || "—"}</p>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        <button
+          type="button"
+          class="btn btn-outline-primary btn-sm btn-open open-case-btn"
+          data-case-id="${t.case_id || ""}"
+          title="פתח תיק"
+        >
+          פתח תיק
+        </button>
+
+        ${isOverdue ? `<span class="badge-soft red">באיחור</span>` : ``}
+        <span class="${statusBadge(t.status)}">${t.status}</span>
+      </div>
+    `;
+
+    const btnOpen = div.querySelector(".open-case-btn");
+    if (btnOpen) {
+      btnOpen.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const caseId = btnOpen.getAttribute("data-case-id");
+        if (!caseId) return;
+
+        // ✅ open insured edit (same as investigator_cases)
+        window.location.href = `/insured/${encodeURIComponent(caseId)}/edit`;
+      });
+    }
+
 
       div.style.cursor = "pointer";
 
@@ -768,6 +883,24 @@ document.addEventListener("DOMContentLoaded", function(){
       await loadRecentTasks();
     });
   }
+
+  const presetSelect = document.getElementById("datePreset");
+
+  // Apply default preset on page load
+  applyDatePreset(presetSelect.value);
+  updateKpiDateRangeHints();   // ✅ ADD THIS
+
+  // Update when preset changes
+  presetSelect.addEventListener("change", function(){
+    applyDatePreset(this.value);
+    updateKpiDateRangeHints(); // ✅ ADD THIS
+  });
+
+  // If user edits custom dates manually
+  document.getElementById("fromDate").addEventListener("change", updateKpiDateRangeHints);
+  document.getElementById("toDate").addEventListener("change", updateKpiDateRangeHints);
+
+
 
 });
 
