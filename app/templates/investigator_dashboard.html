@@ -793,11 +793,60 @@ function getEventBadge(startIso) {
   return `<span class="badge-soft blue">${eventDay.toLocaleDateString('he-IL')}</span>`;
 }
 
+let eventDetailsModal;
+
+function formatIsoDateToIL(isoDateStr){
+  // isoDateStr = "YYYY-MM-DD"
+  if(!isoDateStr) return "";
+  const d = new Date(isoDateStr + "T00:00:00");
+  return d.toLocaleDateString("he-IL");
+}
+
+async function openEventDetailsModal(appointmentId){
+  try {
+    const res = await fetch(`/api/investigator/appointments/${appointmentId}/json`, {
+      headers: { "Accept": "application/json" }
+    });
+
+    if (!res.ok) {
+      console.error("openEventDetailsModal bad response", res.status);
+      return;
+    }
+
+    const data = await res.json();
+    if (data.status === "error") {
+      console.error("openEventDetailsModal error:", data.message);
+      return;
+    }
+
+    // Title like your screenshot
+    const title = `תיק ${data.case_id || ""} · ${data.place || ""}`.trim();
+    document.getElementById("eventModalTitle").innerText = title;
+
+    document.getElementById("ev_id").value = data.id || "";
+    document.getElementById("ev_date").value = formatIsoDateToIL(data.appointment_date);
+    document.getElementById("ev_from").value = data.time_from || "";
+    document.getElementById("ev_to").value = data.time_to || "";
+    document.getElementById("ev_status").value = data.status || "";
+    document.getElementById("ev_place").value = data.place || "";
+    document.getElementById("ev_address").value = data.address || "";
+    document.getElementById("ev_koopa").value = data.koopa || "";
+    document.getElementById("ev_doctor").value = data.doctor || "";
+    document.getElementById("ev_investigators").value = data.investigators || "";
+    document.getElementById("ev_notes").value = data.notes || "";
+
+    eventDetailsModal.show();
+
+  } catch (err) {
+    console.error("openEventDetailsModal error:", err);
+  }
+}
+
 async function loadUpcomingEvents() {
   try {
     const now = new Date();
     const future = new Date();
-    future.setDate(future.getDate() + 14); // next 14 days
+    future.setDate(future.getDate() + 14);
 
     const url = `/api/investigator/calendar/events?start=${now.toISOString()}&end=${future.toISOString()}`;
 
@@ -817,13 +866,15 @@ async function loadUpcomingEvents() {
       return;
     }
 
-    // sort by start time
     events.sort((a,b) => new Date(a.start) - new Date(b.start));
 
     events.slice(0,5).forEach(ev => {
+      const apptId = ev.extendedProps?.appointment_id;
+      if (!apptId) return;
 
       const div = document.createElement("div");
       div.className = "event-card";
+      div.setAttribute("data-appointment-id", apptId);
 
       const typeClass =
         ev.extendedProps?.place?.includes("טלפון") ? "call" :
@@ -834,20 +885,17 @@ async function loadUpcomingEvents() {
         <div class="event-left-indicator ${typeClass}"></div>
 
         <div class="event-info">
-          <p class="event-title">${ev.title}</p>
+          <p class="event-title">${ev.title || "אירוע"}</p>
           <p class="event-sub">
             ${new Date(ev.start).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}
             –
             ${new Date(ev.end).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}
-            · ${ev.extendedProps?.address || ev.extendedProps?.place || ""}
+            · ${(ev.extendedProps?.address || ev.extendedProps?.place || "")}
           </p>
         </div>
 
         ${getEventBadge(ev.start)}
       `;
-
-      div.style.cursor = "pointer";
-      div.onclick = () => window.location.href = "{{ url_for('main.investigator_calendar') }}";
 
       container.appendChild(div);
     });
@@ -857,6 +905,27 @@ async function loadUpcomingEvents() {
   }
 }
 
+document.addEventListener("DOMContentLoaded", function(){
+  // init modal once
+  eventDetailsModal = new bootstrap.Modal(document.getElementById("eventDetailsModal"));
+
+  // delegate click only inside upcoming events container (no regressions elsewhere)
+  const upc = document.getElementById("upcomingEventsContainer");
+  if (upc) {
+    upc.addEventListener("click", function(e){
+      const card = e.target.closest(".event-card[data-appointment-id]");
+      if (!card) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const apptId = card.getAttribute("data-appointment-id");
+      if (!apptId) return;
+
+      openEventDetailsModal(apptId);
+    });
+  }
+});
 
 
 </script>
@@ -890,6 +959,78 @@ async function loadUpcomingEvents() {
         <button type="button" class="btn btn-primary rounded-pill" id="btnAcceptTask">קבל משימה</button>
       </div>
 
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="eventDetailsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="eventModalTitle">פרטי אירוע</h5>
+        <button type="button" class="btn-close ms-0" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="ev_id">
+
+        <div class="row g-2">
+          <div class="col-md-3">
+            <label class="form-label">תאריך</label>
+            <input type="text" class="form-control" id="ev_date" disabled>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">משעה</label>
+            <input type="text" class="form-control" id="ev_from" disabled>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">עד שעה</label>
+            <input type="text" class="form-control" id="ev_to" disabled>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">סטטוס</label>
+            <input type="text" class="form-control" id="ev_status" disabled>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">מקום</label>
+            <input type="text" class="form-control" id="ev_place" disabled>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">כתובת</label>
+            <input type="text" class="form-control" id="ev_address" disabled>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">קופה</label>
+            <input type="text" class="form-control" id="ev_koopa" disabled>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">רופא</label>
+            <input type="text" class="form-control" id="ev_doctor" disabled>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">חוקרים</label>
+            <input type="text" class="form-control" id="ev_investigators" disabled>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">הערות</label>
+            <textarea class="form-control" id="ev_notes" rows="3" disabled></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">סגור</button>
+      </div>
     </div>
   </div>
 </div>

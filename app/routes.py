@@ -4372,6 +4372,57 @@ def api_investigator_calendar_events():
 
     return jsonify(events)
 
+@main.route("/api/investigator/appointments/<int:appointment_id>/json", methods=["GET"])
+def api_investigator_appointment_json(appointment_id: int):
+    """
+    Investigator-only: returns a single appointment JSON
+    ONLY if this appointment is assigned to the logged-in investigator.
+    """
+
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    inv_row = get_current_investigator_row()
+    if not inv_row:
+        return jsonify({"status": "error", "message": "Investigator not found for this user"}), 400
+
+    investigator_id = inv_row.id
+    if not investigator_id:
+        return jsonify({"status": "error", "message": "Missing investigator_id in session"}), 400
+
+    # Must be assigned to this investigator
+    assigned = GilInvestigatorAppointment.query.filter_by(
+        appointment_id=appointment_id,
+        investigator_id=investigator_id
+    ).first()
+
+    if not assigned:
+        return jsonify({"status": "error", "message": "Not authorized"}), 403
+
+    appt = GilAppointment.query.get_or_404(appointment_id)
+
+    inv_links = GilInvestigatorAppointment.query.filter_by(appointment_id=appt.id).all()
+    investigator_ids = [link.investigator_id for link in inv_links]
+    investigator_names = [link.investigator.full_name for link in inv_links if link.investigator]
+
+    data = {
+        "id": appt.id,
+        "case_id": appt.case_id,
+        "appointment_date": appt.appointment_date.isoformat() if appt.appointment_date else "",
+        "time_from": normalize_time(appt.time_from),
+        "time_to": normalize_time(appt.time_to),
+        "status": appt.status or "",
+        "place": appt.place or "",
+        "doctor": appt.doctor or "",
+        "koopa": appt.koopa or "",
+        "address": appt.address or "",
+        "notes": appt.notes or "",
+        "investigator_ids": investigator_ids,
+        "investigators": ", ".join(investigator_names)
+    }
+    return jsonify(data)
 
 
 if __name__ == '__main__':
