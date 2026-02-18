@@ -289,6 +289,25 @@
   </div>
 </div>
 
+<!-- ===== CASE NOTES ===== -->
+<div class="card insured-section-card mt-3" id="caseNotesCard">
+  <div class="card-header">
+    הערות לתיק
+    <button type="button" class="btn btn-sm btn-primary float-end" id="addCaseNoteBtn">
+      הוסף הערה
+    </button>
+  </div>
+  <div class="card-body">
+
+    <div id="caseNotesEmpty" class="text-muted small d-none">
+      אין הערות לתיק עדיין.
+    </div>
+
+    <div id="caseNotesList" class="d-flex flex-column gap-3"></div>
+
+  </div>
+</div>
+
 <!-- ===== MEDIA UPLOAD TO DROPBOX (NEW LAYOUT) ===== -->
 
 <style>
@@ -2031,6 +2050,381 @@ $(document).off('click', '#confirmFinalizeTR').on('click', '#confirmFinalizeTR',
 
 
 
+
+<!-- ===== Case Note Create/Edit Modal ===== -->
+<div class="modal fade" id="caseNoteModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="caseNoteModalTitle">הוסף הערה</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="case_note_id" value="">
+
+        <div class="row g-3">
+          <div class="col-12 col-md-6">
+            <label class="form-label">תאריך ושעה</label>
+            <input type="text" class="form-control" id="case_note_datetime" placeholder="dd/mm/yyyy HH:MM">
+          </div>
+
+          <div class="col-12 col-md-6">
+            <label class="form-label">תמונות (אפשר לבחור כמה)</label>
+            <input type="file" class="form-control" id="case_note_files" multiple accept="image/*">
+            <div class="form-text text-muted">* התמונות יועלו לאחר שמירת ההערה.</div>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">הערה</label>
+            <textarea class="form-control" id="case_note_text" rows="4" placeholder="כתוב הערה..."></textarea>
+          </div>
+        </div>
+
+        <div id="caseNoteSaveError" class="alert alert-danger mt-3 d-none"></div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+        <button type="button" class="btn btn-primary" id="saveCaseNoteBtn">שמור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Case Note Image Viewer Modal ===== -->
+<div class="modal fade" id="caseNoteImageModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">תמונה</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="סגור"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-center">
+          <img id="caseNoteImagePreview" src="" alt="Case Note Photo"
+               style="max-width:100%; height:auto; border:1px solid #e5e7eb; border-radius:8px;">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <a id="caseNoteOpenInNewTab" href="#" target="_blank" class="btn btn-outline-secondary">פתח בלשונית חדשה</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================
+   Case Notes UI (insured.html)
+   - Best practice flow:
+     1) Create/Update note (JSON)
+     2) Upload photos (multipart) to note_id
+     3) Reload list
+========================= */
+
+function formatDateTimeDisplay(isoString) {
+  if (!isoString) return '';
+  const d = new Date(isoString);
+  // dd/mm/yyyy HH:MM (24h)
+  const s = d.toLocaleString('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+    hour12: false
+  });
+  return s.replace(',', '');
+}
+
+function escapeHtml(str) {
+  return (str || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function openCaseNoteImage(url) {
+  if (!url) return;
+  $('#caseNoteImagePreview').attr('src', url);
+  $('#caseNoteOpenInNewTab').attr('href', url);
+  $('#caseNoteImageModal').modal('show');
+}
+
+function renderCaseNotes(notes) {
+  const $list = $('#caseNotesList');
+  $list.empty();
+
+  if (!notes || notes.length === 0) {
+    $('#caseNotesEmpty').removeClass('d-none');
+    return;
+  }
+  $('#caseNotesEmpty').addClass('d-none');
+
+  notes.forEach(n => {
+    const dt = formatDateTimeDisplay(n.note_datetime);
+    const by = n.created_by_name || '';
+    const text = escapeHtml(n.note_text || '');
+
+    const photos = Array.isArray(n.photos) ? n.photos : [];
+    const photosHtml = photos.length ? `
+      <div class="thumb-grid mt-2">
+        ${photos.map(p => {
+          const url = p.temp_link || '';
+          const name = escapeHtml(p.file_name || '');
+          if (!url) {
+            return `<div class="thumb"><div class="text-muted small">No preview</div><div class="name">${name}</div></div>`;
+          }
+          return `
+            <a href="javascript:void(0)" class="thumb js-note-photo" data-url="${escapeHtml(url)}" title="Open">
+              <img src="${escapeHtml(url)}" alt="${name}">
+              <span class="name">${name}</span>
+            </a>`;
+        }).join('')}
+      </div>` : '';
+
+    const card = `
+      <div class="border rounded p-3 bg-white" data-note-id="${n.note_id}">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+          <div>
+            <div class="fw-semibold">${dt} <span class="text-muted">|</span> <span class="text-muted">${escapeHtml(by)}</span></div>
+            <div class="mt-2" style="white-space:pre-wrap;">${text}</div>
+          </div>
+          <div class="d-flex gap-2">
+            <button type="button" class="btn btn-sm btn-outline-primary js-edit-note">ערוך</button>
+            <button type="button" class="btn btn-sm btn-outline-danger js-delete-note">מחק</button>
+          </div>
+        </div>
+        ${photosHtml}
+      </div>
+    `;
+    $list.append(card);
+  });
+}
+
+async function loadCaseNotes() {
+  if (!insuredId) return;
+  try {
+    const res = await fetch(`/api/insured/${insuredId}/notes`);
+    const data = await res.json();
+    if (data && data.status === 'success') {
+      renderCaseNotes(data.notes || []);
+    } else {
+      renderCaseNotes([]);
+    }
+  } catch (e) {
+    console.error('loadCaseNotes failed', e);
+    renderCaseNotes([]);
+  }
+}
+
+function openCreateNoteModal() {
+  $('#caseNoteModalTitle').text('הוסף הערה');
+  $('#case_note_id').val('');
+  $('#case_note_text').val('');
+  $('#case_note_files').val('');
+  $('#caseNoteSaveError').addClass('d-none').text('');
+
+  // default now
+  const now = new Date();
+  if (window.caseNotePicker) {
+    window.caseNotePicker.setDate(now, true);
+  } else {
+    $('#case_note_datetime').val(formatDateTimeDisplay(now.toISOString()));
+  }
+
+  $('#caseNoteModal').modal('show');
+}
+
+function openEditNoteModal(note) {
+  $('#caseNoteModalTitle').text('עריכת הערה');
+  $('#case_note_id').val(note.note_id || '');
+  $('#case_note_text').val(note.note_text || '');
+  $('#case_note_files').val('');
+  $('#caseNoteSaveError').addClass('d-none').text('');
+
+  const dt = note.note_datetime ? new Date(note.note_datetime) : new Date();
+  if (window.caseNotePicker) {
+    window.caseNotePicker.setDate(dt, true);
+  } else {
+    $('#case_note_datetime').val(formatDateTimeDisplay(dt.toISOString()));
+  }
+
+  $('#caseNoteModal').modal('show');
+}
+
+function getNoteByIdFromRendered(noteId) {
+  // We don't keep a global store; read from DOM by calling API again (simple + consistent)
+  // For edit, we'll fetch notes and find it.
+  return null;
+}
+
+async function saveNoteAndMaybeUpload() {
+  const noteId = ($('#case_note_id').val() || '').trim();
+  const noteText = ($('#case_note_text').val() || '').trim();
+  const dtRaw = ($('#case_note_datetime').val() || '').trim();
+
+  if (!noteText) {
+    $('#caseNoteSaveError').removeClass('d-none').text('Note text is required.');
+    return;
+  }
+
+  // Convert dd/mm/yyyy HH:MM -> ISO
+  // flatpickr can give us a Date object directly
+  let noteIso = null;
+  try {
+    if (window.caseNotePicker && window.caseNotePicker.selectedDates && window.caseNotePicker.selectedDates[0]) {
+      noteIso = window.caseNotePicker.selectedDates[0].toISOString();
+    } else if (dtRaw) {
+      // Fallback parse: dd/mm/yyyy HH:MM
+      const m = dtRaw.match(/^(\d{2})\/(\d{2})\/(\d{4})\s*(\d{2}):(\d{2})$/);
+      if (m) {
+        const d = new Date(`${m[3]}-${m[2]}-${m[1]}T${m[4]}:${m[5]}:00`);
+        noteIso = d.toISOString();
+      }
+    }
+  } catch (e) {
+    noteIso = null;
+  }
+
+  $('#saveCaseNoteBtn').prop('disabled', true);
+
+  try {
+    let savedNoteId = noteId;
+
+    // 1) Create or Update note
+    if (!savedNoteId) {
+      const createRes = await fetch(`/api/insured/${insuredId}/notes`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ note_text: noteText, note_datetime: noteIso })
+      }).then(r => r.json());
+
+      if (!(createRes && createRes.status === 'success' && createRes.note_id)) {
+        throw new Error(createRes?.message || 'Failed to create note');
+      }
+      savedNoteId = String(createRes.note_id);
+    } else {
+      const updRes = await fetch(`/api/notes/${savedNoteId}`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ note_text: noteText, note_datetime: noteIso })
+      }).then(r => r.json());
+
+      if (!(updRes && updRes.status === 'success')) {
+        throw new Error(updRes?.message || 'Failed to update note');
+      }
+    }
+
+    // 2) Upload photos (if selected)
+    const input = document.getElementById('case_note_files');
+    const files = (input && input.files) ? Array.from(input.files) : [];
+
+    if (files.length > 0) {
+      const fd = new FormData();
+      files.forEach(f => fd.append('files', f));
+
+      const upRes = await fetch(`/api/notes/${savedNoteId}/photos/upload`, {
+        method: 'POST',
+        body: fd
+      }).then(r => r.json());
+
+      if (!(upRes && upRes.status === 'success')) {
+        throw new Error(upRes?.message || 'Photo upload failed');
+      }
+    }
+
+    $('#caseNoteModal').modal('hide');
+    await loadCaseNotes();
+
+  } catch (e) {
+    console.error(e);
+    $('#caseNoteSaveError').removeClass('d-none').text(e?.message || 'Save failed');
+  } finally {
+    $('#saveCaseNoteBtn').prop('disabled', false);
+  }
+}
+
+async function deleteCaseNote(noteId) {
+  if (!noteId) return;
+
+  showModal('מחיקת הערה', 'האם למחוק את ההערה? (זה ימחק גם את התמונות מהמערכת)', [
+    `<button type="button" class="btn btn-danger" id="confirmDeleteCaseNote" data-note-id="${noteId}">מחק</button>`
+  ]);
+}
+
+$(document).off('click', '#confirmDeleteCaseNote').on('click', '#confirmDeleteCaseNote', async function () {
+  const noteId = $(this).data('note-id');
+  $('#genericModal').modal('hide');
+
+  try {
+    const res = await fetch(`/api/notes/${noteId}`, { method: 'DELETE' }).then(r => r.json());
+    if (res && res.status === 'success') {
+      await loadCaseNotes();
+      showModal('✅ הצלחה', 'ההערה נמחקה.');
+    } else {
+      throw new Error(res?.message || 'Delete failed');
+    }
+  } catch (e) {
+    showModal('❌ שגיאה', e?.message || 'Delete failed');
+  }
+});
+
+$(document).ready(function () {
+  // Flatpickr for date+time
+  if (window.flatpickr) {
+    window.caseNotePicker = flatpickr('#case_note_datetime', {
+      enableTime: true,
+      time_24hr: true,
+      dateFormat: 'd/m/Y H:i',
+      defaultDate: new Date()
+    });
+  }
+
+  // Load notes on page load
+  loadCaseNotes();
+});
+
+$(document).on('click', '#addCaseNoteBtn', function () {
+  if (!insuredId) {
+    showModal('⚠️ לא ניתן', 'נא לשמור את התיק לפני הוספת הערה.');
+    return;
+  }
+  openCreateNoteModal();
+});
+
+$(document).on('click', '#saveCaseNoteBtn', function () {
+  saveNoteAndMaybeUpload();
+});
+
+// Edit note: fetch current notes and open
+$(document).on('click', '.js-edit-note', async function () {
+  const noteId = $(this).closest('[data-note-id]').data('note-id');
+  if (!noteId) return;
+
+  try {
+    const res = await fetch(`/api/insured/${insuredId}/notes`).then(r => r.json());
+    const notes = res?.notes || [];
+    const note = notes.find(x => String(x.note_id) === String(noteId));
+    if (!note) return;
+    openEditNoteModal(note);
+  } catch (e) {
+    console.error(e);
+  }
+});
+
+$(document).on('click', '.js-delete-note', function () {
+  const noteId = $(this).closest('[data-note-id]').data('note-id');
+  deleteCaseNote(noteId);
+});
+
+// Photo click -> open viewer modal
+$(document).on('click', '.js-note-photo', function () {
+  const url = $(this).data('url');
+  openCaseNoteImage(url);
+});
+
+</script>
 
 <!-- Generic Modal (unchanged) -->
 <div class="modal fade" id="genericModal" tabindex="-1" aria-labelledby="genericModalLabel" aria-hidden="true">

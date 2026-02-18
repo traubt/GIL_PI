@@ -652,6 +652,83 @@ class GilTrackingReportMedia(db.Model):
     )
 
 
+################  Case notes  ###################
+
+
+class GilCaseNote(db.Model):
+    __tablename__ = "gil_case_notes"
+
+    note_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    insured_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_insured.id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    created_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("toc_users.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    note_datetime = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, index=True)
+    note_text = db.Column(db.Text, nullable=False)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=True, onupdate=datetime.utcnow)
+
+    # Relationships
+    insured = db.relationship("GilInsured", backref=db.backref("case_notes", lazy="dynamic"))
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id])
+
+    photos = db.relationship(
+        "GilCaseNotePhoto",
+        back_populates="note",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        lazy="select",
+        order_by="GilCaseNotePhoto.uploaded_at.asc()",
+    )
+
+    def __repr__(self):
+        return f"<GilCaseNote note_id={self.note_id} insured_id={self.insured_id}>"
+
+
+class GilCaseNotePhoto(db.Model):
+    __tablename__ = "gil_case_note_photos"
+
+    photo_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    note_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_case_notes.note_id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    dropbox_path = db.Column(db.String(1024), nullable=False)
+    file_name = db.Column(db.String(255), nullable=True)
+    mime_type = db.Column(db.String(100), nullable=True)
+    file_size = db.Column(db.BigInteger, nullable=True)
+
+    uploaded_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("toc_users.id", ondelete="RESTRICT", onupdate="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    # Relationships
+    note = db.relationship("GilCaseNote", back_populates="photos")
+    uploaded_by = db.relationship("User", foreign_keys=[uploaded_by_user_id])  # adjust if needed
+
+    def __repr__(self):
+        return f"<GilCaseNotePhoto photo_id={self.photo_id} note_id={self.note_id}>"
 
 
 

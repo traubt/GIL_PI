@@ -94,7 +94,7 @@
               <td>{{ insured.status }}</td>
               <td class="text-center">{{ 1 if insured.parkinson_ind else 0 }}</td>
               <td>
-                <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">עדכן</a>
+                <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">פרופיל</a>
 <!--                <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"-->
 <!--                        data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>-->
                 <button class="btn btn-sm btn-info open-appointments" data-case-id="{{ insured.id }}"> 📅ארועים</button>

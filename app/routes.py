@@ -18,6 +18,8 @@ from flask import render_template, request, jsonify
 from app import db
 from app.models import GilInsured
 from datetime import datetime, timedelta
+from .dropbox_util import get_dbx
+
 from decimal import Decimal, InvalidOperation
 
 
@@ -4490,6 +4492,285 @@ def api_investigator_appointment_json(appointment_id: int):
         "investigators": ", ".join(investigator_names)
     }
     return jsonify(data)
+
+##################### Case notes #####################
+
+
+##################### Case notes #####################
+
+@main.route("/api/insured/<int:insured_id>/notes", methods=["GET", "POST"])
+def api_insured_notes(insured_id: int):
+    import json
+    from datetime import datetime
+    from flask import jsonify, session, request, current_app
+    from app import db
+    from .models import GilInsured, GilCaseNote
+
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    insured = GilInsured.query.get_or_404(insured_id)
+
+    # =========================
+    # GET: list notes + temp links
+    # =========================
+    if request.method == "GET":
+        dbx = get_dbx()
+
+        notes = (
+            GilCaseNote.query
+            .filter(GilCaseNote.insured_id == insured.id)
+            .order_by(GilCaseNote.note_datetime.desc())
+            .all()
+        )
+
+        data = []
+        for n in notes:
+            photos_payload = []
+            for p in (n.photos or []):
+                temp_link = None
+                try:
+                    temp_link = dbx.files_get_temporary_link(p.dropbox_path).link
+                except Exception:
+                    temp_link = None
+
+                photos_payload.append({
+                    "photo_id": p.photo_id,
+                    "dropbox_path": p.dropbox_path,
+                    "file_name": p.file_name,
+                    "mime_type": p.mime_type,
+                    "file_size": p.file_size,
+                    "uploaded_at": p.uploaded_at.isoformat() if p.uploaded_at else None,
+                    "temp_link": temp_link,
+                })
+
+            data.append({
+                "note_id": n.note_id,
+                "insured_id": n.insured_id,
+                "note_datetime": n.note_datetime.isoformat() if n.note_datetime else None,
+                "note_text": n.note_text,
+                "created_by_user_id": n.created_by_user_id,
+                "created_by_name": (
+                    f"{(n.created_by.first_name or '')} {(n.created_by.last_name or '')}".strip()
+                    if n.created_by else ""
+                ),
+                "created_at": n.created_at.isoformat() if n.created_at else None,
+                "updated_at": n.updated_at.isoformat() if n.updated_at else None,
+                "photos": photos_payload,
+            })
+
+        return jsonify({"status": "success", "notes": data})
+
+    # =========================
+    # POST: create note
+    # =========================
+    payload = request.get_json(silent=True) or {}
+    note_text = (payload.get("note_text") or "").strip()
+    note_datetime_raw = (payload.get("note_datetime") or "").strip()
+
+    if not note_text:
+        return jsonify({"status": "error", "message": "Note text is required"}), 400
+
+    note_dt = None
+    if note_datetime_raw:
+        try:
+            note_dt = datetime.fromisoformat(note_datetime_raw.replace("Z", "+00:00"))
+        except Exception:
+            return jsonify({"status": "error", "message": "Invalid datetime format"}), 400
+
+    new_note = GilCaseNote(
+        insured_id=insured.id,
+        created_by_user_id=int(user.get("id")),
+        note_datetime=note_dt or datetime.utcnow(),
+        note_text=note_text
+    )
+
+    db.session.add(new_note)
+    db.session.commit()
+
+    return jsonify({"status": "success", "note_id": new_note.note_id})
+
+
+@main.route("/api/notes/<int:note_id>", methods=["PUT"])
+def api_update_note(note_id: int):
+    import json
+    from datetime import datetime
+    from flask import jsonify, session, request
+    from app import db
+    from .models import GilCaseNote
+
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    note = GilCaseNote.query.get_or_404(note_id)
+
+    payload = request.get_json(silent=True) or {}
+    note_text = (payload.get("note_text") or "").strip()
+    note_datetime_raw = (payload.get("note_datetime") or "").strip()
+
+    if note_text:
+        note.note_text = note_text
+
+    if note_datetime_raw:
+        try:
+            note.note_datetime = datetime.fromisoformat(note_datetime_raw.replace("Z", "+00:00"))
+        except Exception:
+            return jsonify({"status": "error", "message": "Invalid datetime format"}), 400
+
+    db.session.commit()
+    return jsonify({"status": "success"})
+
+
+@main.route("/api/notes/<int:note_id>", methods=["DELETE"])
+def api_delete_note(note_id: int):
+    import json
+    from flask import jsonify, session, current_app
+    from app import db
+    from .models import GilCaseNote
+
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    note = GilCaseNote.query.get_or_404(note_id)
+
+    # delete photos in Dropbox (best effort)
+    dbx = get_dbx()
+    for p in (note.photos or []):
+        try:
+            if p.dropbox_path:
+                dbx.files_delete_v2(p.dropbox_path)
+        except Exception:
+            pass
+
+    db.session.delete(note)
+    db.session.commit()
+
+    return jsonify({"status": "success"})
+
+
+@main.route("/api/notes/<int:note_id>/photos/upload", methods=["POST"])
+def api_upload_note_photos(note_id: int):
+    import os
+    import json
+    from datetime import datetime
+    from flask import jsonify, request, session, current_app
+    from werkzeug.utils import secure_filename
+    import dropbox
+    from app import db
+    from .models import GilCaseNote, GilCaseNotePhoto
+
+    try:
+        user_data = session.get("user")
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        note = GilCaseNote.query.get_or_404(note_id)
+        insured_id = note.insured_id
+
+        files = request.files.getlist("files")
+        if not files:
+            return jsonify({"status": "error", "message": "No files uploaded"}), 400
+
+        dbx = get_dbx()
+
+        # ✅ Reuse your existing insured Dropbox base folder builder
+        base_folder = build_dropbox_folder_for_insured(insured_id)
+
+        # ✅ Required folder under insured directory
+        notes_root = f"{base_folder}/הערות-תמונות"
+        note_folder = f"{notes_root}/NOTE-{note.note_id}"
+
+        ensure_dropbox_folder(notes_root)
+        ensure_dropbox_folder(note_folder)
+
+        created = []
+
+        for f in files:
+            if not f or not f.filename:
+                continue
+
+            original_name = f.filename
+            safe_name = secure_filename(original_name) or "photo"
+            content = f.read() or b""
+            if not content:
+                continue
+
+            _, ext = os.path.splitext(safe_name)
+            if not ext:
+                ext = ".jpg"
+
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            stored_name = f"{ts}_{safe_name}"
+            dropbox_path = f"{note_folder}/{stored_name}"
+
+            meta = dbx.files_upload(
+                content,
+                dropbox_path,
+                mode=dropbox.files.WriteMode.add,
+                autorename=True,
+                mute=True
+            )
+
+            final_path = getattr(meta, "path_lower", None) or dropbox_path
+
+            photo = GilCaseNotePhoto(
+                note_id=note.note_id,
+                dropbox_path=final_path,
+                file_name=original_name,
+                mime_type=(getattr(f, "mimetype", None) or None),
+                file_size=len(content),
+                uploaded_by_user_id=int(user.get("id")),
+                uploaded_at=datetime.utcnow()
+            )
+            db.session.add(photo)
+            created.append(photo)
+
+        db.session.commit()
+        return jsonify({"status": "success", "created": len(created)})
+
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("api_upload_note_photos failed")
+        return jsonify({"status": "error", "message": "Server error"}), 500
+
+
+@main.route("/api/note-photos/<int:photo_id>", methods=["DELETE"])
+def api_delete_note_photo(photo_id: int):
+    import json
+    from flask import jsonify, session, current_app
+    from app import db
+    from .models import GilCaseNotePhoto
+
+    try:
+        user_data = session.get("user")
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        photo = GilCaseNotePhoto.query.get_or_404(photo_id)
+
+        dbx = get_dbx()
+        try:
+            if photo.dropbox_path:
+                dbx.files_delete_v2(photo.dropbox_path)
+        except Exception:
+            pass
+
+        db.session.delete(photo)
+        db.session.commit()
+        return jsonify({"status": "success"})
+
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception("api_delete_note_photo failed")
+        return jsonify({"status": "error", "message": "Server error"}), 500
 
 
 if __name__ == '__main__':
