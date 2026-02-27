@@ -21,7 +21,9 @@
         <div class="card">
           <div class="card-body">
             <h5 class="card-title">ניהול ארועים</h5>
-            <div id="calendar"></div>
+            <div class="calendar-card">
+              <div id="calendar"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -33,15 +35,42 @@
 <!-- FullCalendar CSS/JS -->
 <link href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/locales-all.global.min.js"></script>
 
 <style>
+  :root{
+    --card-radius: 16px;
+    --soft-shadow: 0 10px 24px rgba(0,0,0,.06);
+    --muted: #6c757d;
+    --bg: #f6f9ff;
+    --brand: #0d6efd;
+  }
+
+  /* Admin page keeps sidebar/header, so just soften the calendar area */
   #calendar {
     max-width: 100%;
     margin: 0 auto;
-    padding: 10px;
+    padding: 0;
   }
-  .fc {
-    direction: rtl;   /* enforce RTL layout */
+
+  .calendar-card{
+    margin-top: 10px;
+    background: #fff;
+    border-radius: var(--card-radius);
+    box-shadow: var(--soft-shadow);
+    padding: 12px;
+    border: 1px solid rgba(13,110,253,.06);
+  }
+
+  .fc { direction: rtl; }
+
+  /* Make toolbar mobile friendly (same idea as investigator) */
+  .fc .fc-toolbar{ gap: 10px; }
+  @media (max-width: 768px){
+    .fc .fc-toolbar{ flex-direction: column; align-items: stretch; }
+    .fc .fc-toolbar-chunk{ display:flex; justify-content: center; flex-wrap: wrap; gap: 8px; }
+    .fc .fc-button{ border-radius: 12px; }
+    .fc-toolbar-title{ font-size: 16px !important; font-weight: 800; }
   }
 </style>
 
@@ -49,48 +78,96 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  var calendarEl = document.getElementById('calendar');
+  const calendarEl = document.getElementById('calendar');
+  if (!calendarEl) return;
 
-  var calendar = new FullCalendar.Calendar(calendarEl, {
-    initialView: 'dayGridMonth',
+  const isMobile = () => window.matchMedia("(max-width: 768px)").matches;
+
+  function escapeReg(s){
+    return (s || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+  function cleanTitle(appt){
+    let title = (appt.title || '').trim();
+
+    const tf = (appt.time_from || '').toString().slice(0, 5); // HH:MM
+    const tt = (appt.time_to   || '').toString().slice(0, 5); // HH:MM
+
+    // 1) Remove leading single time: "09:14 ..."
+    if (tf) {
+      title = title.replace(new RegExp('^\\s*' + escapeReg(tf) + '\\s+'), '');
+    }
+
+    // 2) Remove leading time-range if present in title: "09:14-12:17 ..." or "09:14–12:17 ..."
+    //    (handles "-" or "–" and also RTL flipped order)
+    if (tf && tt) {
+      const dash = '[-–]'; // hyphen or en-dash
+      title = title
+        .replace(new RegExp('^\\s*' + escapeReg(tf) + '\\s*' + dash + '\\s*' + escapeReg(tt) + '\\s+'), '')
+        .replace(new RegExp('^\\s*' + escapeReg(tt) + '\\s*' + dash + '\\s*' + escapeReg(tf) + '\\s+'), '');
+    }
+
+    return title;
+  }
+
+  const calendar = new FullCalendar.Calendar(calendarEl, {
     locale: 'he',
+    direction: 'rtl',
+    firstDay: 0, // Sunday (Israel)
+
+    initialView: isMobile() ? 'timeGridDay' : 'dayGridMonth',
+
     headerToolbar: {
       left: 'prev,next today',
       center: 'title',
-      right: 'dayGridMonth,timeGridWeek,timeGridDay'
+      right: 'timeGridDay,timeGridWeek,dayGridMonth'
     },
+
+    buttonText: {
+      today: 'היום',
+      month: 'חודש',
+      week: 'שבוע',
+      day: 'יום'
+    },
+
+    height: "auto",
+    nowIndicator: true,
+    navLinks: true,
+    editable: false,
+    selectable: true,
+
+    slotMinTime: "06:00:00",
+    slotMaxTime: "22:00:00",
+    scrollTime: "07:00:00",
+    dayMaxEvents: true,
+
     events: function (fetchInfo, successCallback, failureCallback) {
       $.ajax({
         url: '/appointments/all',
         method: 'GET',
         success: function (data) {
-          console.log("All appointments from server:", data);
-
-          const events = data.map(appt => {
-            // build ISO datetime: YYYY-MM-DDTHH:MM
-            const start = appt.appointment_date && appt.time_from
+          const events = (data || []).map(appt => {
+            const start = (appt.appointment_date && appt.time_from)
               ? `${appt.appointment_date}T${appt.time_from}`
               : appt.appointment_date;
 
-            const end = appt.appointment_date && appt.time_to
+            const end = (appt.appointment_date && appt.time_to)
               ? `${appt.appointment_date}T${appt.time_to}`
               : null;
 
-              return {
-                id: appt.id,
-                title: appt.title,   // ✅ use backend-built title
-                start: start,
-                end: end,
-                extendedProps: {
-                  status: appt.status,
-                  address: appt.address,
-                  notes: appt.notes
-                }
-              };
-
+            return {
+              id: appt.id,
+              title: cleanTitle(appt),   // ✅ removes duplicated leading time
+              start,
+              end,
+              extendedProps: {
+                status: appt.status,
+                address: appt.address,
+                notes: appt.notes
+              }
+            };
           });
 
-          console.log("Mapped events for calendar:", events);
           successCallback(events);
         },
         error: function (err) {
@@ -98,11 +175,22 @@ document.addEventListener('DOMContentLoaded', function () {
           failureCallback(err);
         }
       });
-    },
-    selectable: true
+    }
   });
 
   calendar.render();
+
+  // Switch view automatically when resizing (mobile <-> desktop)
+  let resizeTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      const desiredView = isMobile() ? 'timeGridDay' : 'dayGridMonth';
+      if (calendar.view && calendar.view.type !== desiredView) {
+        calendar.changeView(desiredView);
+      }
+    }, 150);
+  });
 });
 </script>
 

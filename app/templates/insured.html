@@ -316,137 +316,19 @@
   .thumb{ display:block; border:1px solid #e5e7eb; border-radius:.5rem; padding:.5rem; background:#fff; }
   .thumb img{ width:100%; height:110px; object-fit:cover; border-radius:.35rem; display:block; }
   .thumb .name{ display:inline-block; font-size:.75rem; color:#6b7280; margin-top:.35rem; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+
+    /* Keep Tracking modal usable on small screens */
+  #trackingReportModal .modal-body{
+    max-height: calc(100vh - 210px); /* header+footer allowance */
+    overflow-y: auto;
+  }
+
+  /* Optional: keep tables from stretching the modal */
+  #trackingReportModal .table-responsive{
+    max-height: 260px;
+    overflow-y: auto;
+  }
 </style>
-
-<div class="card insured-section-card mt-3">
-  <div class="card-header">טעינת מדיה לדרופבוקס</div>
-  <div class="card-body">
-
-    <!-- 1) PHOTOS -->
-    <div class="border rounded p-3 mb-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h6 class="mb-0">תמונות</h6>
-        <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="photos">רענן</button>
-          <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="photos">בחר הכל</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="photos">בטל בחירה</button>
-        </div>
-      </div>
-
-      <div class="row g-3 align-items-end">
-        <div class="col-12 col-md-8">
-          <label class="form-label">בחר קבצים</label>
-          <input id="media_files_photos" type="file" class="form-control" multiple accept="image/*">
-        </div>
-        <div class="col-12 col-md-4 d-grid">
-          <button type="button" class="btn btn-primary js-media-upload" data-type="photos">העלה</button>
-        </div>
-      </div>
-
-      <div class="progress mt-3 d-none" id="progress_wrap_photos">
-        <div class="progress-bar" id="progress_bar_photos" role="progressbar" style="width:0%;">0%</div>
-      </div>
-
-      <div class="mt-3" id="result_photos"></div>
-      <div class="mt-3 thumb-grid" id="grid_photos"></div>
-    </div>
-
-
-    <!-- 2) ID PHOTO -->
-    <div class="border rounded p-3 mb-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h6 class="mb-0">תמונת זיהוי</h6>
-        <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="id_photo">רענן</button>
-          <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="id_photo">בחר הכל</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="id_photo">בטל בחירה</button>
-        </div>
-      </div>
-
-      <div class="row g-3 align-items-end">
-        <div class="col-12 col-md-8">
-          <label class="form-label">בחר קובץ</label>
-          <input id="media_files_id_photo" type="file" class="form-control" multiple accept="image/*">
-          <div class="form-text text-muted">
-            * שינוי שם הקובץ לתבנית "שם מלא + תאריך" יתווסף בשלב הבא (Item 3).
-          </div>
-        </div>
-        <div class="col-12 col-md-4 d-grid">
-          <button type="button" class="btn btn-primary js-media-upload" data-type="id_photo">העלה</button>
-        </div>
-      </div>
-
-      <div class="progress mt-3 d-none" id="progress_wrap_id_photo">
-        <div class="progress-bar" id="progress_bar_id_photo" role="progressbar" style="width:0%;">0%</div>
-      </div>
-
-      <div class="mt-3" id="result_id_photo"></div>
-      <div class="mt-3 thumb-grid" id="grid_id_photo"></div>
-    </div>
-
-
-    <!-- 3) SOCIAL MEDIA -->
-    <div class="border rounded p-3 mb-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h6 class="mb-0">מדיה חברתית / אינטרנט</h6>
-        <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="social">רענן</button>
-          <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="social">בחר הכל</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="social">בטל בחירה</button>
-        </div>
-      </div>
-
-      <div class="row g-3 align-items-end">
-        <div class="col-12 col-md-8">
-          <label class="form-label">בחר קבצים</label>
-          <input id="media_files_social" type="file" class="form-control" multiple accept="image/*">
-        </div>
-        <div class="col-12 col-md-4 d-grid">
-          <button type="button" class="btn btn-primary js-media-upload" data-type="social">העלה</button>
-        </div>
-      </div>
-
-      <div class="progress mt-3 d-none" id="progress_wrap_social">
-        <div class="progress-bar" id="progress_bar_social" role="progressbar" style="width:0%;">0%</div>
-      </div>
-
-      <div class="mt-3" id="result_social"></div>
-      <div class="mt-3 thumb-grid" id="grid_social"></div>
-    </div>
-
-
-    <!-- 4) VIDEO -->
-    <div class="border rounded p-3">
-      <div class="d-flex justify-content-between align-items-center mb-2">
-        <h6 class="mb-0">וידאו</h6>
-        <div class="d-flex gap-2">
-          <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="video">רענן</button>
-          <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="video">בחר הכל</button>
-          <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="video">בטל בחירה</button>
-        </div>
-      </div>
-
-      <div class="row g-3 align-items-end">
-        <div class="col-12 col-md-8">
-          <label class="form-label">בחר קבצים</label>
-          <input id="media_files_video" type="file" class="form-control" multiple accept="video/*">
-        </div>
-        <div class="col-12 col-md-4 d-grid">
-          <button type="button" class="btn btn-primary js-media-upload" data-type="video">העלה</button>
-        </div>
-      </div>
-
-      <div class="progress mt-3 d-none" id="progress_wrap_video">
-        <div class="progress-bar" id="progress_bar_video" role="progressbar" style="width:0%;">0%</div>
-      </div>
-
-      <div class="mt-3" id="result_video"></div>
-      <div class="mt-3 thumb-grid" id="grid_video"></div>
-    </div>
-
-  </div>
-</div>
-
 
 
 
@@ -460,7 +342,7 @@
 
 <!-- ===== Tracking Report Modal ===== -->
 <div class="modal fade" id="trackingReportModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
       <form id="trackingReportForm">
         <div class="modal-header">
@@ -511,7 +393,7 @@
           </div>
 
           <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0">פעילויות</h6>
+            <h5 class="mb-0">פעילויות</h5>
             <button type="button" class="btn btn-sm btn-primary" id="addActivityRowBtn">הוסף פעילות</button>
           </div>
 
@@ -534,10 +416,132 @@
             * השורה הראשונה היא תמיד "תחילת פעילות" והשורה האחרונה תמיד "סיום במשרד".
           </div>
 
+          <!-- ===== MEDIA UPLOAD TO DROPBOX (MOVED INTO MODAL) ===== -->
+          <div class="mt-3">
+
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h5 class="mb-0">טעינת מדיה לדרופבוקס</h5>
+            </div>
+
+            <!-- PHOTOS -->
+            <div class="border rounded p-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">תמונות</h6>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="photos">רענן</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="photos">בחר הכל</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="photos">בטל בחירה</button>
+                </div>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-8">
+                  <input id="media_files_photos" type="file" class="form-control" multiple accept="image/*">
+                </div>
+                <div class="col-12 col-md-4 d-grid">
+                  <button type="button" class="btn btn-primary js-media-upload" data-type="photos">העלה</button>
+                </div>
+              </div>
+
+              <div class="progress mt-3 d-none" id="progress_wrap_photos">
+                <div class="progress-bar" id="progress_bar_photos" style="width:0%">0%</div>
+              </div>
+
+              <div class="mt-3" id="result_photos"></div>
+              <div class="mt-3 thumb-grid" id="grid_photos"></div>
+            </div>
+
+            <!-- ID PHOTO -->
+            <div class="border rounded p-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">תמונת זיהוי</h6>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="id_photo">רענן</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="id_photo">בחר הכל</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="id_photo">בטל בחירה</button>
+                </div>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-8">
+                  <input id="media_files_id_photo" type="file" class="form-control" multiple accept="image/*">
+                </div>
+                <div class="col-12 col-md-4 d-grid">
+                  <button type="button" class="btn btn-primary js-media-upload" data-type="id_photo">העלה</button>
+                </div>
+              </div>
+
+              <div class="progress mt-3 d-none" id="progress_wrap_id_photo">
+                <div class="progress-bar" id="progress_bar_id_photo" style="width:0%">0%</div>
+              </div>
+
+              <div class="mt-3" id="result_id_photo"></div>
+              <div class="mt-3 thumb-grid" id="grid_id_photo"></div>
+            </div>
+
+            <!-- SOCIAL -->
+            <div class="border rounded p-3 mb-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">מדיה חברתית</h6>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="social">רענן</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="social">בחר הכל</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="social">בטל בחירה</button>
+                </div>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-8">
+                  <input id="media_files_social" type="file" class="form-control" multiple accept="image/*">
+                </div>
+                <div class="col-12 col-md-4 d-grid">
+                  <button type="button" class="btn btn-primary js-media-upload" data-type="social">העלה</button>
+                </div>
+              </div>
+
+              <div class="progress mt-3 d-none" id="progress_wrap_social">
+                <div class="progress-bar" id="progress_bar_social" style="width:0%">0%</div>
+              </div>
+
+              <div class="mt-3" id="result_social"></div>
+              <div class="mt-3 thumb-grid" id="grid_social"></div>
+            </div>
+
+            <!-- VIDEO -->
+            <div class="border rounded p-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h6 class="mb-0">וידאו</h6>
+                <div class="d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-media-refresh" data-type="video">רענן</button>
+                  <button type="button" class="btn btn-sm btn-outline-primary js-media-select-all" data-type="video">בחר הכל</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary js-media-select-none" data-type="video">בטל בחירה</button>
+                </div>
+              </div>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-12 col-md-8">
+                  <input id="media_files_video" type="file" class="form-control" multiple accept="video/*">
+                </div>
+                <div class="col-12 col-md-4 d-grid">
+                  <button type="button" class="btn btn-primary js-media-upload" data-type="video">העלה</button>
+                </div>
+              </div>
+
+              <div class="progress mt-3 d-none" id="progress_wrap_video">
+                <div class="progress-bar" id="progress_bar_video" style="width:0%">0%</div>
+              </div>
+
+              <div class="mt-3" id="result_video"></div>
+              <div class="mt-3 thumb-grid" id="grid_video"></div>
+            </div>
+
+          </div>
+          <!-- ===== END MEDIA SECTION ===== -->
+
           <hr class="my-4"/>
 
           <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0">הוצאות</h6>
+            <h5 class="mb-0">הוצאות</h5>
             <button type="button" class="btn btn-sm btn-primary" id="addExpenseRowBtn">הוסף הוצאה</button>
           </div>
 

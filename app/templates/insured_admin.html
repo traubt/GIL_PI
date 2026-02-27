@@ -4,7 +4,15 @@
   {% include 'side-bar.html' %}
 
 
+<style>
+  #insuredTable td:last-child {
+    min-width: 90px;
+  }
 
+  .dropdown-menu {
+    min-width: 180px;
+  }
+</style>
 
 <main id="main" class="main">
   <div class="pagetitle">
@@ -93,14 +101,56 @@
               <td>{{ insured.gender }}</td>
               <td>{{ insured.status }}</td>
               <td class="text-center">{{ 1 if insured.parkinson_ind else 0 }}</td>
-              <td>
-                <a href="{{ url_for('main.edit_insured', id=insured.id) }}" class="btn btn-sm btn-primary">פרופיל</a>
-<!--                <button type="button" class="btn btn-sm btn-warning assign-investigator-btn"-->
-<!--                        data-id="{{ insured.id }}" data-investigator="{{ insured.investigator }}">הצב חוקר</button>-->
-                <button class="btn btn-sm btn-info open-appointments" data-case-id="{{ insured.id }}"> 📅ארועים</button>
-                <button class="btn btn-sm btn-info tasks-btn" data-id="{{ insured.id }}">    משימות</button>
-                <button class="btn btn-sm btn-warning create-report-btn"   data-insured-id="{{ insured.id }}">  צור דוח</button>
-                <button type="button" class="btn btn-sm btn-secondary change-status-btn"   data-id="{{ insured.id }}" data-status="{{ insured.status|default('פתוחה') }}">שנה סטטוס</button>
+              <td class="text-center">
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-outline-secondary"
+                          type="button"
+                          data-bs-toggle="dropdown">
+                    <i class="bi bi-three-dots-vertical"></i>
+                  </button>
+
+                  <ul class="dropdown-menu dropdown-menu-end text-end">
+
+                    <li>
+                      <a class="dropdown-item"
+                         href="{{ url_for('main.edit_insured', id=insured.id) }}">
+                         👤 פרופיל
+                      </a>
+                    </li>
+
+                    <li>
+                      <button class="dropdown-item open-appointments"
+                              data-case-id="{{ insured.id }}">
+                        📅 ארועים
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="dropdown-item tasks-btn"
+                              data-id="{{ insured.id }}">
+                        📝 משימות
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="dropdown-item create-report-btn"
+                              data-insured-id="{{ insured.id }}">
+                        📄 צור דוח
+                      </button>
+                    </li>
+
+                    <li><hr class="dropdown-divider"></li>
+
+                    <li>
+                      <button class="dropdown-item change-status-btn"
+                              data-id="{{ insured.id }}"
+                              data-status="{{ insured.status|default('פתוחה') }}">
+                        🔄 שנה סטטוס
+                      </button>
+                    </li>
+
+                  </ul>
+                </div>
               </td>
             </tr>
             {% endfor %}
