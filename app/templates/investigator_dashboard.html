@@ -773,7 +773,6 @@ async function openTaskModal(taskId) {
       return;
     }
 
-    // If server returned HTML (e.g. 404 page), this will fail safely
     const contentType = res.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
       const txt = await res.text();
@@ -781,39 +780,51 @@ async function openTaskModal(taskId) {
       return;
     }
 
-    const t = await res.json();
+    const data = await res.json();
+
+    // ✅ support both shapes (old + new) with zero regression risk
+    const t = data.task ? data.task : data;
 
     // Basic fields
     const idEl = document.getElementById("tm_id");
     if (idEl) idEl.value = t.id ?? "";
 
     document.getElementById("tm_title").innerText  = t.title || "";
-    document.getElementById("tm_case").innerText   = t.case_id || "—";
+
+    // ✅ show case name instead of case_id
+    const caseDisplay = (t.case_name && t.case_name.trim())
+      ? t.case_name
+      : (t.case_id ? ("תיק #" + t.case_id) : "—");
+    document.getElementById("tm_case").innerText = caseDisplay;
+
     document.getElementById("tm_due").innerText    = t.due_date || "—";
     document.getElementById("tm_status").innerText = t.status || "—";
 
-    // ✅ Insured + ref
-    document.getElementById("tm_insured").innerText  = t.insured_name || "—";
-    document.getElementById("tm_case_ref").innerText = t.case_ref || "—";
+    // ✅ Insured + ref (supports both keys)
+    document.getElementById("tm_insured").innerText =
+      t.insured_name || t.insured || t.case_name || "—";
+
+    document.getElementById("tm_case_ref").innerText =
+      t.case_ref || t.ref || (t.case_id ? String(t.case_id) : "—");
 
     // ✅ Description
     document.getElementById("taskDesc").innerText = t.description || "—";
 
-    // Accept button visibility
+    // Buttons logic
     const status = (t.status || "").trim();
-    const btn = document.getElementById("btnAcceptTask");
-    if (btn) {
-      btn.style.display = (status === "פתוחה" || status === "חדש") ? "inline-block" : "none";
+
+    const btnAccept = document.getElementById("btnAcceptTask");
+    if (btnAccept) {
+      btnAccept.style.display = (status === "פתוחה" || status === "חדש") ? "inline-block" : "none";
     }
 
     const btnComplete = document.getElementById("btnCompleteTask");
     if (btnComplete) {
-      // show complete only when task is in progress
       btnComplete.style.display = (status === "בתהליך") ? "inline-block" : "none";
     }
 
-
     taskModal.show();
+
   } catch (err) {
     console.error("openTaskModal error:", err);
   }

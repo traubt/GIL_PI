@@ -1004,6 +1004,8 @@ def admin_insured():
     shop = json.loads(shop_data) if shop_data else {}
     investigators = GilInvestigator.query.order_by(GilInvestigator.full_name.asc()).all()
     koopa_list = GilKoopa.query.order_by(GilKoopa.koopa_name.asc()).all()
+    users = User.query.order_by(User.first_name.asc(), User.last_name.asc()).all()
+
     investigators_json = [
         {"id": inv.id, "full_name": inv.full_name, "user_id": inv.user_id}
         for inv in investigators
@@ -1041,7 +1043,8 @@ def admin_insured():
         insured_list=insured_list,
         investigators=investigators,
         investigators_json=investigators_json,  # use only for JS logging
-        koopa_list=koopa_list
+        koopa_list=koopa_list,
+        users=users
     )
 
 @main.route('/insured/create', methods=['GET', 'POST'])
@@ -2073,7 +2076,7 @@ def assign_investigators(id):
 @main.route('/tasks/<int:case_id>', methods=['GET'])
 def get_case_tasks(case_id):
     """
-    Fetch all tasks for a given case_id, including investigator + creator names.
+    Fetch all tasks for a given case_id, including assignee (toc_users) + creator names.
     """
     sql = text("""
         SELECT
@@ -2083,23 +2086,44 @@ def get_case_tasks(case_id):
             t.description,
             t.due_date,
             t.status,
-            t.investigator_id,
-            i.full_name AS investigator_name,
+
+            t.user_id,
+            CONCAT(TRIM(COALESCE(au.first_name,'')), ' ', TRIM(COALESCE(au.last_name,''))) AS user_full_name,
+            au.username AS user_username,
+
             t.creator_id,
-            u.username AS creator_name,
+            CONCAT(TRIM(COALESCE(cu.first_name,'')), ' ', TRIM(COALESCE(cu.last_name,''))) AS creator_full_name,
+            cu.username AS creator_username,
+
             t.date_created,
             t.date_modified
         FROM gil_tasks t
-        LEFT JOIN gil_investigator i ON i.id = t.investigator_id
-        LEFT JOIN toc_users u ON u.id = t.creator_id
+        LEFT JOIN toc_users au ON au.id = t.user_id
+        LEFT JOIN toc_users cu ON cu.id = t.creator_id
         WHERE t.case_id = :case_id
-        ORDER BY t.due_date, t.id
+        ORDER BY
+          (t.due_date IS NULL) ASC,
+          t.due_date ASC,
+          t.id ASC
     """)
 
     rows = db.session.execute(sql, {"case_id": case_id}).mappings().all()
 
     results = []
     for row in rows:
+        # Nice display name preference: full name if exists, else username, else id
+        assignee_name = (row["user_full_name"] or "").strip()
+        if not assignee_name:
+            assignee_name = (row["user_username"] or "").strip()
+        if not assignee_name:
+            assignee_name = str(row["user_id"] or "")
+
+        creator_name = (row["creator_full_name"] or "").strip()
+        if not creator_name:
+            creator_name = (row["creator_username"] or "").strip()
+        if not creator_name:
+            creator_name = str(row["creator_id"] or "")
+
         results.append({
             "id": row["id"],
             "case_id": row["case_id"],
@@ -2107,10 +2131,14 @@ def get_case_tasks(case_id):
             "description": row["description"] or "",
             "due_date": str(row["due_date"]) if row["due_date"] else "",
             "status": row["status"] or "",
-            "investigator_id": row["investigator_id"],
-            "investigator_name": row["investigator_name"] or "",
+
+            # ✅ NEW fields
+            "user_id": row["user_id"],
+            "user_name": assignee_name,
+
             "creator_id": row["creator_id"],
-            "creator_name": row["creator_name"] or "",
+            "creator_name": creator_name,
+
             "date_created": row["date_created"].isoformat() if row["date_created"] else "",
             "date_modified": row["date_modified"].isoformat() if row["date_modified"] else ""
         })
@@ -2118,102 +2146,169 @@ def get_case_tasks(case_id):
     return jsonify(results)
 
 
-@main.route('/tasks/<int:task_id>/json', methods=['GET'])
+@main.route("/tasks/<int:task_id>/json")
 def get_task_json(task_id):
-    task = GilTask.query.get_or_404(task_id)
+    """
+    Returns task details for modal view (investigator dashboard).
+    Includes insured name + case ref.
+    """
+    task = GilTask.query.get(task_id)
+    if not task:
+        return jsonify({"status": "error", "message": "Task not found"}), 404
 
-    insured = GilInsured.query.get(task.case_id)  # task.case_id -> gil_insured.id
+    insured = GilInsured.query.get(task.case_id)
 
-    insured_name = "—"
-    case_ref = None
-
+    insured_name = ""
+    case_ref = ""
     if insured:
-        insured_name = f"{(insured.first_name or '').strip()} {(insured.last_name or '').strip()}".strip() or "—"
-        case_ref = (insured.ref_number or "").strip() or None
+        fn = (getattr(insured, "first_name", "") or "").strip()
+        ln = (getattr(insured, "last_name", "") or "").strip()
+        insured_name = f"{fn} {ln}".strip()
+        case_ref = (getattr(insured, "ref_number", None) or "").strip()
 
     return jsonify({
         "id": task.id,
         "case_id": task.case_id,
-        "title": task.title,
+        "title": task.title or "",
         "description": task.description or "",
-        "due_date": task.due_date.strftime("%Y-%m-%d") if task.due_date else None,
+        "due_date": task.due_date.isoformat() if task.due_date else "",
         "status": task.status or "",
-        "investigator_id": task.investigator_id,
-
-        # ✅ for UI
-        "insured_name": insured_name,
-        "case_ref": case_ref,   # e.g. 67799
+        "user_id": task.user_id,                 # ✅ new
+        "creator_id": task.creator_id,
+        "insured_name": insured_name or "—",      # ✅ used by modal + list
+        "case_ref": case_ref or "—",              # ✅ used by modal + list
+        "date_created": task.date_created.isoformat() if task.date_created else "",
+        "date_modified": task.date_modified.isoformat() if task.date_modified else "",
     })
 
 @main.route('/tasks/create', methods=['POST'])
 def create_task():
     try:
-        user_data = json.loads(session.get('user')) if session.get('user') else {}
-        creator_id = user_data.get('id') if user_data else None
+        # --- logged in user (creator) ---
+        user_data_raw = session.get('user')
+        user_data = json.loads(user_data_raw) if user_data_raw else {}
+        if not user_data:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        creator_id = user_data.get("id")
+
+        # --- support both form-data and JSON payload ---
+        payload = request.get_json(silent=True) if request.is_json else request.form
+
+        case_id = payload.get("case_id")
+        user_id = payload.get("user_id")  # ✅ replaces investigator_id
+        title = (payload.get("title") or "").strip()
+        description = (payload.get("description") or "").strip()
+        due_date = payload.get("due_date")  # can be "" / None
+        status = (payload.get("status") or "פתוחה").strip()
+
+        # --- validations ---
+        if not case_id:
+            return jsonify({"status": "error", "message": "Missing case_id"}), 400
+        if not user_id:
+            return jsonify({"status": "error", "message": "Missing user_id"}), 400
+        if not title:
+            return jsonify({"status": "error", "message": "Missing title"}), 400
+
+        # Ensure case exists
+        insured = GilInsured.query.get(int(case_id))
+        if not insured:
+            return jsonify({"status": "error", "message": "Case not found"}), 404
+
+        # Ensure assignee user exists
+        assignee = User.query.get(int(user_id))
+        if not assignee:
+            return jsonify({"status": "error", "message": "User not found"}), 404
+
+        # Normalize due_date (allow empty)
+        if due_date:
+            try:
+                # accepts 'YYYY-MM-DD'
+                due_date = datetime.strptime(due_date, "%Y-%m-%d").date()
+            except Exception:
+                return jsonify({"status": "error", "message": "Invalid due_date format (expected YYYY-MM-DD)"}), 400
+        else:
+            due_date = None
 
         task = GilTask(
-            case_id=request.form.get('case_id'),
-            investigator_id=request.form.get('investigator_id'),
-            title=request.form.get('title'),
-            description=request.form.get('description'),
-            due_date=request.form.get('due_date'),
-            status=request.form.get('status'),
+            case_id=int(case_id),
+            user_id=int(user_id),
+            title=title,
+            description=description if description else None,
+            due_date=due_date,
+            status=status,
             creator_id=creator_id
         )
+
         db.session.add(task)
         db.session.commit()
-        return jsonify({"status": "success", "message": "Task created"})
+
+        return jsonify({
+            "status": "success",
+            "message": "Task created",
+            "task": {
+                "id": task.id,
+                "case_id": task.case_id,
+                "user_id": task.user_id,
+                "title": task.title,
+                "status": task.status,
+                "due_date": task.due_date.isoformat() if task.due_date else None
+            }
+        })
+
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"create_task error: {e}")
-        return jsonify({"status": "error", "message": str(e)})
+        current_app.logger.error(f"create_task error: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to create task"}), 500
 
 
 @main.route('/tasks/bulk_create', methods=['POST'])
 def bulk_create_tasks():
-    """Create the same task for multiple insured cases (admin bulk action)."""
     try:
-        user_data = json.loads(session.get('user')) if session.get('user') else {}
-        creator_id = user_data.get('id') if user_data else None
-        if not creator_id:
+        user_data_raw = session.get('user')
+        user = json.loads(user_data_raw) if user_data_raw else {}
+        if not user:
             return jsonify({"status": "error", "message": "Not logged in"}), 401
 
+        creator_id = user.get("id")
+
         payload = request.get_json(silent=True) or {}
+
         case_ids = payload.get("case_ids") or []
-
-        # basic validation
-        if not isinstance(case_ids, list) or not case_ids:
-            return jsonify({"status": "error", "message": "case_ids is required"}), 400
-
         title = (payload.get("title") or "").strip()
-        if not title:
-            return jsonify({"status": "error", "message": "title is required"}), 400
-
-        investigator_id = payload.get("investigator_id") or None
         description = (payload.get("description") or "").strip()
-        status = (payload.get("status") or "פתוחה").strip() or "פתוחה"
+        due_date = payload.get("due_date")
+        status = (payload.get("status") or "פתוחה").strip()
 
-        due_date = None
-        due_date_str = (payload.get("due_date") or "").strip()
-        if due_date_str:
+        # ✅ NEW: user_id (not investigator_id)
+        user_id = payload.get("user_id")
+
+        if not case_ids:
+            return jsonify({"status": "error", "message": "Missing case_ids"}), 400
+        if not title:
+            return jsonify({"status": "error", "message": "Missing title"}), 400
+        if not user_id:
+            return jsonify({"status": "error", "message": "Missing user_id"}), 400
+
+        # normalize due_date
+        if due_date:
             try:
-                due_date = datetime.strptime(due_date_str, "%Y-%m-%d").date()
-            except ValueError:
+                due_date = datetime.strptime(due_date, "%Y-%m-%d").date()
+            except Exception:
                 return jsonify({"status": "error", "message": "Invalid due_date format (expected YYYY-MM-DD)"}), 400
+        else:
+            due_date = None
 
         created = 0
-        # create tasks
         for cid in case_ids:
-            try:
-                cid_int = int(cid)
-            except Exception:
+            if not cid:
                 continue
 
             task = GilTask(
-                case_id=cid_int,
-                investigator_id=int(investigator_id) if investigator_id else None,
+                case_id=int(cid),
+                user_id=int(user_id),             # ✅ important
                 title=title,
-                description=description,
+                description=description if description else None,
                 due_date=due_date,
                 status=status,
                 creator_id=creator_id
@@ -2222,12 +2317,13 @@ def bulk_create_tasks():
             created += 1
 
         db.session.commit()
+
         return jsonify({"status": "success", "created": created})
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"bulk_create_tasks error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+        current_app.logger.error(f"bulk_create_tasks error: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to create batch tasks"}), 500
 
 
 
@@ -2383,6 +2479,7 @@ def get_appointment_details_json(appointment_id):
 #### Task amdin
 
 # Admin tasks
+# Admin tasks
 @main.route('/admin_tasks')
 def admin_tasks():
     # session context
@@ -2395,6 +2492,7 @@ def admin_tasks():
     roles = db.session.query(TocRole).all()
     roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
 
+    # Tasks list (assignee is toc_users now)
     sql = text("""
         SELECT 
             t.id,
@@ -2405,28 +2503,54 @@ def admin_tasks():
             t.status,
             t.date_created,
             t.creator_id,
-            i.full_name AS investigator_name
+
+            t.user_id,
+            CONCAT(TRIM(COALESCE(au.first_name,'')), ' ', TRIM(COALESCE(au.last_name,''))) AS user_full_name,
+            au.username AS user_username
+
         FROM gil_tasks t
-        LEFT JOIN gil_investigator i ON i.id = t.investigator_id
+        LEFT JOIN toc_users au ON au.id = t.user_id
         ORDER BY t.date_created DESC
     """)
     rows = db.session.execute(sql).mappings().all()
 
-    # Also fetch all investigators for dropdown
-    investigators = db.session.execute(text("""
-        SELECT id, full_name FROM gil_investigator ORDER BY full_name ASC
+    # Convert to display-friendly name
+    tasks = []
+    for r in rows:
+        name = (r["user_full_name"] or "").strip()
+        if not name:
+            name = (r["user_username"] or "").strip()
+        if not name:
+            name = str(r["user_id"] or "")
+
+        tasks.append({
+            **r,
+            "user_name": name
+        })
+
+    # Dropdown: all users (Admins + Investigators)
+    users = db.session.execute(text("""
+        SELECT 
+            id,
+            username,
+            first_name,
+            last_name,
+            role
+        FROM toc_users
+        ORDER BY first_name ASC, last_name ASC, username ASC
     """)).mappings().all()
 
     return render_template(
         'tasks_admin.html',
-        tasks=rows,
-        investigators=investigators,
+        tasks=tasks,
+        users=users,       # ✅ changed
         user=user,
         shop=shop,
         roles=roles_list
     )
 
 
+# Admin task JSON
 # Admin task JSON
 @main.route('/admin_tasks/<int:task_id>/json')
 def get_admin_task_json(task_id):
@@ -2438,7 +2562,7 @@ def get_admin_task_json(task_id):
             t.description,
             t.due_date,
             t.status,
-            t.investigator_id
+            t.user_id
         FROM gil_tasks t
         WHERE t.id = :task_id
     """)
@@ -2450,11 +2574,11 @@ def get_admin_task_json(task_id):
     return jsonify({
         "id": row["id"],
         "case_id": row["case_id"],
-        "title": row["title"],
-        "description": row["description"],
+        "title": row["title"] or "",
+        "description": row["description"] or "",
         "due_date": row["due_date"].isoformat() if row["due_date"] else "",
-        "status": row["status"],
-        "investigator_id": row["investigator_id"]
+        "status": row["status"] or "",
+        "user_id": row["user_id"]          # ✅ changed
     })
 
 # Admin task update
@@ -4100,33 +4224,29 @@ def investigator_insured(id):
     )
 
 # ==========================================
-# Investigator Tasks API
+# Investigator Tasks API  (now user-based)
 # ==========================================
 
 @main.route("/api/investigator/tasks/summary")
 def investigator_tasks_summary():
-    user_data = session.get("user")
-    if not user_data:
+    user_data_raw = session.get("user")
+    user = json.loads(user_data_raw) if user_data_raw else {}
+    if not user or not user.get("id"):
         return jsonify({"error": "Unauthorized"}), 401
 
-    user = json.loads(user_data)
-    investigator = GilInvestigator.query.filter_by(user_id=user["id"]).first()
-    if not investigator:
-        return jsonify({"error": "No investigator profile"}), 403
-
+    user_id = int(user["id"])
     today = date.today()
-
-    open_statuses = ["פתוחה", "בתהליך"]
+    open_statuses = ["פתוחה", "חדש", "בתהליך"]
 
     open_count = GilTask.query.filter(
-        GilTask.investigator_id == investigator.id,
+        GilTask.user_id == user_id,
         GilTask.status.in_(open_statuses)
     ).count()
 
     overdue_count = GilTask.query.filter(
-        GilTask.investigator_id == investigator.id,
+        GilTask.user_id == user_id,
         GilTask.status.in_(open_statuses),
-        GilTask.due_date != None,
+        GilTask.due_date.isnot(None),
         GilTask.due_date < today
     ).count()
 
@@ -4136,74 +4256,71 @@ def investigator_tasks_summary():
     })
 
 
-from sqlalchemy import case
-
 @main.route("/api/investigator/tasks/recent")
 def investigator_tasks_recent():
-    user_data = session.get("user")
-    user = json.loads(user_data) if user_data else {}
-    if not user:
+    user_data_raw = session.get("user")
+    user = json.loads(user_data_raw) if user_data_raw else {}
+    if not user or not user.get("id"):
         return jsonify({"status": "error", "message": "Not logged in"}), 401
 
-    investigator = GilInvestigator.query.filter_by(user_id=user.get("id")).first()
-    if not investigator:
-        return jsonify([])
-
-    # toggle param from frontend
+    user_id = int(user["id"])
     show_all = (request.args.get("show_all", "0") == "1")
 
     default_statuses = ["פתוחה", "חדש", "בתהליך"]
 
-    # Base query
     q = (
         db.session.query(GilTask, GilInsured)
         .outerjoin(GilInsured, GilInsured.id == GilTask.case_id)
-        .filter(GilTask.investigator_id == investigator.id)
+        .filter(GilTask.user_id == user_id)   # ✅ user-based
     )
 
-    # Apply status filter only when NOT show_all
     if not show_all:
         q = q.filter(GilTask.status.in_(default_statuses))
 
-    tasks = (
-        q.order_by(
-            case(
-                (GilTask.status == "הושלמה", 1),
-                else_=0
-            ),  # completed last
-            GilTask.due_date.is_(None),      # NULL due_date last (MySQL safe)
-            GilTask.due_date.asc(),
-            GilTask.date_created.desc()
-        )
-        .limit(5)
-        .all()
-    )
+    q = q.order_by(
+        (GilTask.due_date == None).asc(),
+        GilTask.due_date.asc(),
+        GilTask.id.desc()
+    ).limit(25)
+
+    rows = q.all()
+
+    def insured_display_name(insured_obj):
+        if not insured_obj:
+            return ""
+        # Prefer the real fields you have in GilInsured
+        fn = (getattr(insured_obj, "first_name", "") or "").strip()
+        ln = (getattr(insured_obj, "last_name", "") or "").strip()
+        combo = f"{fn} {ln}".strip()
+        if combo:
+            return combo
+
+        # fallback if you ever add other fields later
+        for attr in ("name", "full_name", "insured_name"):
+            val = getattr(insured_obj, attr, None)
+            if isinstance(val, str) and val.strip():
+                return val.strip()
+
+        return f"תיק #{getattr(insured_obj, 'id', '')}".strip()
 
     out = []
-    for task, insured in tasks:
-        insured_name = None
-        case_ref = None
-
-        if insured:
-            first = (insured.first_name or "").strip()
-            last  = (insured.last_name or "").strip()
-            insured_name = f"{first} {last}".strip() or None
-            case_ref = (getattr(insured, "ref_number", None) or "").strip() or None
+    for task, insured in rows:
+        insured_name = insured_display_name(insured)
+        case_ref_value = (getattr(insured, "ref_number", None) or "").strip() if insured else ""
 
         out.append({
             "id": task.id,
             "case_id": task.case_id,
-            "title": task.title,
+            "title": task.title or "",
             "description": task.description or "",
-            "due_date": task.due_date.strftime("%Y-%m-%d") if task.due_date else None,
+            "due_date": task.due_date.isoformat() if task.due_date else None,
             "status": task.status or "",
+            # ✅ what the UI expects
             "insured_name": insured_name,
-            "case_ref": case_ref,
+            "case_ref": case_ref_value,
         })
 
     return jsonify(out)
-
-
 
 
 @main.route("/api/investigator/tasks/<int:task_id>/accept", methods=["POST"])
@@ -4213,15 +4330,14 @@ def investigator_accept_task(task_id):
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
     user = json.loads(user_data)
-
-    investigator = GilInvestigator.query.filter_by(user_id=user["id"]).first()
-    if not investigator:
-        return jsonify({"status": "error", "message": "No investigator profile"}), 403
+    user_id = user.get("id")
+    if not user_id:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
     task = GilTask.query.get_or_404(task_id)
 
-    # Security: investigator can accept only their own task
-    if task.investigator_id != investigator.id:
+    # Security: user can accept only their own task
+    if task.user_id != user_id:
         return jsonify({"status": "error", "message": "Forbidden"}), 403
 
     # Only accept if currently open
@@ -4231,7 +4347,7 @@ def investigator_accept_task(task_id):
     task.status = "בתהליך"
     db.session.commit()
 
-    return jsonify({"status": "success", "task_id": task.id, "new_status": task.status})
+    return jsonify({"status": "success"})
 
 
 @main.route("/api/investigator/tasks/<int:task_id>/complete", methods=["POST"])
@@ -4241,25 +4357,21 @@ def investigator_complete_task(task_id):
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
     user = json.loads(user_data)
-
-    investigator = GilInvestigator.query.filter_by(user_id=user["id"]).first()
-    if not investigator:
-        return jsonify({"status": "error", "message": "No investigator profile"}), 403
+    user_id = user.get("id")
+    if not user_id:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
     task = GilTask.query.get_or_404(task_id)
 
-    # Security: investigator can complete only their own task
-    if task.investigator_id != investigator.id:
+    # Security: user can complete only their own task
+    if task.user_id != user_id:
         return jsonify({"status": "error", "message": "Forbidden"}), 403
 
-    # Only complete if currently in progress (prevents completing "חדש" without accepting)
-    if task.status != "בתהליך":
-        return jsonify({"status": "error", "message": "Task not in progress"}), 400
-
+    # Move to completed
     task.status = "הושלמה"
     db.session.commit()
 
-    return jsonify({"status": "success", "task_id": task.id, "new_status": task.status})
+    return jsonify({"status": "success"})
 
 ##################### Investigator Calendar #######################
 

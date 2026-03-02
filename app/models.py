@@ -347,21 +347,35 @@ class GilInvestigatorCase(db.Model):
 
 
 
-from . import db
-
 class GilTask(db.Model):
-    __tablename__ = 'gil_tasks'
+    __tablename__ = "gil_tasks"
 
-    id = db.Column(db.Integer, primary_key=True)
-    case_id = db.Column(db.Integer, db.ForeignKey('gil_insured.id'), nullable=False)
-    investigator_id = db.Column(db.Integer, db.ForeignKey('gil_investigator.id'))
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    case_id = db.Column(db.Integer, db.ForeignKey("gil_insured.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    # ✅ NEW: generic assignee (replaces investigator_id)
+    user_id = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="RESTRICT"), nullable=False, index=True)
+
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text)
     due_date = db.Column(db.Date)
-    status = db.Column(db.String(50), default="פתוחה")
-    creator_id = db.Column(db.Integer, db.ForeignKey('toc_users.id'))
+    status = db.Column(db.String(50), default="פתוחה", index=True)
+
+    creator_id = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
+
     date_created = db.Column(db.DateTime, default=datetime.utcnow)
     date_modified = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # PW integration (optional now, very useful soon)
+    source = db.Column(db.String(30), default="manual")  # manual | process_wizard
+    # PW fields (keep as plain columns until PW tables/models are implemented)
+    milestone_instance_id = db.Column(db.Integer, nullable=True)
+    blocking_key = db.Column(db.String(80), nullable=True)
+
+    # Relationships (nice to have)
+    assignee = db.relationship("User", foreign_keys=[user_id])
+    creator = db.relationship("User", foreign_keys=[creator_id])
 
 
 class GilReport(db.Model):

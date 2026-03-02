@@ -275,15 +275,15 @@
           </div>
 
           <div class="row">
-            <div class="col-md-6 mb-3">
-              <label class="form-label">חוקר</label>
-              <select name="investigator_id" class="form-select">
-                <option value="">בחר חוקר</option>
-                {% for inv in investigators %}
-                  <option value="{{ inv.id }}" data-user-id="{{ inv.user_id }}">{{ inv.full_name }}</option>
-                {% endfor %}
-              </select>
-            </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label">משתמש</label>
+                <select name="user_id" class="form-select" required>
+                  <option value="">בחר משתמש</option>
+                  {% for u in users %}
+                    <option value="{{ u.id }}">{{ (u.first_name or '') ~ ' ' ~ (u.last_name or '') }} ({{ u.username }})</option>
+                  {% endfor %}
+                </select>
+              </div>
             <div class="col-md-6 mb-3">
               <label class="form-label">תאריך יעד</label>
               <input type="date" name="due_date" class="form-control">
@@ -448,10 +448,15 @@ $(function () {
       case_ids: ids,
       title: ($form.find('[name="title"]').val() || '').trim(),
       description: ($form.find('[name="description"]').val() || '').trim(),
-      investigator_id: $form.find('[name="investigator_id"]').val() || null,
+      user_id: $form.find('[name="user_id"]').val() || null,
       due_date: $form.find('[name="due_date"]').val() || null,
       status: $form.find('[name="status"]').val() || 'פתוחה'
     };
+
+    if (!payload.user_id) {
+      alert('משתמש הוא שדה חובה');
+      return;
+    }
 
     if (!payload.title) {
       alert('כותרת היא שדה חובה');
@@ -472,13 +477,14 @@ $(function () {
       }
 
       // Optional notification (once) to assigned investigator
-      const invUserId = $form.find('[name="investigator_id"] option:selected').data('user-id');
-      const invName = $form.find('[name="investigator_id"] option:selected').text();
-      if (invUserId && typeof createNotification === 'function') {
+      const assigneeName = $form.find('[name="user_id"] option:selected').text();
+      const assigneeId = $form.find('[name="user_id"]').val();
+
+      if (assigneeId && typeof createNotification === 'function') {
         await createNotification(
-          parseInt(invUserId),
+          parseInt(assigneeId),
           "משימות חדשות",
-          `נוצרו ${data.created} משימות חדשות עבור ${invName}: ${payload.title}`
+          `נוצרו ${data.created} משימות חדשות עבורך: ${payload.title}`
         );
       }
 
@@ -925,30 +931,34 @@ $('#saveStatusBtn').on('click', function () {
     });
 
 
-  function loadTasks(caseId) {
-    $.getJSON(`/tasks/${caseId}`, function (tasks) {
+    function loadTasks(caseId) {
+      $.getJSON(`/tasks/${caseId}`, function (tasks) {
         const $tbody = $('#tasksTable tbody').empty();
+
         if (tasks.length === 0) {
-            $tbody.append(`<tr><td colspan="6" class="text-center">אין משימות</td></tr>`);
-        } else {
-            tasks.forEach(t => {
-              $tbody.append(`
-                <tr data-id="${t.id}" data-description="${t.description}" data-investigator-id="${t.investigator_id || ''}">
-                  <td>${t.date_created ? t.date_created.substring(0,10) : ''}</td>
-                  <td>${t.title}</td>
-                  <td>${t.investigator_name || ''}</td>
-                  <td>${t.due_date || ''}</td>
-                  <td>${t.status}</td>
-                  <td>
-                    <button class="btn btn-sm btn-primary edit-task">✏️</button>
-                    <button class="btn btn-sm btn-danger delete-task">🗑</button>
-                  </td>
-                </tr>
-              `);
-            });
+          $tbody.append(`<tr><td colspan="6" class="text-center">אין משימות</td></tr>`);
+          return;
         }
-    });
-}
+
+        tasks.forEach(t => {
+          $tbody.append(`
+            <tr data-id="${t.id}"
+                data-description="${(t.description || '').replace(/"/g, '&quot;')}"
+                data-user-id="${t.user_id || ''}">
+              <td>${t.date_created ? t.date_created.substring(0,10) : ''}</td>
+              <td>${t.title || ''}</td>
+              <td>${t.user_name || ''}</td>
+              <td>${t.due_date || ''}</td>
+              <td>${t.status || ''}</td>
+              <td>
+                <button class="btn btn-sm btn-primary edit-task">✏️</button>
+                <button class="btn btn-sm btn-danger delete-task">🗑</button>
+              </td>
+            </tr>
+          `);
+        });
+      });
+    }
 
 // Reload tasks when modal opened
 $(document).on('click', '.tasks-btn', function () {
@@ -967,41 +977,37 @@ $(document).on('click', '.tasks-btn', function () {
 
 
 // Save new task
-$('#taskForm').on('submit', async function(e) {
+  $('#taskForm').on('submit', async function(e) {
     e.preventDefault();
-    const $this = $(this);
+
     const id = $('#task_id').val() || 0;
     const url = id ? `/tasks/${id}/update` : '/tasks/create';
 
-    $.post(url, $this.serialize(), async function(res) {
-        if (res.status === "success") {
-            alert("משימה נשמרה בהצלחה ✅");
+    $.post(url, $(this).serialize(), async function(res) {
+      if (res.status === "success") {
+        alert("משימה נשמרה בהצלחה ✅");
 
-            // --- Send notification to investigator BEFORE reset ---
-            const $inv = $('#task_investigator option:selected');
-            const invUserId = $inv.data('user-id') || null;
-            const invName = $inv.text();
+        // ✅ notify assigned user
+        const assigneeId = $('#task_user').val();
+        const assigneeName = $('#task_user option:selected').text();
+        const title = ($('input[name="title"]').val() || '').trim();
 
-            if (invUserId) {
-                await createNotification(
-                    parseInt(invUserId),   // ensure INT
-                    "משימה חדשה",
-                    `משימה חדשה הוקצתה לחוקר ${invName}: ${$('input[name="title"]').val()}`
-                );
-            }
-
-            // --- Reload tasks ---
-            const caseId = $("#task_case_id").val();
-            loadTasks(caseId);
-
-            // --- Now reset form ---
-            $('#taskForm')[0].reset();
-            $('#task_id').val("");
-        } else {
-            alert("⚠️ " + res.message);
+        if (assigneeId && typeof createNotification === 'function') {
+          await createNotification(
+            parseInt(assigneeId),
+            "משימה חדשה",
+            `משימה חדשה הוקצתה ל-${assigneeName}: ${title}`
+          );
         }
+
+        loadTasks($("#task_case_id").val());
+        $('#taskForm')[0].reset();
+        $('#task_id').val("");
+      } else {
+        alert("⚠️ " + (res.message || "שגיאה"));
+      }
     });
-});
+  });
 
 
 

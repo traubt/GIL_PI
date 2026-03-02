@@ -48,15 +48,13 @@
           </div>
 
           <div class="form-group mb-2">
-            <label>חוקר</label>
-              <select class="form-control" name="investigator_id" id="task_investigator">
-                <option value="">בחר חוקר</option>
-                {% for inv in investigators %}
-                  <option value="{{ inv.id }}" data-user-id="{{ inv.user_id or '' }}">
-                      {{ inv.full_name }}
-                  </option>
-                {% endfor %}
-              </select>
+            <label class="form-label">משתמש</label>
+            <select id="task_user" name="user_id" class="form-select" required>
+              <option value="">בחר משתמש</option>
+              {% for u in users %}
+                <option value="{{ u.id }}">{{ (u.first_name or '') ~ ' ' ~ (u.last_name or '') }} ({{ u.username }})</option>
+              {% endfor %}
+            </select>
 
 
           </div>
