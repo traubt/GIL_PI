@@ -186,6 +186,14 @@ class GilInsured(db.Model):
     investigator = db.Column(db.String(200))
     parkinson_ind = db.Column( db.SmallInteger,   nullable=False,  server_default="0" )
 
+    pw_process_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process.process_id", ondelete="SET NULL"),
+                              nullable=True)
+    pw_version_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process_version.version_id", ondelete="SET NULL"),
+                              nullable=True)
+
+    pw_process = db.relationship("GilPwProcess", foreign_keys=[pw_process_id])
+    pw_version = db.relationship("GilPwProcessVersion", foreign_keys=[pw_version_id])
+
 
 class GilInvestigator(db.Model):
     __tablename__ = 'gil_investigator'
@@ -744,5 +752,187 @@ class GilCaseNotePhoto(db.Model):
     def __repr__(self):
         return f"<GilCaseNotePhoto photo_id={self.photo_id} note_id={self.note_id}>"
 
+########################### Process Wizard #################################
+
+from sqlalchemy import UniqueConstraint
+
+class GilPwProcess(db.Model):
+    __tablename__ = "gil_pw_process"
+
+    process_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    insurance_company = db.Column(db.String(80), nullable=False)
+    claim_type = db.Column(db.String(80), nullable=False)
+    process_name = db.Column(db.String(120), nullable=False)
+    active_ind = db.Column(db.Boolean, default=True, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("insurance_company", "claim_type", name="uq_pw_process"),
+    )
+
+    # ✅ versions (not steps)
+    versions = db.relationship("GilPwProcessVersion", back_populates="process", cascade="all, delete-orphan")
 
 
+class GilPwStatusStep(db.Model):
+    __tablename__ = "gil_pw_status_step"
+
+    step_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    # ✅ version-based FK (not process-based)
+    version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_pw_process_version.version_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    step_order = db.Column(db.Integer, nullable=False)
+    status_code = db.Column(db.String(50), nullable=False)   # matches gil_insured.status
+    status_label = db.Column(db.String(80), nullable=False)
+    is_terminal = db.Column(db.Boolean, default=False, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint("version_id", "status_code", name="uq_pw_step"),
+        db.UniqueConstraint("version_id", "step_order", name="uq_pw_step_order"),
+    )
+
+    version = db.relationship("GilPwProcessVersion", back_populates="steps")
+    activities = db.relationship("GilPwStepActivity", back_populates="step", cascade="all, delete-orphan")
+
+
+class GilPwStepActivity(db.Model):
+    __tablename__ = "gil_pw_step_activity"
+
+    activity_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    step_id = db.Column(db.Integer, db.ForeignKey("gil_pw_status_step.step_id", ondelete="CASCADE"), nullable=False)
+
+    title = db.Column(db.String(120), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+
+    activity_type = db.Column(db.String(30), default="task", nullable=False)   # task|check|doc|external
+    blocking_ind = db.Column(db.Boolean, default=True, nullable=False)
+
+    default_assignee_role = db.Column(db.String(50), nullable=True)
+    due_days_offset = db.Column(db.Integer, nullable=True)
+
+    active_ind = db.Column(db.Boolean, default=True, nullable=False)
+    sort_order = db.Column(db.Integer, default=10, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    step = db.relationship("GilPwStatusStep", back_populates="activities")
+
+
+class GilPwCaseActivity(db.Model):
+    __tablename__ = "gil_pw_case_activity"
+
+    case_activity_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    case_id = db.Column(db.Integer, db.ForeignKey("gil_insured.id", ondelete="CASCADE"), nullable=False, index=True)
+    activity_id = db.Column(db.Integer, db.ForeignKey("gil_pw_step_activity.activity_id", ondelete="CASCADE"), nullable=False)
+
+    status = db.Column(db.String(30), default="open", nullable=False, index=True)  # open|done|skipped
+    completed_at = db.Column(db.DateTime, nullable=True)
+    completed_by = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
+    note = db.Column(db.Text, nullable=True)
+
+    task_id = db.Column(db.Integer, db.ForeignKey("gil_tasks.id", ondelete="SET NULL"), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("case_id", "activity_id", name="uq_case_activity"),
+    )
+
+    activity = db.relationship("GilPwStepActivity")
+
+class GilCaseStatusHistory(db.Model):
+    __tablename__ = "gil_case_status_history"
+
+    history_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    case_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_insured.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
+
+    status_code = db.Column(db.String(50), nullable=False, index=True)
+    process_id = db.Column(db.Integer, nullable=True)
+
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    started_by = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
+
+    ended_at = db.Column(db.DateTime, nullable=True)
+    ended_by = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
+
+    duration_minutes = db.Column(db.Integer, nullable=True)
+
+    note = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+
+class GilPwCaseStatusAudit(db.Model):
+    __tablename__ = "gil_pw_case_status_audit"
+
+    audit_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    case_id = db.Column(db.Integer, db.ForeignKey("gil_insured.id", ondelete="CASCADE"), nullable=False, index=True)
+    process_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process.process_id", ondelete="RESTRICT"), nullable=False, index=True)
+    version_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process_version.version_id", ondelete="RESTRICT"), nullable=False, index=True)
+
+    status_code = db.Column(db.String(50), nullable=False, index=True)
+    status_name = db.Column(db.String(100), nullable=True)
+
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    started_by_user_id = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
+
+    ended_at = db.Column(db.DateTime, nullable=True)
+    ended_by_user_id = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
+
+    duration_seconds = db.Column(db.Integer, nullable=True)
+    note = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    started_by = db.relationship("User", foreign_keys=[started_by_user_id])
+    ended_by = db.relationship("User", foreign_keys=[ended_by_user_id])
+
+
+
+class GilPwProcessVersion(db.Model):
+    __tablename__ = "gil_pw_process_version"
+
+    version_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    process_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process.process_id", ondelete="CASCADE"), nullable=False, index=True)
+
+    version_no = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(20), default="draft", nullable=False)  # draft|published|archived
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_by = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
+
+    published_at = db.Column(db.DateTime, nullable=True)
+    published_by = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
+
+    note = db.Column(db.Text, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("process_id", "version_no", name="uq_process_version"),
+        db.Index("ix_version_process", "process_id"),
+        db.Index("ix_version_status", "status"),
+    )
+
+    process = db.relationship("GilPwProcess", back_populates="versions")
+
+    # ✅ steps belong to version
+    steps = db.relationship("GilPwStatusStep", back_populates="version", cascade="all, delete-orphan")
