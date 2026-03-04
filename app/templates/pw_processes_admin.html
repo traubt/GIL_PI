@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="pagetitle">
+  <h1>תהליך עבודה (PW)</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">עדכוני מערכת</li>
+      <li class="breadcrumb-item active">תהליך עבודה (PW)</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="card">
+    <div class="card-body pt-3">
+
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="fw-bold">ניהול תהליכים לפי חברת ביטוח + סוג תביעה</div>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#pwCreateModal">
+          <i class="bi bi-plus-lg"></i> צור תהליך
+        </button>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm table-striped align-middle">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>חברת ביטוח</th>
+              <th>סוג תביעה</th>
+              <th>שם תהליך</th>
+              <th>פעיל</th>
+              <th>גרסה אחרונה</th>
+              <th>סטטוס גרסה</th>
+              <th class="text-end">פעולות</th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for p in processes %}
+            <tr>
+              <td>{{ p.process_id }}</td>
+              <td>{{ p.insurance_company }}</td>
+              <td>{{ p.claim_type }}</td>
+              <td>{{ p.process_name }}</td>
+              <td>
+                {% if p.active_ind %}
+                  <span class="badge bg-success">כן</span>
+                {% else %}
+                  <span class="badge bg-secondary">לא</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if p.latest_version_no %}
+                  v{{ p.latest_version_no }}
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>
+                {% if p.latest_version_status %}
+                  <span class="badge bg-info text-dark">{{ p.latest_version_status }}</span>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <button
+                  class="btn btn-outline-secondary btn-sm"
+                  onclick='openEditProcessModal(
+                    {{ p.process_id }},
+                    {{ (p.insurance_company or "") | tojson }},
+                    {{ (p.claim_type or "") | tojson }},
+                    {{ (p.process_name or "") | tojson }},
+                    {{ 1 if p.active_ind else 0 }}
+                  )'>
+                  <i class="bi bi-pencil"></i> ערוך
+                </button>
+
+                <button class="btn btn-outline-warning btn-sm" onclick="toggleProcess({{ p.process_id }})">
+                  <i class="bi bi-power"></i>
+                  {% if p.active_ind %} כבה {% else %} הפעל {% endif %}
+                </button>
+
+                <!-- Next phase: open versions/steps builder -->
+                <a class="btn btn-outline-primary btn-sm" href="/admin/pw/processes/{{ p.process_id }}/builder">
+                  <i class="bi bi-diagram-3"></i> בונה תהליך
+                </a>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Create Modal -->
+<div class="modal fade" id="pwCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="pwCreateForm">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">צור תהליך</h5>
+        <button type="button" class="btn-close ms-0" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <div class="mb-2">
+          <label class="form-label">חברת ביטוח</label>
+          <select class="form-select" name="insurance_company" required>
+            <option value="">בחר חברת ביטוח</option>
+            {% for ins in insurance_list %}
+              <option value="{{ ins }}">{{ ins }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label">סוג תביעה</label>
+          <select class="form-select" name="claim_type" required>
+            <option value="">בחר סוג תביעה</option>
+            {% for ct in claim_type_list %}
+              <option value="{{ ct }}">{{ ct }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label">שם תהליך</label>
+          <input class="form-control" name="process_name" required>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">סגור</button>
+        <button type="submit" class="btn btn-primary">שמור</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Edit Modal -->
+<div class="modal fade" id="pwEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" id="pwEditForm">
+      <input type="hidden" name="process_id" id="ep_process_id">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">ערוך תהליך</h5>
+        <button type="button" class="btn-close ms-0" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <div class="mb-2">
+          <label class="form-label">חברת ביטוח</label>
+          <input class="form-control" id="ep_insurance" disabled>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label">סוג תביעה</label>
+          <input class="form-control" id="ep_claim" disabled>
+        </div>
+
+        <div class="mb-2">
+          <label class="form-label">שם תהליך</label>
+          <input class="form-control" name="process_name" id="ep_name" required>
+        </div>
+
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" value="1" id="ep_active" name="active_ind">
+          <label class="form-check-label" for="ep_active">פעיל</label>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">סגור</button>
+        <button type="submit" class="btn btn-primary">שמור</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Message Modal (Bootstrap consistent messaging) -->
+<div class="modal fade" id="msgModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="msgTitle">הודעה</h5>
+        <button type="button" class="btn-close ms-0" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="msgBody">...</div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary rounded-pill" data-bs-dismiss="modal">אישור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+let pwCreateModal, pwEditModal, msgModal;
+
+function showMsg(title, body){
+  document.getElementById("msgTitle").innerText = title || "הודעה";
+  document.getElementById("msgBody").innerText = body || "";
+  msgModal.show();
+}
+
+function openEditProcessModal(id, insurance, claim, name, active){
+  document.getElementById("ep_process_id").value = id;
+  document.getElementById("ep_insurance").value = insurance || "";
+  document.getElementById("ep_claim").value = claim || "";
+  document.getElementById("ep_name").value = name || "";
+  document.getElementById("ep_active").checked = (active === 1);
+  pwEditModal.show();
+}
+
+async function toggleProcess(processId){
+  const res = await fetch(`/admin/pw/processes/${processId}/toggle`, { method: "POST" });
+  const data = await res.json();
+  if(data.status !== "success"){
+    showMsg("שגיאה", data.message || "לא ניתן לעדכן");
+    return;
+  }
+  location.reload();
+}
+
+document.addEventListener("DOMContentLoaded", function(){
+  pwCreateModal = new bootstrap.Modal(document.getElementById("pwCreateModal"));
+  pwEditModal   = new bootstrap.Modal(document.getElementById("pwEditModal"));
+  msgModal      = new bootstrap.Modal(document.getElementById("msgModal"));
+
+  document.getElementById("pwCreateForm").addEventListener("submit", async function(e){
+    e.preventDefault();
+    const fd = new FormData(this);
+
+    const res = await fetch("/admin/pw/processes/create", { method: "POST", body: fd });
+    const data = await res.json();
+
+    if(data.status !== "success"){
+      showMsg("שגיאה", data.message || "יצירה נכשלה");
+      return;
+    }
+    pwCreateModal.hide();
+    location.reload();
+  });
+
+  document.getElementById("pwEditForm").addEventListener("submit", async function(e){
+    e.preventDefault();
+    const processId = document.getElementById("ep_process_id").value;
+    const fd = new FormData(this);
+
+    // checkbox sends only if checked; normalize to 1/0
+    if(!document.getElementById("ep_active").checked){
+      fd.set("active_ind", "0");
+    } else {
+      fd.set("active_ind", "1");
+    }
+
+    const res = await fetch(`/admin/pw/processes/${processId}/update`, { method: "POST", body: fd });
+    const data = await res.json();
+
+    if(data.status !== "success"){
+      showMsg("שגיאה", data.message || "עדכון נכשל");
+      return;
+    }
+    pwEditModal.hide();
+    location.reload();
+  });
+});
+</script>
+
+{% endblock %}

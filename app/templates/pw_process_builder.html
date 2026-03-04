@@ -1,0 +1,678 @@
+{% extends "base.html" %}
+{% block content %}
+
+<div class="pagetitle">
+  <h1>בונה תהליך (PW)</h1>
+  <nav>
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item">עדכוני מערכת</li>
+      <li class="breadcrumb-item"><a href="/admin/pw/processes">תהליכי עבודה (PW)</a></li>
+      <li class="breadcrumb-item active">בונה תהליך</li>
+    </ol>
+  </nav>
+</div>
+
+<section class="section">
+  <div class="card">
+    <div class="card-body pt-3">
+
+      <div class="d-flex justify-content-between align-items-start flex-wrap gap-2">
+        <div>
+          <div class="fw-bold">{{ process.process_name }}</div>
+          <div class="text-muted small">
+            {{ process.insurance_company }} • {{ process.claim_type }}
+          </div>
+        </div>
+
+        <div class="d-flex gap-2">
+          <a class="btn btn-outline-secondary btn-sm" href="/admin/pw/processes">
+            <i class="bi bi-arrow-right"></i> חזרה
+          </a>
+
+          <button class="btn btn-primary btn-sm" onclick="createDraftVersion({{ process.process_id }})">
+            <i class="bi bi-plus-lg"></i> צור גרסה (Draft)
+          </button>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="row g-3">
+        <div class="col-lg-4">
+          <div class="fw-bold mb-2">גרסאות</div>
+
+          <div class="list-group">
+            {% if versions and versions|length > 0 %}
+              {% for v in versions %}
+                <a class="list-group-item list-group-item-action {% if selected_version and v.version_id == selected_version.version_id %}active{% endif %}"
+                   href="/admin/pw/processes/{{ process.process_id }}/builder?version_id={{ v.version_id }}">
+                  <div class="d-flex justify-content-between">
+                    <div>v{{ v.version_no }}</div>
+                    <span class="badge bg-light text-dark">{{ v.status }}</span>
+                  </div>
+                  <div class="small opacity-75">
+                    {% if v.created_at %}{{ v.created_at.strftime("%Y-%m-%d %H:%M") }}{% endif %}
+                  </div>
+                </a>
+              {% endfor %}
+            {% else %}
+              <div class="text-muted small">אין גרסאות עדיין. לחץ "צור גרסה".</div>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="col-lg-8">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div class="fw-bold">שלבים (סטטוסים)</div>
+            {% if selected_version %}
+              <span class="badge bg-info text-dark">עריכה: v{{ selected_version.version_no }} ({{ selected_version.status }})</span>
+            {% else %}
+              <span class="badge bg-secondary">אין גרסה</span>
+            {% endif %}
+
+            {% if selected_version %}
+              <button class="btn btn-success btn-sm" type="button"
+                      onclick="openStepModal('create', {{ selected_version.version_id }})">
+                <i class="bi bi-plus-lg"></i> הוסף שלב
+              </button>
+            {% endif %}
+          </div>
+
+{% if not selected_version %}
+  <div class="alert alert-warning mb-0">
+    אין גרסה לבחור. צור גרסה כדי להתחיל לבנות את התהליך.
+  </div>
+{% else %}
+
+  {% if steps and steps|length > 0 %}
+    <div class="table-responsive">
+      <table class="table table-sm table-striped align-middle">
+        <thead>
+          <tr>
+            <th style="width:70px;">סדר</th>
+            <th>שלב\סטטוס</th>
+            <th style="width:110px;">סופי</th>
+            <th style="width:200px;" class="text-end">פעולות</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in steps %}
+            <tr data-step-id="{{ s.step_id }}">
+              <td>{{ loop.index }}</td>
+              <td>{{ s.status.status_description }}</td>
+              <td>
+                {% if s.is_terminal %}
+                  <span class="badge bg-success">כן</span>
+                {% else %}
+                  <span class="badge bg-secondary">לא</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {#
+<button type="button"
+        class="btn btn-outline-secondary btn-sm js-edit-step"
+        data-step-id="{{ s.step_id }}"
+        data-version-id="{{ s.version_id }}"
+        data-step-order="{{ s.step_order }}"
+        data-status-code="{{ s.status_code|default('') }}"
+        data-status-label="{{ s.status_label|default('') }}"
+        data-is-terminal="{{ 1 if s.is_terminal else 0 }}">
+  <i class="bi bi-pencil"></i> ערוך
+</button>
+                #}
+
+                <button class="btn btn-outline-danger btn-sm"
+                        onclick="deleteStep({{ s.step_id }})">
+                  <i class="bi bi-trash"></i> מחק
+                </button>
+
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="openActivityModal('create', {{ s.step_id }})">
+                  <i class="bi bi-plus-lg"></i> פעילות
+                </button>
+
+                <button type="button" class="btn btn-outline-secondary btn-sm js-step-up" data-step-id="{{ s.step_id }}">
+                  <i class="bi bi-arrow-up"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm js-step-down" data-step-id="{{ s.step_id }}">
+                  <i class="bi bi-arrow-down"></i>
+                </button>
+
+
+              </td>
+            </tr>
+
+            {% set acts = (s.activities_sorted if s.activities_sorted is defined else s.activities) %}
+            {% if acts and acts|length > 0 %}
+              <tr>
+                <td></td>
+                <td colspan="4">
+                  <div class="small text-muted mb-1">פעילויות:</div>
+
+                  <div class="d-flex flex-column gap-1">
+                    {% for a in acts %}
+                      <div class="d-flex justify-content-between align-items-center border rounded p-2">
+                        <div>
+                          <div class="fw-bold">{{ a.title }}</div>
+                          <div class="small text-muted">
+                            סוג: {{ a.activity_type }}
+                            {% if a.blocking_ind %} • <span class="text-danger fw-bold">חוסם</span>{% endif %}
+                            {% if a.default_assignee_role %} • תפקיד: {{ a.default_assignee_role }}{% endif %}
+                            {% if a.due_days_offset is not none %} • יעד: +{{ a.due_days_offset }} ימים{% endif %}
+                          </div>
+                          {% if a.description %}
+                            <div class="small">{{ a.description }}</div>
+                          {% endif %}
+                        </div>
+
+                        <div class="d-flex gap-2">
+                          <button class="btn btn-outline-secondary btn-sm"
+                                  onclick="openActivityModal('edit', null, {
+                                    activity_id: {{ a.activity_id }},
+                                    step_id: {{ s.step_id }},
+                                    title: {{ (a.title or '')|tojson }},
+                                    description: {{ (a.description or '')|tojson }},
+                                    activity_type: {{ (a.activity_type or 'task')|tojson }},
+                                    blocking_ind: {{ 1 if a.blocking_ind else 0 }},
+                                    blocked_status_code: {{ (a.blocked_status_code or '')|tojson }},
+                                    default_assignee_role: {{ (a.default_assignee_role or '')|tojson }},
+                                    due_days_offset: {{ (a.due_days_offset if a.due_days_offset is not none else 'null') }},
+                                    sort_order: {{ a.sort_order or 10 }}
+                                  })">
+                            <i class="bi bi-pencil"></i>
+                          </button>
+
+                          <button class="btn btn-outline-danger btn-sm"
+                                  onclick="deleteActivity({{ a.activity_id }})">
+                            <i class="bi bi-trash"></i>
+                          </button>
+                        </div>
+                      </div>
+                    {% endfor %}
+                  </div>
+                </td>
+              </tr>
+            {% endif %}
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <div class="alert alert-secondary mb-0">
+      אין שלבים בגרסה זו עדיין. לחץ "הוסף שלב".
+    </div>
+  {% endif %}
+
+{% endif %}
+
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<script>
+async function createDraftVersion(processId){
+  const res = await fetch(`/admin/pw/processes/${processId}/versions/create`, { method: "POST" });
+  const data = await res.json();
+  if(data.status !== "success"){
+    alert(data.message || "יצירת גרסה נכשלה");
+    return;
+  }
+  // go to builder on the new version
+  window.location.href = `/admin/pw/processes/${processId}/builder?version_id=${data.version_id}`;
+}
+</script>
+
+<!-- STEP MODAL -->
+<div class="modal fade" id="pwStepModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="pwStepModalTitle">שלב</h5>
+        <button type="button" class="btn-close ms-0" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="pw_step_mode" value="create">
+        <input type="hidden" id="pw_step_id" value="">
+        <input type="hidden" id="pw_step_version_id" value="">
+
+        <div class="mb-2">
+          <label class="form-label">סדר</label>
+          <input type="number" class="form-control" id="pw_step_order" min="1">
+        </div>
+
+        <select id="step_status_code" class="form-select" required>
+          <option value="">בחר סטטוס...</option>
+          {% for s in case_statuses %}
+            <option value="{{ s.status_code }}">{{ s.status_description }}</option>
+          {% endfor %}
+        </select>
+
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="checkbox" id="pw_is_terminal">
+          <label class="form-check-label">שלב סופי</label>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">סגור</button>
+        <button type="button" class="btn btn-primary rounded-pill" onclick="saveStep()">שמור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ACTIVITY MODAL -->
+<div class="modal fade" id="pwActivityModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="pwActivityModalTitle">פעילות</h5>
+        <button type="button" class="btn-close ms-0" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="pw_act_mode" value="create">
+        <input type="hidden" id="pw_act_id" value="">
+        <input type="hidden" id="pw_act_step_id" value="">
+
+        <div class="row g-2">
+          <div class="col-md-8">
+            <label class="form-label">כותרת</label>
+            <input type="text" class="form-control" id="pw_act_title">
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">סוג</label>
+            <select class="form-select" id="pw_act_type">
+              <option value="task">task</option>
+              <option value="check">check</option>
+              <option value="doc">doc</option>
+              <option value="external">external</option>
+            </select>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">תיאור</label>
+            <textarea class="form-control" id="pw_act_desc" rows="3"></textarea>
+          </div>
+
+          <label class="form-label">תפקיד ברירת מחדל</label>
+          <select class="form-select" id="pw_act_role">
+            <option value="">— ללא —</option>
+            {% for r in role_options %}
+              <option value="{{ r }}">{{ r }}</option>
+            {% endfor %}
+          </select>
+
+          <div class="col-md-4">
+            <label class="form-label">יעד (ימים מהתחלה)</label>
+            <input type="number" class="form-control" id="pw_act_due" placeholder="למשל 3">
+          </div>
+
+          <div class="col-md-4">
+            <label class="form-label">מיון</label>
+            <input type="number" class="form-control" id="pw_act_sort" value="10">
+          </div>
+
+          <div class="col-12">
+            <div class="form-check mt-1">
+              <input class="form-check-input" type="checkbox" id="pw_act_blocking" >
+              <label class="form-check-label">חוסם</label>
+            </div>
+          </div>
+
+          <div class="mt-2" id="pw_blocked_wrap" style="display:none;">
+            <label class="form-label">חוסם עד סטטוס</label>
+            <select class="form-select" id="pw_act_blocked_status"></select>
+            <div class="form-text">ברירת מחדל: הסטטוס הבא אחרי השלב הנוכחי</div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">סגור</button>
+        <button type="button" class="btn btn-primary rounded-pill" onclick="saveActivity()">שמור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+
+  // steps list for "blocked status" dropdown
+  const pwSteps = [
+    {% for s in steps %}
+      {
+        step_id: {{ s.step_id }},
+        step_order: {{ s.step_order }},
+        status_code: {{ (s.status_code or '')|tojson }},
+        status_label: {{ (s.status.status_description if s.status else '')|tojson }}
+      }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ];
+
+  function computeNextStatuses(currentStepId){
+    const cur = pwSteps.find(x => x.step_id == currentStepId);
+    if(!cur) return [];
+    return pwSteps
+      .filter(x => x.step_order > cur.step_order)
+      .sort((a,b) => a.step_order - b.step_order);
+  }
+
+  function fillBlockedStatusDropdown(currentStepId, selectedCode=null){
+    const wrap = document.getElementById("pw_blocked_wrap");
+    const sel = document.getElementById("pw_act_blocked_status");
+
+    const opts = computeNextStatuses(currentStepId);
+    sel.innerHTML = "";
+
+    if(opts.length === 0){
+      // nothing to block (last step)
+      wrap.style.display = "none";
+      sel.value = "";
+      return;
+    }
+
+    // options
+    for(const s of opts){
+      const o = document.createElement("option");
+      o.value = s.status_code;
+      o.textContent = s.status_label;
+      sel.appendChild(o);
+    }
+
+    // default = very next
+    const defaultCode = opts[0].status_code;
+    sel.value = (selectedCode && opts.some(x=>x.status_code===selectedCode)) ? selectedCode : defaultCode;
+
+    wrap.style.display = "block";
+  }
+
+  function syncBlockingUI(){
+    const stepId = document.getElementById("pw_act_step_id").value;
+    const isBlocking = document.getElementById("pw_act_blocking").checked;
+
+    if(isBlocking){
+      fillBlockedStatusDropdown(stepId, document.getElementById("pw_act_blocked_status").value || null);
+    } else {
+      document.getElementById("pw_blocked_wrap").style.display = "none";
+      document.getElementById("pw_act_blocked_status").innerHTML = "";
+    }
+  }
+
+  // hook checkbox
+  document.addEventListener("DOMContentLoaded", () => {
+    const cb = document.getElementById("pw_act_blocking");
+    if(cb){
+      cb.addEventListener("change", syncBlockingUI);
+    }
+  });
+
+
+let pwStepModal, pwActivityModal;
+
+document.addEventListener("DOMContentLoaded", function(){
+  pwStepModal = new bootstrap.Modal(document.getElementById("pwStepModal"));
+  pwActivityModal = new bootstrap.Modal(document.getElementById("pwActivityModal"));
+});
+
+function openStepModal(mode, versionId=null, data=null){
+  document.getElementById("pw_step_mode").value = mode;
+
+  const orderEl = document.getElementById("pw_step_order");
+  const statusEl = document.getElementById("step_status_code");
+  const termEl = document.getElementById("pw_is_terminal");
+
+  if(mode === "create"){
+    document.getElementById("pwStepModalTitle").innerText = "הוסף שלב";
+    document.getElementById("pw_step_id").value = "";
+    document.getElementById("pw_step_version_id").value = versionId || "";
+    orderEl.value = "";
+    statusEl.value = "";
+    termEl.checked = false;
+  } else {
+    document.getElementById("pwStepModalTitle").innerText = "ערוך שלב";
+    document.getElementById("pw_step_id").value = data.step_id;
+    document.getElementById("pw_step_version_id").value = "";
+    orderEl.value = data.step_order ?? "";
+    statusEl.value = data.status_code || "";
+    termEl.checked = (data.is_terminal === true || data.is_terminal === 1);
+  }
+
+  pwStepModal.show();
+}
+
+async function saveStep(){
+  const mode = document.getElementById("pw_step_mode").value;
+  const stepId = document.getElementById("pw_step_id").value;
+  const versionId = document.getElementById("pw_step_version_id").value;
+
+  const payload = {
+    step_order: document.getElementById("pw_step_order").value,
+    status_code: document.getElementById("step_status_code").value,
+    is_terminal: document.getElementById("pw_is_terminal").checked ? 1 : 0
+  };
+
+  const url = (mode === "create")
+    ? `/admin/pw/versions/${encodeURIComponent(versionId)}/steps/create`
+    : `/admin/pw/steps/${encodeURIComponent(stepId)}/update`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  if(data.status !== "success"){
+    alert(data.message || "שגיאה בשמירת שלב");
+    return;
+  }
+
+  location.reload();
+}
+
+async function deleteStep(stepId){
+  if(!confirm("למחוק שלב? (ימחקו גם פעילויות תחתיו)")) return;
+
+  const res = await fetch(`/admin/pw/steps/${encodeURIComponent(stepId)}/delete`, { method:"POST" });
+  const data = await res.json();
+
+  if(data.status !== "success"){
+    alert(data.message || "שגיאה במחיקת שלב");
+    return;
+  }
+  location.reload();
+}
+
+function openActivityModal(mode, stepId=null, data=null){
+  document.getElementById("pw_act_mode").value = mode;
+
+  if(mode === "create"){
+    document.getElementById("pwActivityModalTitle").innerText = "הוסף פעילות";
+    document.getElementById("pw_act_id").value = "";
+    document.getElementById("pw_act_step_id").value = stepId || "";
+    document.getElementById("pw_act_title").value = "";
+    document.getElementById("pw_act_desc").value = "";
+    document.getElementById("pw_act_type").value = "task";
+    document.getElementById("pw_act_role").value = "";
+    document.getElementById("pw_act_due").value = "";
+    document.getElementById("pw_act_sort").value = 10;
+    document.getElementById("pw_act_blocking").checked = false;
+  } else {
+    document.getElementById("pwActivityModalTitle").innerText = "ערוך פעילות";
+    document.getElementById("pw_act_id").value = data.activity_id;
+    document.getElementById("pw_act_step_id").value = data.step_id;
+    document.getElementById("pw_act_title").value = data.title || "";
+    document.getElementById("pw_act_desc").value = data.description || "";
+    document.getElementById("pw_act_type").value = data.activity_type || "task";
+    document.getElementById("pw_act_role").value = data.default_assignee_role || "";
+    document.getElementById("pw_act_due").value = (data.due_days_offset === null) ? "" : data.due_days_offset;
+    document.getElementById("pw_act_sort").value = data.sort_order || 10;
+    document.getElementById("pw_act_blocking").checked = (data.blocking_ind == 1);
+    if(data.blocked_status_code){
+      document.getElementById("pw_act_blocked_status").value = data.blocked_status_code;
+    }
+    syncBlockingUI();
+  }
+
+  pwActivityModal.show();
+}
+
+async function saveActivity(){
+  const mode = document.getElementById("pw_act_mode").value;
+  const actId = document.getElementById("pw_act_id").value;
+  const stepId = document.getElementById("pw_act_step_id").value;
+
+  const payload = {
+    title: document.getElementById("pw_act_title").value,
+    description: document.getElementById("pw_act_desc").value,
+    activity_type: document.getElementById("pw_act_type").value,
+    blocking_ind: document.getElementById("pw_act_blocking").checked ? 1 : 0,
+    blocked_status_code: document.getElementById("pw_act_blocking").checked
+    ? document.getElementById("pw_act_blocked_status").value
+    : null,
+    default_assignee_role: document.getElementById("pw_act_role").value,
+    due_days_offset: document.getElementById("pw_act_due").value,
+    sort_order: document.getElementById("pw_act_sort").value
+  };
+
+  const url = (mode === "create")
+    ? `/admin/pw/steps/${encodeURIComponent(stepId)}/activities/create`
+    : `/admin/pw/activities/${encodeURIComponent(actId)}/update`;
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(payload)
+  });
+
+  const data = await res.json();
+  if(data.status !== "success"){
+    alert(data.message || "שגיאה בשמירת פעילות");
+    return;
+  }
+
+  location.reload();
+}
+
+async function deleteActivity(activityId){
+  if(!confirm("למחוק פעילות?")) return;
+
+  const res = await fetch(`/admin/pw/activities/${encodeURIComponent(activityId)}/delete`, { method:"POST" });
+  const data = await res.json();
+
+  if(data.status !== "success"){
+    alert(data.message || "שגיאה במחיקת פעילות");
+    return;
+  }
+  location.reload();
+}
+</script>
+
+<script>
+  document.addEventListener("click", function (e) {
+    const btn = e.target.closest(".js-edit-step");
+    if (!btn) return;
+
+    const stepData = {
+      step_id: parseInt(btn.dataset.stepId, 10),
+      version_id: parseInt(btn.dataset.versionId, 10),
+      step_order: parseInt(btn.dataset.stepOrder, 10),
+      status_code: btn.dataset.statusCode || "",
+      status_label: btn.dataset.statusLabel || "",
+      is_terminal: (btn.dataset.isTerminal === "1")
+    };
+
+    openStepModal("edit", null, stepData);
+  });
+</script>
+
+<script>
+document.addEventListener("click", function(e){
+  const upBtn = e.target.closest(".js-step-up");
+  const downBtn = e.target.closest(".js-step-down");
+  if(!upBtn && !downBtn) return;
+
+  const row = (upBtn || downBtn).closest("tr");
+  if(!row) return;
+
+  const tbody = row.closest("tbody");
+  if(!tbody) return;
+
+  // helper: returns [stepRow, optionalDetailsRow]
+  function getStepPair(stepRow){
+    const details = stepRow.nextElementSibling;
+    // details row is the one with colspan="4" you render for activities
+    const isDetails = details && details.querySelector("td[colspan='4']");
+    return isDetails ? [stepRow, details] : [stepRow];
+  }
+
+  // list of step rows only (not activities rows)
+  const stepRows = Array.from(tbody.querySelectorAll("tr"))
+    .filter(r => r.querySelector(".js-step-up")); // step row marker
+
+  const idx = stepRows.indexOf(row);
+  if(idx === -1) return;
+
+  const targetIdx = upBtn ? idx - 1 : idx + 1;
+  if(targetIdx < 0 || targetIdx >= stepRows.length) return;
+
+  const targetRow = stepRows[targetIdx];
+
+  const pairA = getStepPair(row);
+  const pairB = getStepPair(targetRow);
+
+  // small animation
+  pairA.forEach(r => r.style.transition = "transform 180ms ease");
+  pairB.forEach(r => r.style.transition = "transform 180ms ease");
+
+  const dir = upBtn ? -1 : 1;
+  pairA.forEach(r => r.style.transform = `translateY(${dir * -12}px)`);
+  pairB.forEach(r => r.style.transform = `translateY(${dir * 12}px)`);
+
+  setTimeout(() => {
+    pairA.concat(pairB).forEach(r => { r.style.transition=""; r.style.transform=""; });
+
+    // swap pairs in DOM
+    if(upBtn){
+      // move A above B
+      pairA.forEach(r => tbody.insertBefore(r, targetRow));
+    } else {
+      // move A below B (insert after B’s pair)
+      const afterB = pairB[pairB.length - 1].nextElementSibling;
+      pairA.forEach(r => tbody.insertBefore(r, afterB));
+    }
+
+    // ordered step ids (from the buttons that have data-step-id)
+    const ordered = Array.from(tbody.querySelectorAll("tr"))
+      .filter(r => r.querySelector(".js-step-up"))
+      .map(r => r.querySelector(".js-step-up").dataset.stepId);
+
+    const versionId = {{ selected_version.version_id if selected_version else "null" }};
+    if(!versionId) return;
+
+    fetch(`/admin/pw/versions/${versionId}/steps/reorder`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ ordered_step_ids: ordered })
+    });
+
+    // update visible order numbers
+    Array.from(tbody.querySelectorAll("tr"))
+      .filter(r => r.querySelector(".js-step-up"))
+      .forEach((row, index) => {
+          const cell = row.querySelector("td:first-child");
+          if(cell) cell.textContent = index + 1;
+      });
+
+  }, 190);
+});
+</script>
+
+{% endblock %}

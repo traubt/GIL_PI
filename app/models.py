@@ -781,17 +781,21 @@ class GilPwStatusStep(db.Model):
 
     step_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
-    # ✅ version-based FK (not process-based)
     version_id = db.Column(
         db.Integer,
         db.ForeignKey("gil_pw_process_version.version_id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
+        index=True
     )
 
     step_order = db.Column(db.Integer, nullable=False)
-    status_code = db.Column(db.String(50), nullable=False)   # matches gil_insured.status
-    status_label = db.Column(db.String(80), nullable=False)
+
+    status_code = db.Column(
+        db.String(50),
+        db.ForeignKey("dor_case_status.status_code"),
+        nullable=False
+    )
+
     is_terminal = db.Column(db.Boolean, default=False, nullable=False)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -801,8 +805,15 @@ class GilPwStatusStep(db.Model):
         db.UniqueConstraint("version_id", "step_order", name="uq_pw_step_order"),
     )
 
+    # relationships
+    status = db.relationship("DorCaseStatus")
     version = db.relationship("GilPwProcessVersion", back_populates="steps")
-    activities = db.relationship("GilPwStepActivity", back_populates="step", cascade="all, delete-orphan")
+
+    activities = db.relationship(
+        "GilPwStepActivity",
+        back_populates="step",
+        cascade="all, delete-orphan"
+    )
 
 
 class GilPwStepActivity(db.Model):
@@ -816,6 +827,7 @@ class GilPwStepActivity(db.Model):
 
     activity_type = db.Column(db.String(30), default="task", nullable=False)   # task|check|doc|external
     blocking_ind = db.Column(db.Boolean, default=True, nullable=False)
+    blocked_status_code = db.Column(db.String(50), nullable=True)
 
     default_assignee_role = db.Column(db.String(50), nullable=True)
     due_days_offset = db.Column(db.Integer, nullable=True)
@@ -936,3 +948,15 @@ class GilPwProcessVersion(db.Model):
 
     # ✅ steps belong to version
     steps = db.relationship("GilPwStatusStep", back_populates="version", cascade="all, delete-orphan")
+
+
+class DorCaseStatus(db.Model):
+    __tablename__ = "dor_case_status"
+
+    status_code = db.Column(db.String(50), primary_key=True)
+    status_description = db.Column(db.String(100), nullable=False, unique=True)
+    active_ind = db.Column(db.Boolean, default=True, nullable=False)
+    sort_order = db.Column(db.Integer, default=0)
+
+    def __repr__(self):
+        return f"<DorCaseStatus {self.status_code}>"

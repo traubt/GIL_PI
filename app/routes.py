@@ -4884,6 +4884,596 @@ def api_delete_note_photo(photo_id: int):
         current_app.logger.exception("api_delete_note_photo failed")
         return jsonify({"status": "error", "message": "Server error"}), 500
 
+##################### Process Wizard ################
+
+@main.route("/admin/pw/processes", methods=["GET"])
+def pw_admin_processes():
+    # session context (same as your patterns)
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return redirect(url_for("main.login"))
+
+    shop_data = session.get("shop")
+    shop = json.loads(shop_data) if shop_data else {}
+
+    # roles (if you use it for template)
+    roles = db.session.query(TocRole).all()
+    roles_list = [{"role": r.role, "exclusions": r.exclusions} for r in roles]
+
+    # list processes + latest version info (if exists)
+    sql = text("""
+        SELECT
+            p.process_id,
+            p.insurance_company,
+            p.claim_type,
+            p.process_name,
+            p.active_ind,
+            p.created_at,
+            u.username AS created_by_name,
+            v.version_id AS latest_version_id,
+            v.version_no AS latest_version_no,
+            v.status AS latest_version_status
+        FROM gil_pw_process p
+        LEFT JOIN toc_users u ON u.id = p.created_by
+        LEFT JOIN (
+            SELECT pv1.*
+            FROM gil_pw_process_version pv1
+            JOIN (
+                SELECT process_id, MAX(version_no) AS max_ver
+                FROM gil_pw_process_version
+                GROUP BY process_id
+            ) x ON x.process_id = pv1.process_id AND x.max_ver = pv1.version_no
+        ) v ON v.process_id = p.process_id
+        ORDER BY p.active_ind DESC, p.created_at DESC
+    """)
+    rows = db.session.execute(sql).mappings().all()
+
+    # distinct insurance companies from existing cases
+    insurance_list = db.session.execute(text("""
+        SELECT DISTINCT insurance
+        FROM gil_insured
+        WHERE insurance IS NOT NULL AND insurance <> ''
+        ORDER BY insurance
+    """)).scalars().all()
+
+    # distinct claim types from existing cases
+    claim_type_list = db.session.execute(text("""
+        SELECT DISTINCT claim_type
+        FROM gil_insured
+        WHERE claim_type IS NOT NULL AND claim_type <> ''
+        ORDER BY claim_type
+    """)).scalars().all()
+
+    return render_template(
+        "pw_processes_admin.html",
+        user=user,
+        shop=shop,
+        roles=roles_list,
+        processes=rows,
+        insurance_list=insurance_list,
+        claim_type_list=claim_type_list
+    )
+
+
+@main.route("/admin/pw/processes/create", methods=["POST"])
+def pw_admin_process_create():
+    try:
+        user_data = session.get("user")
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        insurance_company = (request.form.get("insurance_company") or "").strip()
+        claim_type = (request.form.get("claim_type") or "").strip()
+        process_name = (request.form.get("process_name") or "").strip()
+
+        if not insurance_company or not claim_type or not process_name:
+            return jsonify({"status": "error", "message": "Missing required fields"}), 400
+
+        # unique: (insurance_company, claim_type)
+        exists = db.session.execute(text("""
+            SELECT process_id
+            FROM gil_pw_process
+            WHERE insurance_company = :ic AND claim_type = :ct
+            LIMIT 1
+        """), {"ic": insurance_company, "ct": claim_type}).mappings().first()
+
+        if exists:
+            return jsonify({"status": "error", "message": "Process already exists for this Insurance + Claim Type"}), 400
+
+        db.session.execute(text("""
+            INSERT INTO gil_pw_process
+              (insurance_company, claim_type, process_name, active_ind, created_at, created_by)
+            VALUES
+              (:ic, :ct, :pn, 1, NOW(), :cb)
+        """), {
+            "ic": insurance_company,
+            "ct": claim_type,
+            "pn": process_name,
+            "cb": user.get("id")
+        })
+
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Process created"})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("pw_admin_process_create error")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@main.route("/admin/pw/processes/<int:process_id>/update", methods=["POST"])
+def pw_admin_process_update(process_id):
+    try:
+        user_data = session.get("user")
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        process_name = (request.form.get("process_name") or "").strip()
+        active_ind = request.form.get("active_ind")
+
+        if not process_name:
+            return jsonify({"status": "error", "message": "Process name is required"}), 400
+
+        # active_ind may be "0"/"1" or None
+        active_val = 1 if str(active_ind) == "1" else 0
+
+        db.session.execute(text("""
+            UPDATE gil_pw_process
+            SET process_name = :pn,
+                active_ind = :ai
+            WHERE process_id = :pid
+        """), {"pn": process_name, "ai": active_val, "pid": process_id})
+
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Process updated"})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("pw_admin_process_update error")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@main.route("/admin/pw/processes/<int:process_id>/toggle", methods=["POST"])
+def pw_admin_process_toggle(process_id):
+    try:
+        user_data = session.get("user")
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        row = db.session.execute(text("""
+            SELECT active_ind FROM gil_pw_process WHERE process_id = :pid
+        """), {"pid": process_id}).mappings().first()
+
+        if not row:
+            return jsonify({"status": "error", "message": "Process not found"}), 404
+
+        new_val = 0 if int(row["active_ind"]) == 1 else 1
+
+        db.session.execute(text("""
+            UPDATE gil_pw_process SET active_ind = :nv WHERE process_id = :pid
+        """), {"nv": new_val, "pid": process_id})
+
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Updated", "active_ind": new_val})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("pw_admin_process_toggle error")
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+
+from sqlalchemy.orm import joinedload
+from sqlalchemy import text
+
+@main.route("/admin/pw/processes/<int:process_id>/builder", methods=["GET"])
+def pw_admin_process_builder(process_id):
+    # session context (same pattern)
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return redirect("/login")
+
+    shop_data = session.get("shop")
+    shop = json.loads(shop_data) if shop_data else {}
+
+    # roles for sidebar/menu
+    roles = db.session.query(TocRole).all()
+    roles_list = [{"role": r.role, "exclusions": r.exclusions} for r in roles]
+    role_options = [r[0] for r in db.session.execute(
+        text("SELECT DISTINCT role FROM toc_roles ORDER BY role")
+    ).all()]
+
+    process = GilPwProcess.query.get_or_404(process_id)
+
+    # ✅ statuses dropdown (new reference table)
+    # Adjust model name if yours is different
+    case_statuses = (
+        DorCaseStatus.query
+        .order_by(DorCaseStatus.status_description.asc())
+        .all()
+    )
+
+    requested_version_id = request.args.get("version_id", type=int)
+
+    versions = (
+        GilPwProcessVersion.query
+        .filter(GilPwProcessVersion.process_id == process_id)
+        .order_by(GilPwProcessVersion.version_no.desc())
+        .all()
+    )
+
+    selected_version = None
+    if requested_version_id:
+        selected_version = next((v for v in versions if v.version_id == requested_version_id), None)
+
+    if not selected_version and versions:
+        selected_version = versions[0]  # latest
+
+    steps = []
+    if selected_version:
+        # ✅ eager-load s.status and s.activities to avoid template surprises
+        steps = (
+            GilPwStatusStep.query
+            .options(
+                joinedload(GilPwStatusStep.status),
+                joinedload(GilPwStatusStep.activities),
+            )
+            .filter(GilPwStatusStep.version_id == selected_version.version_id)
+            .order_by(GilPwStatusStep.step_order.asc(), GilPwStatusStep.step_id.asc())
+            .all()
+        )
+
+        # stable activities order (for display)
+        for s in steps:
+            s.activities_sorted = sorted(
+                (s.activities or []),
+                key=lambda a: (a.sort_order or 0, a.activity_id)
+            )
+
+    return render_template(
+        "pw_process_builder.html",
+        user=user,
+        shop=shop,
+        roles=roles_list,
+        process=process,
+        versions=versions,
+        selected_version=selected_version,
+        steps=steps,
+        role_options=role_options,
+        case_statuses=case_statuses,   # ✅ IMPORTANT
+    )
+
+
+@main.route("/admin/pw/processes/<int:process_id>/versions/create", methods=["POST"])
+def pw_admin_create_version(process_id):
+    try:
+        user_data = session.get("user")
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        process = GilPwProcess.query.get_or_404(process_id)
+
+        max_no = db.session.query(func.max(GilPwProcessVersion.version_no)) \
+            .filter(GilPwProcessVersion.process_id == process.process_id) \
+            .scalar() or 0
+
+        v = GilPwProcessVersion(
+            process_id=process.process_id,
+            version_no=int(max_no) + 1,
+            status="draft",
+            created_by=user.get("id")
+        )
+        db.session.add(v)
+        db.session.commit()
+
+        return jsonify({"status": "success", "version_id": v.version_id, "version_no": v.version_no})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"pw_admin_create_version error: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to create version"}), 500
+
+
+from sqlalchemy.exc import IntegrityError
+
+def _require_login_json():
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return None, (jsonify({"status": "error", "message": "Not logged in"}), 401)
+    return user, None
+
+
+# -----------------------------
+# STEPS CRUD
+# -----------------------------
+@main.route("/admin/pw/versions/<int:version_id>/steps/create", methods=["POST"])
+def pw_admin_step_create(version_id):
+    user, err = _require_login_json()
+    if err:
+        return err
+
+    payload = request.get_json(silent=True) or {}
+    step_order = payload.get("step_order")
+    status_code = (payload.get("status_code") or "").strip()
+    status_label = (payload.get("status_label") or "").strip()
+    is_terminal = bool(payload.get("is_terminal", False))
+
+    if step_order is None:
+        return jsonify({"status": "error", "message": "Missing step_order"}), 400
+    try:
+        step_order = int(step_order)
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid step_order"}), 400
+
+    if not status_code:
+        return jsonify({"status": "error", "message": "Missing status_code"}), 400
+    if not status_label:
+        return jsonify({"status": "error", "message": "Missing status_label"}), 400
+
+    version = GilPwProcessVersion.query.get_or_404(version_id)
+
+    s = GilPwStatusStep(
+        version_id=version.version_id,
+        step_order=step_order,
+        status_code=status_code,
+        status_label=status_label,
+        is_terminal=is_terminal
+    )
+    db.session.add(s)
+
+    try:
+        db.session.commit()
+        return jsonify({"status": "success", "step_id": s.step_id})
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "כבר קיים שלב עם אותו status_code או אותו step_order בגרסה זו"
+        }), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"pw_admin_step_create failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed creating step"}), 500
+
+
+@main.route("/admin/pw/steps/<int:step_id>/update", methods=["POST"])
+def pw_admin_step_update(step_id):
+    user, err = _require_login_json()
+    if err:
+        return err
+
+    s = GilPwStatusStep.query.get_or_404(step_id)
+
+    payload = request.get_json(silent=True) or {}
+    step_order = payload.get("step_order")
+    status_code = (payload.get("status_code") or "").strip()
+    status_label = (payload.get("status_label") or "").strip()
+    is_terminal = bool(payload.get("is_terminal", False))
+
+    if step_order is None:
+        return jsonify({"status": "error", "message": "Missing step_order"}), 400
+    try:
+        step_order = int(step_order)
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid step_order"}), 400
+
+    if not status_code:
+        return jsonify({"status": "error", "message": "Missing status_code"}), 400
+    if not status_label:
+        return jsonify({"status": "error", "message": "Missing status_label"}), 400
+
+    s.step_order = step_order
+    s.status_code = status_code
+    s.status_label = status_label
+    s.is_terminal = is_terminal
+
+    try:
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({
+            "status": "error",
+            "message": "כבר קיים שלב עם אותו status_code או אותו step_order בגרסה זו"
+        }), 400
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"pw_admin_step_update failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed updating step"}), 500
+
+
+@main.route("/admin/pw/steps/<int:step_id>/delete", methods=["POST"])
+def pw_admin_step_delete(step_id):
+    user, err = _require_login_json()
+    if err:
+        return err
+
+    s = GilPwStatusStep.query.get_or_404(step_id)
+
+    try:
+        db.session.delete(s)  # cascades activities due to model cascade
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"pw_admin_step_delete failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed deleting step"}), 500
+
+
+# -----------------------------
+# ACTIVITIES CRUD
+# -----------------------------
+@main.route("/admin/pw/steps/<int:step_id>/activities/create", methods=["POST"])
+def pw_admin_activity_create(step_id):
+    user, err = _require_login_json()
+    if err:
+        return err
+
+    step = GilPwStatusStep.query.get_or_404(step_id)
+    payload = request.get_json(silent=True) or {}
+
+    title = (payload.get("title") or "").strip()
+    description = (payload.get("description") or "").strip() or None
+    activity_type = (payload.get("activity_type") or "task").strip()
+    blocking_ind = bool(payload.get("blocking_ind", True))
+    default_assignee_role = (payload.get("default_assignee_role") or "").strip() or None
+
+    due_days_offset = payload.get("due_days_offset")
+    if due_days_offset in ("", None):
+        due_days_offset = None
+    else:
+        try:
+            due_days_offset = int(due_days_offset)
+        except Exception:
+            return jsonify({"status": "error", "message": "Invalid due_days_offset"}), 400
+
+    sort_order = payload.get("sort_order", 10)
+    try:
+        sort_order = int(sort_order)
+    except Exception:
+        sort_order = 10
+
+    if not title:
+        return jsonify({"status": "error", "message": "Missing title"}), 400
+
+    blocked_status_code = (payload.get("blocked_status_code") or "").strip() or None
+
+    # if not blocking -> force null
+    if not blocking_ind:
+        blocked_status_code = None
+
+    a = GilPwStepActivity(
+        step_id=step.step_id,
+        title=title,
+        description=description,
+        activity_type=activity_type,
+        blocking_ind=blocking_ind,
+        blocked_status_code=blocked_status_code,
+        default_assignee_role=default_assignee_role,
+        due_days_offset=due_days_offset,
+        sort_order=sort_order,
+        active_ind=True
+    )
+
+    try:
+        db.session.add(a)
+        db.session.commit()
+        return jsonify({"status": "success", "activity_id": a.activity_id})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"pw_admin_activity_create failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed creating activity"}), 500
+
+
+@main.route("/admin/pw/activities/<int:activity_id>/update", methods=["POST"])
+def pw_admin_activity_update(activity_id):
+    user, err = _require_login_json()
+    if err:
+        return err
+
+    a = GilPwStepActivity.query.get_or_404(activity_id)
+    payload = request.get_json(silent=True) or {}
+
+    title = (payload.get("title") or "").strip()
+    description = (payload.get("description") or "").strip() or None
+    activity_type = (payload.get("activity_type") or "task").strip()
+    blocking_ind = bool(payload.get("blocking_ind", True))
+    default_assignee_role = (payload.get("default_assignee_role") or "").strip() or None
+
+    due_days_offset = payload.get("due_days_offset")
+    if due_days_offset in ("", None):
+        due_days_offset = None
+    else:
+        try:
+            due_days_offset = int(due_days_offset)
+        except Exception:
+            return jsonify({"status": "error", "message": "Invalid due_days_offset"}), 400
+
+    sort_order = payload.get("sort_order", 10)
+    try:
+        sort_order = int(sort_order)
+    except Exception:
+        sort_order = 10
+
+    if not title:
+        return jsonify({"status": "error", "message": "Missing title"}), 400
+
+    blocked_status_code = (payload.get("blocked_status_code") or "").strip() or None
+    if not blocking_ind:
+        blocked_status_code = None
+
+    a.title = title
+    a.description = description
+    a.activity_type = activity_type
+    a.blocking_ind = blocking_ind
+    a.blocked_status_code = blocked_status_code
+    a.default_assignee_role = default_assignee_role
+    a.due_days_offset = due_days_offset
+    a.sort_order = sort_order
+
+    try:
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"pw_admin_activity_update failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed updating activity"}), 500
+
+
+@main.route("/admin/pw/activities/<int:activity_id>/delete", methods=["POST"])
+def pw_admin_activity_delete(activity_id):
+    user, err = _require_login_json()
+    if err:
+        return err
+
+    a = GilPwStepActivity.query.get_or_404(activity_id)
+    try:
+        db.session.delete(a)
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"pw_admin_activity_delete failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed deleting activity"}), 500
+
+@main.route("/admin/pw/versions/<int:version_id>/steps/reorder", methods=["POST"])
+def pw_steps_reorder(version_id):
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    ordered_step_ids = payload.get("ordered_step_ids") or []
+
+    if not isinstance(ordered_step_ids, list) or not all(str(x).isdigit() for x in ordered_step_ids):
+        return jsonify({"status": "error", "message": "Invalid payload"}), 400
+
+    steps = (
+        GilPwStatusStep.query
+        .filter(GilPwStatusStep.version_id == version_id)
+        .all()
+    )
+    step_map = {s.step_id: s for s in steps}
+
+    # write as 10,20,30... (gaps make future inserts easy)
+    order = 10
+    for sid in ordered_step_ids:
+        sid_int = int(sid)
+        if sid_int in step_map:
+            step_map[sid_int].step_order = order
+            order += 10
+
+    db.session.commit()
+    return jsonify({"status": "success"})
+
 
 if __name__ == '__main__':
     app.run(debug=True)
