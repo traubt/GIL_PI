@@ -359,11 +359,11 @@ async function createDraftVersion(processId){
             </div>
           </div>
 
-          <div class="mt-2" id="pw_blocked_wrap" style="display:none;">
-            <label class="form-label">חוסם עד סטטוס</label>
-            <select class="form-select" id="pw_act_blocked_status"></select>
-            <div class="form-text">ברירת מחדל: הסטטוס הבא אחרי השלב הנוכחי</div>
-          </div>
+<div class="col-12 mt-2" id="pw_blocked_wrap" style="display:none;">
+  <label class="form-label">חוסם עד סטטוס</label>
+  <select class="form-select" id="pw_act_blocked_status"></select>
+  <div class="form-text">ברירת מחדל: הסטטוס הבא אחרי השלב הנוכחי</div>
+</div>
 
         </div>
       </div>
@@ -390,54 +390,67 @@ async function createDraftVersion(processId){
     {% endfor %}
   ];
 
-  function computeNextStatuses(currentStepId){
-    const cur = pwSteps.find(x => x.step_id == currentStepId);
-    if(!cur) return [];
-    return pwSteps
-      .filter(x => x.step_order > cur.step_order)
-      .sort((a,b) => a.step_order - b.step_order);
+function computeNextStatusesFromStatusCode(currentStatusCode){
+  const cur = pwCaseStatuses.find(x => x.status_code === currentStatusCode);
+  if(!cur) return [];
+
+  return pwCaseStatuses
+    .filter(x => x.sort_order > cur.sort_order)
+    .sort((a,b) => a.sort_order - b.sort_order);
+}
+
+function fillBlockedStatusDropdown(currentStepId, selectedCode=null){
+  const wrap = document.getElementById("pw_blocked_wrap");
+  const sel = document.getElementById("pw_act_blocked_status");
+  if(!wrap || !sel) return;
+
+  // find current step and its status_code
+  const curStep = pwSteps.find(x => String(x.step_id) === String(currentStepId));
+  const currentStatusCode = curStep ? curStep.status_code : null;
+
+  const opts = currentStatusCode ? computeNextStatusesFromStatusCode(currentStatusCode) : [];
+  sel.innerHTML = "";
+
+  if(opts.length === 0){
+    wrap.style.display = "none";
+    return;
   }
 
-  function fillBlockedStatusDropdown(currentStepId, selectedCode=null){
-    const wrap = document.getElementById("pw_blocked_wrap");
-    const sel = document.getElementById("pw_act_blocked_status");
+  for(const s of opts){
+    const o = document.createElement("option");
+    o.value = s.status_code;
+    o.textContent = s.status_label;
+    sel.appendChild(o);
+  }
 
-    const opts = computeNextStatuses(currentStepId);
+  const defaultCode = opts[0].status_code;
+  sel.value = (selectedCode && opts.some(x => x.status_code === selectedCode)) ? selectedCode : defaultCode;
+
+  wrap.style.display = "block";
+}
+
+function syncBlockingUI(){
+  const stepId = document.getElementById("pw_act_step_id")?.value;
+  const isBlocking = document.getElementById("pw_act_blocking")?.checked;
+
+  const wrap = document.getElementById("pw_blocked_wrap");
+  const sel = document.getElementById("pw_act_blocked_status");
+  if(!wrap || !sel) return;
+
+  if(isBlocking){
+    fillBlockedStatusDropdown(stepId, sel.value || null);
+  } else {
+    wrap.style.display = "none";
     sel.innerHTML = "";
-
-    if(opts.length === 0){
-      // nothing to block (last step)
-      wrap.style.display = "none";
-      sel.value = "";
-      return;
-    }
-
-    // options
-    for(const s of opts){
-      const o = document.createElement("option");
-      o.value = s.status_code;
-      o.textContent = s.status_label;
-      sel.appendChild(o);
-    }
-
-    // default = very next
-    const defaultCode = opts[0].status_code;
-    sel.value = (selectedCode && opts.some(x=>x.status_code===selectedCode)) ? selectedCode : defaultCode;
-
-    wrap.style.display = "block";
   }
+}
 
-  function syncBlockingUI(){
-    const stepId = document.getElementById("pw_act_step_id").value;
-    const isBlocking = document.getElementById("pw_act_blocking").checked;
-
-    if(isBlocking){
-      fillBlockedStatusDropdown(stepId, document.getElementById("pw_act_blocked_status").value || null);
-    } else {
-      document.getElementById("pw_blocked_wrap").style.display = "none";
-      document.getElementById("pw_act_blocked_status").innerHTML = "";
-    }
+document.addEventListener("DOMContentLoaded", () => {
+  const cb = document.getElementById("pw_act_blocking");
+  if(cb){
+    cb.addEventListener("change", syncBlockingUI);
   }
+});
 
   // hook checkbox
   document.addEventListener("DOMContentLoaded", () => {
@@ -758,6 +771,18 @@ async function finalizeVersion(versionId){
   }
   location.reload();
 }
+</script>
+
+<script>
+  const pwCaseStatuses = [
+    {% for s in case_statuses %}
+      {
+        status_code: {{ (s.status_code or '')|tojson }},
+        status_label: {{ (s.status_description or '')|tojson }},
+        sort_order: {{ s.sort_order or 0 }}
+      }{% if not loop.last %},{% endif %}
+    {% endfor %}
+  ];
 </script>
 
 {% endblock %}
