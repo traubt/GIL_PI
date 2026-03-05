@@ -5088,13 +5088,37 @@ def pw_admin_process_builder(process_id):
         text("SELECT DISTINCT role FROM toc_roles ORDER BY role")
     ).all()]
 
+    users = (
+        User.query
+        .order_by(
+            User.first_name.asc(),
+            User.last_name.asc(),
+            User.username.asc()
+        )
+        .all()
+    )
+
+    users_list = []
+
+    for u in users:
+        display_name = f"{(u.first_name or '').strip()} {(u.last_name or '').strip()}".strip()
+
+        if not display_name:
+            display_name = (u.username or f"User #{u.id}")
+
+        users_list.append({
+            "id": u.id,
+            "name": display_name
+        })
+
     process = GilPwProcess.query.get_or_404(process_id)
 
     # ✅ statuses dropdown (new reference table)
     # Adjust model name if yours is different
     case_statuses = (
         DorCaseStatus.query
-        .order_by(DorCaseStatus.status_description.asc())
+        .filter(DorCaseStatus.active_ind == 1)
+        .order_by(DorCaseStatus.sort_order.asc(), DorCaseStatus.status_description.asc())
         .all()
     )
 
@@ -5146,6 +5170,7 @@ def pw_admin_process_builder(process_id):
         steps=steps,
         role_options=role_options,
         case_statuses=case_statuses,   # ✅ IMPORTANT
+        user_options=users_list,
     )
 
 
@@ -5200,30 +5225,45 @@ def pw_admin_step_create(version_id):
         return err
 
     payload = request.get_json(silent=True) or {}
+
+    # step_order is optional (auto append if missing)
     step_order = payload.get("step_order")
     status_code = (payload.get("status_code") or "").strip()
-    status_label = (payload.get("status_label") or "").strip()
     is_terminal = bool(payload.get("is_terminal", False))
-
-    if step_order is None:
-        return jsonify({"status": "error", "message": "Missing step_order"}), 400
-    try:
-        step_order = int(step_order)
-    except Exception:
-        return jsonify({"status": "error", "message": "Invalid step_order"}), 400
 
     if not status_code:
         return jsonify({"status": "error", "message": "Missing status_code"}), 400
-    if not status_label:
-        return jsonify({"status": "error", "message": "Missing status_label"}), 400
 
+    # validate status_code exists + allow sorting dropdown by DorCaseStatus.sort_order
+    status = (
+        DorCaseStatus.query
+        .filter(DorCaseStatus.status_code == status_code)
+        .first()
+    )
+    if not status:
+        return jsonify({"status": "error", "message": "Invalid status_code"}), 400
+
+    # If step_order not provided, append to end using gaps (10,20,30...)
+    if step_order in (None, "", "null"):
+        max_order = (
+            db.session.query(db.func.max(GilPwStatusStep.step_order))
+            .filter(GilPwStatusStep.version_id == version_id)
+            .scalar()
+        ) or 0
+        step_order = max_order + 10
+    else:
+        try:
+            step_order = int(step_order)
+        except Exception:
+            return jsonify({"status": "error", "message": "Invalid step_order"}), 400
+
+    # ensure version exists
     version = GilPwProcessVersion.query.get_or_404(version_id)
 
     s = GilPwStatusStep(
         version_id=version.version_id,
         step_order=step_order,
         status_code=status_code,
-        status_label=status_label,
         is_terminal=is_terminal
     )
     db.session.add(s)
@@ -5252,26 +5292,30 @@ def pw_admin_step_update(step_id):
     s = GilPwStatusStep.query.get_or_404(step_id)
 
     payload = request.get_json(silent=True) or {}
-    step_order = payload.get("step_order")
+    step_order = payload.get("step_order")   # optional
     status_code = (payload.get("status_code") or "").strip()
-    status_label = (payload.get("status_label") or "").strip()
     is_terminal = bool(payload.get("is_terminal", False))
-
-    if step_order is None:
-        return jsonify({"status": "error", "message": "Missing step_order"}), 400
-    try:
-        step_order = int(step_order)
-    except Exception:
-        return jsonify({"status": "error", "message": "Invalid step_order"}), 400
 
     if not status_code:
         return jsonify({"status": "error", "message": "Missing status_code"}), 400
-    if not status_label:
-        return jsonify({"status": "error", "message": "Missing status_label"}), 400
 
-    s.step_order = step_order
+    # validate status_code exists
+    status = (
+        DorCaseStatus.query
+        .filter(DorCaseStatus.status_code == status_code)
+        .first()
+    )
+    if not status:
+        return jsonify({"status": "error", "message": "Invalid status_code"}), 400
+
+    # step_order optional (only update if provided)
+    if step_order not in (None, "", "null"):
+        try:
+            s.step_order = int(step_order)
+        except Exception:
+            return jsonify({"status": "error", "message": "Invalid step_order"}), 400
+
     s.status_code = status_code
-    s.status_label = status_label
     s.is_terminal = is_terminal
 
     try:
@@ -5334,6 +5378,17 @@ def pw_admin_activity_create(step_id):
         except Exception:
             return jsonify({"status": "error", "message": "Invalid due_days_offset"}), 400
 
+    assignee_user_id = payload.get("assignee_user_id")
+
+    # normalize
+    try:
+        assignee_user_id = int(assignee_user_id) if assignee_user_id not in (None, "", "null") else None
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid assignee_user_id"}), 400
+
+    if activity_type == "task" and not assignee_user_id:
+        return jsonify({"status": "error", "message": "Missing assignee_user_id"}), 400
+
     sort_order = payload.get("sort_order", 10)
     try:
         sort_order = int(sort_order)
@@ -5358,6 +5413,7 @@ def pw_admin_activity_create(step_id):
         blocked_status_code=blocked_status_code,
         default_assignee_role=default_assignee_role,
         due_days_offset=due_days_offset,
+        assignee_user_id=assignee_user_id,
         sort_order=sort_order,
         active_ind=True
     )
@@ -5402,6 +5458,17 @@ def pw_admin_activity_update(activity_id):
     except Exception:
         sort_order = 10
 
+    assignee_user_id = payload.get("assignee_user_id")
+
+    # normalize
+    try:
+        assignee_user_id = int(assignee_user_id) if assignee_user_id not in (None, "", "null") else None
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid assignee_user_id"}), 400
+
+    if activity_type == "task" and not assignee_user_id:
+        return jsonify({"status": "error", "message": "Missing assignee_user_id"}), 400
+
     if not title:
         return jsonify({"status": "error", "message": "Missing title"}), 400
 
@@ -5417,6 +5484,7 @@ def pw_admin_activity_update(activity_id):
     a.default_assignee_role = default_assignee_role
     a.due_days_offset = due_days_offset
     a.sort_order = sort_order
+    a.assignee_user_id = assignee_user_id
 
     try:
         db.session.commit()

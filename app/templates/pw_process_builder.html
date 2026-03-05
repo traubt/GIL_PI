@@ -239,17 +239,23 @@ async function createDraftVersion(processId){
         <input type="hidden" id="pw_step_id" value="">
         <input type="hidden" id="pw_step_version_id" value="">
 
-        <div class="mb-2">
-          <label class="form-label">סדר</label>
-          <input type="number" class="form-control" id="pw_step_order" min="1">
-        </div>
-
         <select id="step_status_code" class="form-select" required>
-          <option value="">בחר סטטוס...</option>
+          <option value="">בחר שלב...</option>
           {% for s in case_statuses %}
             <option value="{{ s.status_code }}">{{ s.status_description }}</option>
           {% endfor %}
         </select>
+
+        <div class="mb-2">
+          <label class="form-label">סדר</label>
+          <input type="number" class="form-control" id="pw_step_order" min="1">
+
+          <div class="form-text">
+            קובע את מיקום השלב בתהליך. ניתן גם לשנות את הסדר לאחר מכן באמצעות החצים בטבלה.
+          </div>
+        </div>
+
+
 
         <div class="form-check mt-2">
           <input class="form-check-input" type="checkbox" id="pw_is_terminal">
@@ -295,18 +301,35 @@ async function createDraftVersion(processId){
             </select>
           </div>
 
-          <div class="col-12">
-            <label class="form-label">תיאור</label>
-            <textarea class="form-control" id="pw_act_desc" rows="3"></textarea>
-          </div>
+<!-- Description should be full width -->
+<div class="col-12">
+  <label class="form-label">תיאור</label>
+  <textarea class="form-control" id="pw_act_desc" rows="3"></textarea>
+</div>
 
-          <label class="form-label">תפקיד ברירת מחדל</label>
-          <select class="form-select" id="pw_act_role">
-            <option value="">— ללא —</option>
-            {% for r in role_options %}
-              <option value="{{ r }}">{{ r }}</option>
-            {% endfor %}
-          </select>
+<!-- Role + User on the same row -->
+<div class="col-md-6">
+  <label class="form-label">תפקיד ברירת מחדל</label>
+  <select class="form-select" id="pw_act_role">
+    <option value="">— ללא —</option>
+    {% for r in role_options %}
+      <option value="{{ r }}">{{ r }}</option>
+    {% endfor %}
+  </select>
+</div>
+
+<div class="col-md-6">
+  <label class="form-label">משתמש לביצוע</label>
+  <select class="form-select" id="pw_act_assignee_user">
+    <option value="">— ללא —</option>
+    {% for u in user_options %}
+      <option value="{{ u.id }}">{{ u.name }}</option>
+    {% endfor %}
+  </select>
+  <div class="form-text">
+    אופציונלי (חובה כאשר סוג הפעילות הוא task)
+  </div>
+</div>
 
           <div class="col-md-4">
             <label class="form-label">יעד (ימים מהתחלה)</label>
@@ -493,30 +516,58 @@ async function deleteStep(stepId){
 function openActivityModal(mode, stepId=null, data=null){
   document.getElementById("pw_act_mode").value = mode;
 
+  const titleEl = document.getElementById("pw_act_title");
+  const descEl  = document.getElementById("pw_act_desc");
+  const typeEl  = document.getElementById("pw_act_type");
+  const roleEl  = document.getElementById("pw_act_role");
+  const dueEl   = document.getElementById("pw_act_due");
+  const sortEl  = document.getElementById("pw_act_sort");
+  const blockEl = document.getElementById("pw_act_blocking");
+  const blockedStatusEl = document.getElementById("pw_act_blocked_status");
+
+  // ✅ NEW: assignee dropdown
+  const assigneeEl = document.getElementById("pw_act_assignee_user");
+
   if(mode === "create"){
     document.getElementById("pwActivityModalTitle").innerText = "הוסף פעילות";
     document.getElementById("pw_act_id").value = "";
     document.getElementById("pw_act_step_id").value = stepId || "";
-    document.getElementById("pw_act_title").value = "";
-    document.getElementById("pw_act_desc").value = "";
-    document.getElementById("pw_act_type").value = "task";
-    document.getElementById("pw_act_role").value = "";
-    document.getElementById("pw_act_due").value = "";
-    document.getElementById("pw_act_sort").value = 10;
-    document.getElementById("pw_act_blocking").checked = false;
+
+    titleEl.value = "";
+    descEl.value = "";
+    typeEl.value = "task";
+    roleEl.value = "";
+    dueEl.value = "";
+    sortEl.value = 10;
+    blockEl.checked = false;
+
+    // ✅ reset blocked UI
+    if(blockedStatusEl) blockedStatusEl.value = "";
+    const wrap = document.getElementById("pw_blocked_wrap");
+    if(wrap) wrap.style.display = "none";
+
+    // ✅ NEW: reset assignee
+    if(assigneeEl) assigneeEl.value = "";
+
   } else {
     document.getElementById("pwActivityModalTitle").innerText = "ערוך פעילות";
     document.getElementById("pw_act_id").value = data.activity_id;
     document.getElementById("pw_act_step_id").value = data.step_id;
-    document.getElementById("pw_act_title").value = data.title || "";
-    document.getElementById("pw_act_desc").value = data.description || "";
-    document.getElementById("pw_act_type").value = data.activity_type || "task";
-    document.getElementById("pw_act_role").value = data.default_assignee_role || "";
-    document.getElementById("pw_act_due").value = (data.due_days_offset === null) ? "" : data.due_days_offset;
-    document.getElementById("pw_act_sort").value = data.sort_order || 10;
-    document.getElementById("pw_act_blocking").checked = (data.blocking_ind == 1);
-    if(data.blocked_status_code){
-      document.getElementById("pw_act_blocked_status").value = data.blocked_status_code;
+
+    titleEl.value = data.title || "";
+    descEl.value = data.description || "";
+    typeEl.value = data.activity_type || "task";
+    roleEl.value = data.default_assignee_role || "";
+    dueEl.value = (data.due_days_offset === null || data.due_days_offset === undefined) ? "" : data.due_days_offset;
+    sortEl.value = data.sort_order || 10;
+    blockEl.checked = (data.blocking_ind == 1);
+
+    // ✅ NEW: prefill assignee
+    if(assigneeEl) assigneeEl.value = data.assignee_user_id || "";
+
+    // keep your existing blocked logic
+    if(data.blocked_status_code && blockedStatusEl){
+      blockedStatusEl.value = data.blocked_status_code;
     }
     syncBlockingUI();
   }
@@ -529,6 +580,14 @@ async function saveActivity(){
   const actId = document.getElementById("pw_act_id").value;
   const stepId = document.getElementById("pw_act_step_id").value;
 
+  const activityType = document.getElementById("pw_act_type").value;
+  const assigneeUserId = document.getElementById("pw_act_assignee_user").value;
+
+  if(activityType === "task" && !assigneeUserId){
+    alert("בשביל פעילות מסוג task חובה לבחור משתמש לביצוע");
+    return;
+  }
+
   const payload = {
     title: document.getElementById("pw_act_title").value,
     description: document.getElementById("pw_act_desc").value,
@@ -538,6 +597,7 @@ async function saveActivity(){
     ? document.getElementById("pw_act_blocked_status").value
     : null,
     default_assignee_role: document.getElementById("pw_act_role").value,
+    assignee_user_id: assigneeUserId ? parseInt(assigneeUserId, 10) : null,
     due_days_offset: document.getElementById("pw_act_due").value,
     sort_order: document.getElementById("pw_act_sort").value
   };

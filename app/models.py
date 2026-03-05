@@ -830,6 +830,10 @@ class GilPwStepActivity(db.Model):
     blocked_status_code = db.Column(db.String(50), nullable=True)
 
     default_assignee_role = db.Column(db.String(50), nullable=True)
+
+    # ✅ NEW
+    assignee_user_id = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True, index=True)
+
     due_days_offset = db.Column(db.Integer, nullable=True)
 
     active_ind = db.Column(db.Boolean, default=True, nullable=False)
@@ -838,6 +842,9 @@ class GilPwStepActivity(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     step = db.relationship("GilPwStatusStep", back_populates="activities")
+
+    # optional (nice for joins later)
+    assignee_user = db.relationship("User", foreign_keys=[assignee_user_id])
 
 
 class GilPwCaseActivity(db.Model):
