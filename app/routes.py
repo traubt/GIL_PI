@@ -5543,6 +5543,45 @@ def pw_steps_reorder(version_id):
     return jsonify({"status": "success"})
 
 
+@main.route("/admin/pw/versions/<int:version_id>/finalize", methods=["POST"])
+def pw_admin_version_finalize(version_id):
+    user, err = _require_login_json()
+    if err:
+        return err
+
+    v = GilPwProcessVersion.query.get_or_404(version_id)
+
+    # ✅ safety: only allow publishing draft versions
+    v_status = (v.status or "").strip().lower()
+    if v_status not in ("draft", ""):
+        return jsonify({
+            "status": "error",
+            "message": f"Version status must be Draft to publish (current: {v.status})"
+        }), 400
+
+    try:
+        # 1) Mark this version as published
+        v.status = "published"
+
+        # 2) Set process published_version_id to this version
+        p = GilPwProcess.query.get_or_404(v.process_id)
+        p.published_version_id = v.version_id
+
+        # 3) Archive any other published versions of this process
+        GilPwProcessVersion.query.filter(
+            GilPwProcessVersion.process_id == v.process_id,
+            GilPwProcessVersion.version_id != v.version_id,
+            GilPwProcessVersion.status == "published"
+        ).update({"status": "archived"}, synchronize_session=False)
+
+        db.session.commit()
+        return jsonify({"status": "success"})
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"pw_admin_version_finalize failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to publish version"}), 500
+
+
 if __name__ == '__main__':
     app.run(debug=True)
 

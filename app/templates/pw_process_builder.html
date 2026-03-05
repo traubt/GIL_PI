@@ -64,17 +64,28 @@
         <div class="col-lg-8">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div class="fw-bold">שלבים (סטטוסים)</div>
-            {% if selected_version %}
-              <span class="badge bg-info text-dark">עריכה: v{{ selected_version.version_no }} ({{ selected_version.status }})</span>
-            {% else %}
-              <span class="badge bg-secondary">אין גרסה</span>
-            {% endif %}
 
             {% if selected_version %}
-              <button class="btn btn-success btn-sm" type="button"
-                      onclick="openStepModal('create', {{ selected_version.version_id }})">
-                <i class="bi bi-plus-lg"></i> הוסף שלב
-              </button>
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge bg-info text-dark">
+                  עריכה: v{{ selected_version.version_no }} ({{ selected_version.status }})
+                </span>
+
+                <button class="btn btn-success btn-sm" type="button"
+                        onclick="openStepModal('create', {{ selected_version.version_id }})">
+                  <i class="bi bi-plus-lg"></i> הוסף שלב
+                </button>
+
+                {# ✅ show finalize only for draft versions #}
+                {% if selected_version.status == 'draft' %}
+                  <button class="btn btn-warning btn-sm" type="button"
+                          onclick="finalizeVersion({{ selected_version.version_id }})">
+                    <i class="bi bi-check2-circle"></i> סיים גרסה (Publish)
+                  </button>
+                {% endif %}
+              </div>
+            {% else %}
+              <span class="badge bg-secondary">אין גרסה</span>
             {% endif %}
           </div>
 
@@ -733,6 +744,20 @@ document.addEventListener("click", function(e){
 
   }, 190);
 });
+</script>
+
+<script>
+async function finalizeVersion(versionId){
+  if(!confirm("לסיים את הגרסה ולהפוך אותה לגרסה הפעילה לתיקים חדשים?")) return;
+
+  const res = await fetch(`/admin/pw/versions/${versionId}/finalize`, { method: "POST" });
+  const data = await res.json();
+  if(data.status !== "success"){
+    alert(data.message || "שגיאה בסיום גרסה");
+    return;
+  }
+  location.reload();
+}
 </script>
 
 {% endblock %}

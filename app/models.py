@@ -186,13 +186,22 @@ class GilInsured(db.Model):
     investigator = db.Column(db.String(200))
     parkinson_ind = db.Column( db.SmallInteger,   nullable=False,  server_default="0" )
 
-    pw_process_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process.process_id", ondelete="SET NULL"),
-                              nullable=True)
-    pw_version_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process_version.version_id", ondelete="SET NULL"),
-                              nullable=True)
+    pw_process_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_pw_process.process_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
 
-    pw_process = db.relationship("GilPwProcess", foreign_keys=[pw_process_id])
-    pw_version = db.relationship("GilPwProcessVersion", foreign_keys=[pw_version_id])
+    pw_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_pw_process_version.version_id", ondelete="SET NULL"),
+        nullable=True,
+        index=True
+    )
+
+    pw_process = db.relationship("GilPwProcess", foreign_keys=[pw_process_id], lazy="joined")
+    pw_version = db.relationship("GilPwProcessVersion", foreign_keys=[pw_version_id], lazy="joined")
 
 
 class GilInvestigator(db.Model):
@@ -768,13 +777,33 @@ class GilPwProcess(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     created_by = db.Column(db.Integer, db.ForeignKey("toc_users.id", ondelete="SET NULL"), nullable=True)
 
+    # ✅ NEW: points to the currently "published" version for this process
+    published_version_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_pw_process_version.version_id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    # ✅ relationship to the published version (uses published_version_id)
+    published_version = db.relationship(
+        "GilPwProcessVersion",
+        foreign_keys=[published_version_id],
+        post_update=True,
+        lazy="joined"
+    )
+
     __table_args__ = (
         db.UniqueConstraint("insurance_company", "claim_type", name="uq_pw_process"),
     )
 
-    # ✅ versions (not steps)
-    versions = db.relationship("GilPwProcessVersion", back_populates="process", cascade="all, delete-orphan")
-
+    # ✅ FIX: process -> versions must use ONLY GilPwProcessVersion.process_id
+    versions = db.relationship(
+        "GilPwProcessVersion",
+        back_populates="process",
+        foreign_keys="GilPwProcessVersion.process_id",
+        cascade="all, delete-orphan",
+        lazy="select"
+    )
 
 class GilPwStatusStep(db.Model):
     __tablename__ = "gil_pw_status_step"
@@ -815,7 +844,6 @@ class GilPwStatusStep(db.Model):
         cascade="all, delete-orphan"
     )
 
-
 class GilPwStepActivity(db.Model):
     __tablename__ = "gil_pw_step_activity"
 
@@ -845,7 +873,6 @@ class GilPwStepActivity(db.Model):
 
     # optional (nice for joins later)
     assignee_user = db.relationship("User", foreign_keys=[assignee_user_id])
-
 
 class GilPwCaseActivity(db.Model):
     __tablename__ = "gil_pw_case_activity"
@@ -898,8 +925,6 @@ class GilCaseStatusHistory(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-
-
 class GilPwCaseStatusAudit(db.Model):
     __tablename__ = "gil_pw_case_status_audit"
 
@@ -926,13 +951,16 @@ class GilPwCaseStatusAudit(db.Model):
     started_by = db.relationship("User", foreign_keys=[started_by_user_id])
     ended_by = db.relationship("User", foreign_keys=[ended_by_user_id])
 
-
-
 class GilPwProcessVersion(db.Model):
     __tablename__ = "gil_pw_process_version"
 
     version_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    process_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process.process_id", ondelete="CASCADE"), nullable=False, index=True)
+    process_id = db.Column(
+        db.Integer,
+        db.ForeignKey("gil_pw_process.process_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True
+    )
 
     version_no = db.Column(db.Integer, nullable=False)
     status = db.Column(db.String(20), default="draft", nullable=False)  # draft|published|archived
@@ -951,11 +979,19 @@ class GilPwProcessVersion(db.Model):
         db.Index("ix_version_status", "status"),
     )
 
-    process = db.relationship("GilPwProcess", back_populates="versions")
+    # ✅ FIX: version -> process must use ONLY process_id
+    process = db.relationship(
+        "GilPwProcess",
+        back_populates="versions",
+        foreign_keys=[process_id]
+    )
 
     # ✅ steps belong to version
-    steps = db.relationship("GilPwStatusStep", back_populates="version", cascade="all, delete-orphan")
-
+    steps = db.relationship(
+        "GilPwStatusStep",
+        back_populates="version",
+        cascade="all, delete-orphan"
+    )
 
 class DorCaseStatus(db.Model):
     __tablename__ = "dor_case_status"
