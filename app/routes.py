@@ -5582,6 +5582,198 @@ def pw_admin_version_finalize(version_id):
         return jsonify({"status": "error", "message": "Failed to publish version"}), 500
 
 
+@main.route("/admin/insured/<int:insured_id>/change-status", methods=["GET", "POST"])
+def admin_change_insured_status(insured_id):
+    # login check (use your existing helper if you have one)
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return redirect("/login")
+
+    insured = GilInsured.query.get_or_404(insured_id)
+
+    # 1) Find matching PW process (by insurance + claim_type)
+    pw_process = (
+        GilPwProcess.query
+        .filter(GilPwProcess.active_ind == 1)
+        .filter(GilPwProcess.insurance_company == insured.insurance)
+        .filter(GilPwProcess.claim_type == insured.claim_type)
+        .first()
+    )
+
+    # If no process or no published version – we still allow manual status change,
+    # but we show a warning and only show the generic DorCaseStatus list.
+    pw_version = None
+    pw_steps = []
+
+    if pw_process and pw_process.published_version_id:
+        pw_version = GilPwProcessVersion.query.get(pw_process.published_version_id)
+
+        if pw_version:
+            # Steps in the published version
+            pw_steps = (
+                GilPwStatusStep.query
+                .filter(GilPwStatusStep.version_id == pw_version.version_id)
+                .order_by(GilPwStatusStep.step_order.asc())
+                .all()
+            )
+
+    # 2) Resolve current status (support both code OR description stored in insured.status)
+    #    We’ll try status_code first, then status_description.
+    current_status_row = (
+        DorCaseStatus.query.filter(DorCaseStatus.status_code == insured.status).first()
+        or DorCaseStatus.query.filter(DorCaseStatus.status_description == insured.status).first()
+    )
+    current_sort_order = current_status_row.sort_order if current_status_row else None
+
+    # 3) Allowed statuses list
+    # For now: show ONLY stages that are "after" current stage according to dor_case_status.sort_order
+    # (as you requested).
+    # If we have PW steps, we filter them; otherwise we fall back to DorCaseStatus.
+    def step_status_row(step):
+        # step.status is the relationship to DorCaseStatus
+        return step.status
+
+    if pw_steps:
+        allowed = []
+        for st in pw_steps:
+            ds = step_status_row(st)
+            if not ds:
+                continue
+            if current_sort_order is None or (ds.sort_order is not None and ds.sort_order > current_sort_order):
+                allowed.append(st)
+        status_options = allowed
+    else:
+        # fallback: show all DorCaseStatus after current
+        all_statuses = (
+            DorCaseStatus.query
+            .filter(DorCaseStatus.active_ind == 1)
+            .order_by(DorCaseStatus.sort_order.asc())
+            .all()
+        )
+        status_options = [
+            s for s in all_statuses
+            if (current_sort_order is None or (s.sort_order is not None and s.sort_order > current_sort_order))
+        ]
+
+    # 4) Save
+    if request.method == "POST":
+        new_status_code = (request.form.get("status_code") or "").strip()
+        if not new_status_code:
+            flash("חובה לבחור סטטוס", "danger")
+            return redirect(request.url)
+
+        # store status_code into insured.status (recommended going forward)
+        insured.status = new_status_code
+        insured.updated_at = datetime.utcnow()
+
+        db.session.commit()
+        flash("הסטטוס עודכן", "success")
+        return redirect("/admin_insured")  # or redirect back to the insured page
+
+    return render_template(
+        "change_status.html",
+        insured=insured,
+        pw_process=pw_process,
+        pw_version=pw_version,
+        status_options=status_options,
+        current_status_row=current_status_row,
+        using_pw_steps=bool(pw_steps),
+    )
+
+@main.route("/api/pw/cases/<int:insured_id>/next-statuses", methods=["GET"])
+def api_pw_case_next_statuses(insured_id: int):
+    user, err = _require_login_json()
+    if err:
+        return err
+
+    try:
+        insured = GilInsured.query.get_or_404(insured_id)
+
+        current_status_value = (insured.status or "").strip()
+
+        # Return all active statuses except the current one
+        rows = (
+            DorCaseStatus.query
+            .filter(DorCaseStatus.active_ind == 1)
+            .order_by(DorCaseStatus.sort_order.asc())
+            .all()
+        )
+
+        statuses = []
+        for r in rows:
+            # Exclude current status whether insured.status stores code or description
+            if current_status_value and (
+                current_status_value == (r.status_code or "").strip() or
+                current_status_value == (r.status_description or "").strip()
+            ):
+                continue
+
+            statuses.append({
+                "code": r.status_code,
+                "label": r.status_description,
+                "sort_order": r.sort_order
+            })
+
+        return jsonify({
+            "status": "success",
+            "statuses": statuses
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"api_pw_case_next_statuses failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to load statuses"}), 500
+
+
+@main.route("/api/pw/cases/<int:insured_id>/status", methods=["POST"])
+def api_pw_case_set_status(insured_id: int):
+    user, err = _require_login_json()
+    if err:
+        return err
+
+    payload = request.get_json(silent=True) or {}
+    status_code = (payload.get("status_code") or "").strip()
+    if not status_code:
+        return jsonify({"status": "error", "message": "Missing status_code"}), 400
+
+    try:
+        insured = GilInsured.query.get_or_404(insured_id)
+
+        # Lookup selected status
+        row = DorCaseStatus.query.filter_by(status_code=status_code, active_ind=1).first()
+        if not row:
+            return jsonify({"status": "error", "message": "Invalid status"}), 400
+
+        # Save current status as description (matches your current implementation)
+        insured.status = row.status_description
+        insured.updated_at = datetime.utcnow()
+
+        db.session.commit()
+
+        # ---------------------------------------------------------
+        # PW hook - future logic will go here
+        # Only if case is linked to PW
+        # ---------------------------------------------------------
+        pw_attached = bool(getattr(insured, "pw_process_id", None) and getattr(insured, "pw_version_id", None))
+
+        # For next phase:
+        # if pw_attached:
+        #     generate case activities for this status
+        #     generate tasks for task-type activities
+        #     prevent duplicates
+
+        return jsonify({
+            "status": "success",
+            "new_status": insured.status,
+            "new_status_code": status_code,
+            "pw_attached": pw_attached
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"api_pw_case_set_status failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to update status"}), 500
+
 if __name__ == '__main__':
     app.run(debug=True)
 

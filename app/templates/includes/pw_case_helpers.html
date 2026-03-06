@@ -1,0 +1,107 @@
+<script>
+/**
+ * PW Case Helpers
+ * - Loads allowed next statuses from server (based on dor_case_status sort_order and PW version steps)
+ * - Updates case status and refreshes the table cell + button data-status
+ */
+
+async function pwFetchNextStatuses(insuredId) {
+  const res = await fetch(`/api/pw/cases/${encodeURIComponent(insuredId)}/next-statuses`, {
+    method: "GET",
+    headers: { "Accept": "application/json" }
+  });
+  return await res.json();
+}
+
+function pwPopulateStatusSelect($select, statuses, currentStatusText) {
+  $select.empty();
+
+  // Add placeholder if nothing available
+  if (!statuses || statuses.length === 0) {
+    $select.append(`<option value="">אין שלבים זמינים</option>`);
+    return;
+  }
+
+  // Build options
+  statuses.forEach(s => {
+    // s.code, s.label
+    $select.append(`<option value="${s.code}">${s.label}</option>`);
+  });
+
+  // If current status exists in the list (rare; usually list is "next only"), select it
+  // Otherwise select first option
+  if (currentStatusText) {
+    const match = statuses.find(x => x.label === currentStatusText || x.code === currentStatusText);
+    if (match) $select.val(match.code);
+  }
+}
+
+$(document).on('click', '.change-status-btn', async function () {
+  const insuredId = $(this).data('id');
+  const currentStatus = $(this).data('status'); // text stored in table/button
+
+  $('#statusInsuredId').val(insuredId);
+
+  const $select = $('#statusSelect');
+  const $saveBtn = $('#saveStatusBtn');
+
+  // UI state
+  $select.prop('disabled', true).html(`<option value="">טוען...</option>`);
+  $saveBtn.prop('disabled', true);
+
+  // Show modal immediately (good UX)
+  $('#changeStatusModal').modal('show');
+
+  try {
+    const data = await pwFetchNextStatuses(insuredId);
+
+    if (data.status !== "success") {
+      $select.html(`<option value="">שגיאה בטעינת סטטוסים</option>`);
+      return;
+    }
+
+    pwPopulateStatusSelect($select, data.statuses || [], currentStatus);
+
+    // Enable if there are options
+    const hasOptions = (data.statuses || []).length > 0;
+    $select.prop('disabled', !hasOptions);
+    $saveBtn.prop('disabled', !hasOptions);
+
+  } catch (e) {
+    console.error("pwFetchNextStatuses failed:", e);
+    $select.html(`<option value="">שגיאה בטעינת סטטוסים</option>`);
+  }
+});
+
+$('#saveStatusBtn').on('click', async function () {
+  const insuredId = $('#statusInsuredId').val();
+  const newStatusCode = $('#statusSelect').val();
+
+  if (!insuredId || !newStatusCode) return;
+
+  try {
+    const res = await fetch(`/api/pw/cases/${encodeURIComponent(insuredId)}/status`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ status_code: newStatusCode })
+    });
+    const data = await res.json();
+
+    if (data.status !== "success") {
+      alert("⚠️ " + (data.message || "שגיאה"));
+      return;
+    }
+
+    // Update table cell (keep your current selector logic)
+    const row = $(`#insuredTable tr[data-id="${insuredId}"]`);
+    row.find('td:nth-child(14)').text(data.new_status); // your existing column mapping
+    row.find('.change-status-btn').data('status', data.new_status);
+
+    $('#changeStatusModal').modal('hide');
+
+  } catch (e) {
+    console.error("save status failed:", e);
+    alert("⚠️ שגיאה בשמירת סטטוס");
+  }
+});
+</script>

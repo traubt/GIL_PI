@@ -206,11 +206,9 @@
       <div class="modal-body">
         <input type="hidden" id="statusInsuredId">
         <label for="statusSelect" class="form-label">בחר סטטוס</label>
-        <select id="statusSelect" class="form-select">
-          <option value="פתוחה">פתוחה</option>
-          <option value="בעבודה">בעבודה</option>
-          <option value="הושלמה">הושלמה</option>
-        </select>
+<select id="statusSelect" class="form-select">
+  <option value="">טוען...</option>
+</select>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">ביטול</button>
@@ -886,42 +884,42 @@ $('#appointmentForm').on('submit', function (e) {
 });
 
 // ==== Change Status ====
-$(document).on('click', '.change-status-btn', function () {
-  const insuredId = $(this).data('id');
-  const currentStatus = $(this).data('status');
+<!--$(document).on('click', '.change-status-btn', function () {-->
+<!--  const insuredId = $(this).data('id');-->
+<!--  const currentStatus = $(this).data('status');-->
 
-  $('#statusInsuredId').val(insuredId);
-  $('#statusSelect').val(currentStatus);
+<!--  $('#statusInsuredId').val(insuredId);-->
+<!--  $('#statusSelect').val(currentStatus);-->
 
-  $('#changeStatusModal').modal('show');
-});
+<!--  $('#changeStatusModal').modal('show');-->
+<!--});-->
 
-$('#saveStatusBtn').on('click', function () {
-  const insuredId = $('#statusInsuredId').val();
-  const newStatus = $('#statusSelect').val();
+<!--$('#saveStatusBtn').on('click', function () {-->
+<!--  const insuredId = $('#statusInsuredId').val();-->
+<!--  const newStatus = $('#statusSelect').val();-->
 
-  $.ajax({
-    url: `/insured/${insuredId}/status`,
-    method: 'POST',
-    data: { status: newStatus },
-    success: function (res) {
-      if (res.status === 'success') {
-        // update table cell without refresh
-        const row = $(`#insuredTable tr[data-id="${insuredId}"]`);
-        row.find('td:nth-child(14)').text(res.new_status); // 14th column = status
-        row.find('.change-status-btn').data('status', res.new_status);
+<!--  $.ajax({-->
+<!--    url: `/insured/${insuredId}/status`,-->
+<!--    method: 'POST',-->
+<!--    data: { status: newStatus },-->
+<!--    success: function (res) {-->
+<!--      if (res.status === 'success') {-->
+<!--        // update table cell without refresh-->
+<!--        const row = $(`#insuredTable tr[data-id="${insuredId}"]`);-->
+<!--        row.find('td:nth-child(14)').text(res.new_status); // 14th column = status-->
+<!--        row.find('.change-status-btn').data('status', res.new_status);-->
 
-        $('#changeStatusModal').modal('hide');
-        alert('סטטוס עודכן בהצלחה');
-      } else {
-        alert(res.message || 'שגיאה בעדכון סטטוס');
-      }
-    },
-    error: function (xhr) {
-      alert('שגיאת שרת: ' + xhr.responseText);
-    }
-  });
-});
+<!--        $('#changeStatusModal').modal('hide');-->
+<!--        alert('סטטוס עודכן בהצלחה');-->
+<!--      } else {-->
+<!--        alert(res.message || 'שגיאה בעדכון סטטוס');-->
+<!--      }-->
+<!--    },-->
+<!--    error: function (xhr) {-->
+<!--      alert('שגיאת שרת: ' + xhr.responseText);-->
+<!--    }-->
+<!--  });-->
+<!--});-->
 
     // Open modal
     $('.tasks-btn').on('click', function () {
@@ -1051,4 +1049,7 @@ $(document).on('click', '.create-report-btn', function () {
 
 
 <script src="static/assets/js/main.js"></script>
+
+{% include "includes/pw_case_helpers.html" %}
+
 {% endblock %}
