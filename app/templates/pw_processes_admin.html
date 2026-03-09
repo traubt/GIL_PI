@@ -1,14 +1,20 @@
 {% extends "base.html" %}
 {% block content %}
 
-<div class="pagetitle">
-  <h1>תהליך עבודה (PW)</h1>
-  <nav>
-    <ol class="breadcrumb">
-      <li class="breadcrumb-item">עדכוני מערכת</li>
-      <li class="breadcrumb-item active">תהליך עבודה (PW)</li>
-    </ol>
-  </nav>
+<div class="pagetitle d-flex justify-content-between align-items-center">
+  <div>
+    <h1>תהליך עבודה (PW)</h1>
+    <nav>
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item">עדכוני מערכת</li>
+        <li class="breadcrumb-item active">תהליך עבודה (PW)</li>
+      </ol>
+    </nav>
+  </div>
+
+  <button class="btn btn-outline-secondary btn-sm" onclick="window.history.back()">
+    <i class="bi bi-arrow-right"></i> חזור
+  </button>
 </div>
 
 <section class="section">
