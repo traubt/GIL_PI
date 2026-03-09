@@ -931,8 +931,8 @@ class GilPwCaseStatusAudit(db.Model):
     audit_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
 
     case_id = db.Column(db.Integer, db.ForeignKey("gil_insured.id", ondelete="CASCADE"), nullable=False, index=True)
-    process_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process.process_id", ondelete="RESTRICT"), nullable=False, index=True)
-    version_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process_version.version_id", ondelete="RESTRICT"), nullable=False, index=True)
+    process_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process.process_id", ondelete="RESTRICT"), nullable=True, index=True)
+    version_id = db.Column(db.Integer, db.ForeignKey("gil_pw_process_version.version_id", ondelete="RESTRICT"), nullable=True, index=True)
 
     status_code = db.Column(db.String(50), nullable=False, index=True)
     status_name = db.Column(db.String(100), nullable=True)
@@ -1003,3 +1003,5 @@ class DorCaseStatus(db.Model):
 
     def __repr__(self):
         return f"<DorCaseStatus {self.status_code}>"
+
+

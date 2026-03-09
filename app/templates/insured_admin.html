@@ -99,7 +99,7 @@
               <td>{{ insured.claim_type }}</td>
               <td>{{ insured.claim_number }}</td>
               <td>{{ insured.gender }}</td>
-              <td>{{ insured.status }}</td>
+              <td class="insured-status-cell">{{ insured.status }}</td>
               <td class="text-center">{{ 1 if insured.parkinson_ind else 0 }}</td>
               <td class="text-center">
                 <div class="dropdown">
@@ -136,6 +136,15 @@
                       <button class="dropdown-item create-report-btn"
                               data-insured-id="{{ insured.id }}">
                         📄 צור דוח
+                      </button>
+                    </li>
+
+                    <li>
+                      <button class="dropdown-item pw-activities-btn"
+                              data-id="{{ insured.id }}"
+                              data-case-ref="{{ insured.ref_number|default('') }}"
+                              data-case-status="{{ insured.status|default('') }}">
+                        📋 שלב / פעילויות
                       </button>
                     </li>
 
@@ -306,6 +315,80 @@
   </div>
 </div>
 
+
+<!-- PW Case Activities modal -->
+<div class="modal fade" id="pwActivitiesModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          פעילויות / משימות לשלב
+          <span id="pwActivitiesCaseRef" class="text-muted small me-2"></span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="pwActivitiesCaseId">
+
+        <div class="mb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <div>
+            <span class="badge bg-light text-dark">
+              סטטוס נוכחי:
+              <span id="pwActivitiesCurrentStatus">—</span>
+            </span>
+          </div>
+          <div class="text-muted small">
+            מוצגות כל הפעילויות/משימות של התיק, כולל פעילויות פתוחות משלבים קודמים. רק פעילויות לא-חוסמות ולא מסוג task ניתנות לסגירה כאן.
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle" id="pwActivitiesTable">
+            <thead>
+              <tr>
+                <th style="width:50px;">#</th>
+                <th>כותרת</th>
+                <th style="width:110px;">סוג</th>
+                <th style="width:90px;">חוסם</th>
+                <th style="width:160px;">חוסם סטטוס</th>
+                <th style="width:180px;">משימה קשורה</th>
+                <th style="width:120px;">סטטוס</th>
+                <th style="width:100px;">הושלם</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td colspan="8" class="text-center text-muted">טרם נטען</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">סגור</button>
+        <button type="button" class="btn btn-primary" id="savePwActivitiesBtn" disabled>שמור סימונים</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<div class="modal fade" id="pwMsgModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="pwMsgTitle">הודעה</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="pwMsgBody"></div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-primary" data-bs-dismiss="modal">אישור</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 {% include 'appointment_modal.html' %}
 {% include 'tasks_modal.html' %}
@@ -921,12 +1004,6 @@ $('#appointmentForm').on('submit', function (e) {
 <!--  });-->
 <!--});-->
 
-    // Open modal
-    $('.tasks-btn').on('click', function () {
-        const caseId = $(this).data('id');
-        $('#task_case_id').val(caseId);
-        $('#taskModal').modal('show');
-    });
 
 
     function loadTasks(caseId) {
@@ -1043,9 +1120,340 @@ $(document).on('click', '.create-report-btn', function () {
   window.location.href = url;
 });
 
+
+  let pwActivitiesModalInstance = null;
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const modalEl = document.getElementById("pwActivitiesModal");
+    if (modalEl) {
+      pwActivitiesModalInstance = new bootstrap.Modal(modalEl);
+    }
+
+    $(document).on("click", ".pw-activities-btn", function () {
+      const caseId = $(this).data("id");
+      const caseRef = $(this).data("case-ref") || "";
+      const caseStatus = $(this).data("case-status") || "";
+
+      $("#pwActivitiesCaseId").val(caseId);
+      $("#pwActivitiesCaseRef").text(caseRef ? `• תיק ${caseRef}` : "");
+      $("#pwActivitiesCurrentStatus").text(caseStatus || "—");
+
+      loadPwActivities(caseId);
+
+      if (pwActivitiesModalInstance) {
+        pwActivitiesModalInstance.show();
+      }
+    });
+
+      $("#savePwActivitiesBtn").on("click", function () {
+        const checked = $("#pwActivitiesTable tbody .pw-activity-complete:checked");
+
+        if (!checked.length) {
+          alert("לא נבחרו פעילויות לסימון");
+          return;
+        }
+
+        const ids = [];
+        checked.each(function () {
+          ids.push($(this).data("case-activity-id"));
+        });
+
+        const caseId = $("#pwActivitiesCaseId").val();
+        const $btn = $(this);
+
+        $btn.prop("disabled", true).text("שומר...");
+
+        $.ajax({
+          url: "/api/pw/case-activities/complete",
+          method: "POST",
+          contentType: "application/json",
+          data: JSON.stringify({
+            case_activity_ids: ids
+          }),
+          success: function (res) {
+            if (res.status !== "success") {
+              alert(res.message || "שגיאה בשמירה");
+              return;
+            }
+
+            loadPwActivities(caseId);
+
+            let msg = `עודכנו ${res.completed_ids ? res.completed_ids.length : 0} פעילויות`;
+            if (res.skipped_ids && res.skipped_ids.length) {
+              msg += `\nדולגו ${res.skipped_ids.length} פעילויות שלא ניתנות לסגירה בשלב זה`;
+            }
+
+            alert(msg);
+          },
+          error: function (xhr) {
+            const msg = xhr.responseJSON?.message || "שגיאה בשמירת פעילויות";
+            alert(msg);
+          },
+          complete: function () {
+            $btn.prop("disabled", false).text("שמור סימונים");
+          }
+        });
+      });
+  });
+
+  function loadPwActivities(caseId) {
+    const $tbody = $("#pwActivitiesTable tbody");
+    $tbody.html(`
+      <tr>
+        <td colspan="8" class="text-center text-muted">טוען...</td>
+      </tr>
+    `);
+
+    // Phase 2 route to implement next:
+    $.getJSON(`/api/pw/cases/${caseId}/activities`, function (res) {
+      if (res.status !== "success" || !Array.isArray(res.activities) || !res.activities.length) {
+        $tbody.html(`
+          <tr>
+            <td colspan="8" class="text-center text-muted">אין פעילויות לשלב זה</td>
+          </tr>
+        `);
+        $("#savePwActivitiesBtn").prop("disabled", true);
+        return;
+      }
+
+      let rows = "";
+      let canSaveAnything = false;
+
+      res.activities.forEach((a, idx) => {
+        const isBlocking = !!a.blocking_ind;
+        const isTask = (a.activity_type || "").toLowerCase() === "task";
+        const canCheck = (!isBlocking && !isTask && (a.status || "").toLowerCase() !== "completed");
+
+        if (canCheck) canSaveAnything = true;
+
+        rows += `
+          <tr>
+            <td>${idx + 1}</td>
+            <td>
+              <div class="fw-bold">${escapeHtml(a.title || "")}</div>
+              ${a.description ? `<div class="small text-muted">${escapeHtml(a.description)}</div>` : ``}
+            </td>
+            <td>${escapeHtml(a.activity_type || "")}</td>
+            <td>
+              ${isBlocking
+                ? `<span class="badge bg-danger">כן</span>`
+                : `<span class="badge bg-secondary">לא</span>`}
+            </td>
+            <td>${escapeHtml(a.blocked_status_label || a.blocked_status_code || "—")}</td>
+            <td>${escapeHtml(a.task_title || "—")}</td>
+            <td>${escapeHtml(a.status || "—")}</td>
+            <td class="text-center">
+              <input type="checkbox"
+                     class="form-check-input pw-activity-complete"
+                     data-case-activity-id="${a.case_activity_id}"
+                     ${canCheck ? "" : "disabled"}>
+            </td>
+          </tr>
+        `;
+      });
+
+      $tbody.html(rows);
+      $("#savePwActivitiesBtn").prop("disabled", !canSaveAnything);
+    }).fail(function () {
+      $tbody.html(`
+        <tr>
+          <td colspan="8" class="text-center text-danger">שגיאה בטעינת פעילויות</td>
+        </tr>
+      `);
+      $("#savePwActivitiesBtn").prop("disabled", true);
+    });
+  }
+
+
 </script>
 
+<script>
+  let pwMsgModalInstance = null;
 
+  document.addEventListener("DOMContentLoaded", function () {
+    const msgEl = document.getElementById("pwMsgModal");
+    if (msgEl) {
+      pwMsgModalInstance = new bootstrap.Modal(msgEl);
+    }
+
+    // --------------------------------------------------
+    // Open Change Status modal
+    // --------------------------------------------------
+    $(document).on("click", ".change-status-btn", function () {
+      const insuredId = $(this).data("id");
+      const currentStatus = $(this).data("status") || "";
+
+      $("#statusInsuredId").val(insuredId);
+      $("#statusSelect").html('<option value="">טוען...</option>');
+
+      $.getJSON(`/api/pw/cases/${insuredId}/next-statuses`, function (res) {
+        if (res.status !== "success") {
+          $("#statusSelect").html('<option value="">שגיאה בטעינת סטטוסים</option>');
+          showPwMsg("שגיאה", res.message || "לא ניתן לטעון סטטוסים");
+          return;
+        }
+
+        const statuses = Array.isArray(res.statuses) ? res.statuses : [];
+        let html = '<option value="">בחר סטטוס</option>';
+
+        statuses.forEach(function (s) {
+          html += `<option value="${escapeHtml(s.code)}">${escapeHtml(s.label)}</option>`;
+        });
+
+        $("#statusSelect").html(html);
+
+        // try to keep current selected if present in list
+        if (currentStatus) {
+          $("#statusSelect").val(currentStatus);
+        }
+
+        $("#changeStatusModal").modal("show");
+      }).fail(function () {
+        $("#statusSelect").html('<option value="">שגיאה בטעינת סטטוסים</option>');
+        showPwMsg("שגיאה", "שגיאה בטעינת רשימת הסטטוסים");
+      });
+    });
+
+    // --------------------------------------------------
+    // Save Change Status
+    // --------------------------------------------------
+    $("#saveStatusBtn").on("click", function () {
+      const insuredId = $("#statusInsuredId").val();
+      const newStatusCode = $("#statusSelect").val();
+
+      if (!insuredId) {
+        showPwMsg("שגיאה", "לא נמצא מזהה תיק");
+        return;
+      }
+
+      if (!newStatusCode) {
+        showPwMsg("שגיאה", "חובה לבחור סטטוס");
+        return;
+      }
+
+      const $btn = $(this);
+      $btn.prop("disabled", true).text("שומר...");
+
+      $.ajax({
+        url: `/api/pw/cases/${insuredId}/status`,
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({
+          status_code: newStatusCode
+        }),
+        success: function (res) {
+          // ----------------------------------------------
+          // Blocked by open blocking tasks/activities
+          // ----------------------------------------------
+          if (res.status === "blocked") {
+            let body = `<div class="mb-2">${escapeHtml(res.message || "לא ניתן לשנות סטטוס")}</div>`;
+
+            if (Array.isArray(res.blockers) && res.blockers.length) {
+              body += `<div class="fw-bold mb-1">חסימות פתוחות:</div><ul class="mb-0">`;
+              res.blockers.forEach(function (b) {
+                body += `<li>${escapeHtml(b)}</li>`;
+              });
+              body += `</ul>`;
+            }
+
+            showPwMsgHtml("שינוי סטטוס נחסם", body);
+            return;
+          }
+
+          // ----------------------------------------------
+          // Success
+          // ----------------------------------------------
+          if (res.status === "success") {
+            const $row = $(`#insuredTable tbody tr[data-id="${insuredId}"]`);
+
+            // update visible status cell
+            // adjust index only if your column order changes later
+            // current template shows status in the status column already rendered in the row
+            $row.find(".insured-status-cell").text(res.new_status || newStatusCode);
+
+            // keep button data in sync
+            $row.find(".change-status-btn").attr("data-status", res.new_status || newStatusCode);
+            $row.find(".change-status-btn").data("status", res.new_status || newStatusCode);
+
+            $("#changeStatusModal").modal("hide");
+
+            let body = `<div class="mb-2">הסטטוס עודכן בהצלחה.</div>`;
+
+            if (Array.isArray(res.warning_unfinished_previous) && res.warning_unfinished_previous.length) {
+              body += `
+                <div class="alert alert-warning py-2 mb-2">
+                  הסטטוס עודכן, אך קיימות פעילויות לא הושלמו משלבים קודמים / נוכחיים:
+                </div>
+                <ul class="mb-0">
+              `;
+              res.warning_unfinished_previous.forEach(function (w) {
+                body += `<li>${escapeHtml(w)}</li>`;
+              });
+              body += `</ul>`;
+            }
+
+            showPwMsgHtml("עדכון סטטוס", body);
+            return;
+          }
+
+          showPwMsg("שגיאה", res.message || "שגיאה בעדכון סטטוס");
+        },
+        error: function (xhr) {
+          const res = xhr.responseJSON || {};
+
+          if (res.status === "blocked") {
+            let body = `<div class="mb-2">${escapeHtml(res.message || "לא ניתן לשנות סטטוס")}</div>`;
+
+            if (Array.isArray(res.blockers) && res.blockers.length) {
+              body += `<div class="fw-bold mb-1">חסימות פתוחות:</div><ul class="mb-0">`;
+              res.blockers.forEach(function (b) {
+                body += `<li>${escapeHtml(b)}</li>`;
+              });
+              body += `</ul>`;
+            }
+
+            showPwMsgHtml("שינוי סטטוס נחסם", body);
+            return;
+          }
+
+          showPwMsg("שגיאה", res.message || "שגיאה בעדכון סטטוס");
+        },
+        complete: function () {
+          $btn.prop("disabled", false).text("שמור");
+        }
+      });
+    });
+  });
+
+  function showPwMsg(title, body) {
+    $("#pwMsgTitle").text(title || "הודעה");
+    $("#pwMsgBody").text(body || "");
+    if (pwMsgModalInstance) {
+      pwMsgModalInstance.show();
+    } else {
+      alert(body || "");
+    }
+  }
+
+  function showPwMsgHtml(title, html) {
+    $("#pwMsgTitle").text(title || "הודעה");
+    $("#pwMsgBody").html(html || "");
+    if (pwMsgModalInstance) {
+      pwMsgModalInstance.show();
+    } else {
+      alert($(html).text() || "");
+    }
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
+</script>
 
 
 <script src="static/assets/js/main.js"></script>

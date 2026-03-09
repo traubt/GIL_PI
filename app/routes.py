@@ -17,8 +17,9 @@ import os
 from flask import render_template, request, jsonify
 from app import db
 from app.models import GilInsured
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from .dropbox_util import get_dbx
+from sqlalchemy import text, bindparam
 
 from decimal import Decimal, InvalidOperation
 
@@ -107,6 +108,247 @@ def _extract_taken_at_from_exif_bytes(data: bytes):
     except Exception:
         return None
 
+def _pw_get_open_blockers_for_target(case_id, target_status_code):
+    """
+    Return open blocking PW case activities that block transition to target_status_code.
+    """
+    sql = text("""
+        SELECT
+            ca.case_activity_id,
+            ca.status AS case_activity_status,
+            ca.task_id,
+            sa.activity_id,
+            sa.title,
+            sa.activity_type,
+            sa.blocking_ind,
+            sa.blocked_status_code,
+            dcs.status_description AS blocked_status_label,
+            t.title AS task_title,
+            t.status AS task_status
+        FROM gil_pw_case_activity ca
+        JOIN gil_pw_step_activity sa
+            ON sa.activity_id = ca.activity_id
+        LEFT JOIN dor_case_status dcs
+            ON dcs.status_code COLLATE utf8mb4_unicode_ci =
+               sa.blocked_status_code COLLATE utf8mb4_unicode_ci
+        LEFT JOIN gil_tasks t
+            ON t.id = ca.task_id
+        WHERE ca.case_id = :case_id
+          AND IFNULL(sa.blocking_ind, 0) = 1
+          AND sa.blocked_status_code = :target_status_code
+          AND IFNULL(ca.status, 'open') <> 'completed'
+        ORDER BY sa.sort_order, sa.activity_id
+    """)
+    return db.session.execute(sql, {
+        "case_id": case_id,
+        "target_status_code": target_status_code
+    }).mappings().all()
+
+def _pw_find_process_for_case(insurance_name, claim_type):
+    """
+    Find active PW process by insurance + claim type.
+    Returns (process, version) or (None, None)
+    """
+    if not insurance_name or not claim_type:
+        return None, None
+
+    process = (
+        GilPwProcess.query
+        .filter(
+            GilPwProcess.active_ind == True,
+            GilPwProcess.insurance_company == insurance_name,
+            GilPwProcess.claim_type == claim_type
+        )
+        .first()
+    )
+
+    if not process or not process.published_version_id:
+        return process, None
+
+    version = GilPwProcessVersion.query.get(process.published_version_id)
+    return process, version
+
+
+def _pw_get_first_step(version_id):
+    """
+    Return the first step in the published PW version.
+    """
+    if not version_id:
+        return None
+
+    return (
+        GilPwStatusStep.query
+        .filter(GilPwStatusStep.version_id == version_id)
+        .order_by(GilPwStatusStep.step_order.asc())
+        .first()
+    )
+
+
+def _pw_generate_case_activities_for_status(insured, status_code, user_id=None):
+    """
+    Create GilPwCaseActivity rows for the case + current status step.
+    For task-type activities, also create GilTask and link it to case_activity.task_id.
+
+    Idempotent:
+    - skips case activities already created
+    - skips task creation if task_id already exists
+    """
+    result = {
+        "pw_attached": False,
+        "step_found": False,
+        "created_count": 0,
+        "skipped_count": 0,
+        "created_activity_ids": [],
+        "created_task_count": 0,
+        "created_task_ids": [],
+        "skipped_task_missing_assignee": 0,
+    }
+
+    if not insured or not insured.pw_process_id or not insured.pw_version_id:
+        return result
+
+    result["pw_attached"] = True
+
+    step = (
+        GilPwStatusStep.query
+        .filter(
+            GilPwStatusStep.version_id == insured.pw_version_id,
+            GilPwStatusStep.status_code == status_code
+        )
+        .first()
+    )
+
+    if not step:
+        return result
+
+    result["step_found"] = True
+
+    activities = (
+        GilPwStepActivity.query
+        .filter(
+            GilPwStepActivity.step_id == step.step_id,
+            GilPwStepActivity.active_ind == True
+        )
+        .order_by(GilPwStepActivity.sort_order.asc(), GilPwStepActivity.activity_id.asc())
+        .all()
+    )
+
+    if not activities:
+        return result
+
+    activity_ids = [a.activity_id for a in activities]
+
+    existing_case_activities = {
+        ca.activity_id: ca
+        for ca in (
+            GilPwCaseActivity.query
+            .filter(
+                GilPwCaseActivity.case_id == insured.id,
+                GilPwCaseActivity.activity_id.in_(activity_ids)
+            )
+            .all()
+        )
+    }
+
+    for act in activities:
+        case_act = existing_case_activities.get(act.activity_id)
+
+        # 1) Create case activity if missing
+        if not case_act:
+            case_act = GilPwCaseActivity(
+                case_id=insured.id,
+                activity_id=act.activity_id,
+                status="open",
+                completed_at=None,
+                completed_by=None,
+                note=None,
+                task_id=None
+            )
+            db.session.add(case_act)
+            db.session.flush()
+
+            existing_case_activities[act.activity_id] = case_act
+            result["created_count"] += 1
+            result["created_activity_ids"].append(act.activity_id)
+        else:
+            result["skipped_count"] += 1
+
+        # 2) Create task only for task activities
+        if (act.activity_type or "").strip().lower() != "task":
+            continue
+
+        if case_act.task_id:
+            continue
+
+        if not act.assignee_user_id:
+            result["skipped_task_missing_assignee"] += 1
+            continue
+
+        due_days = act.due_days_offset if act.due_days_offset is not None else 0
+        due_date = date.today() + timedelta(days=int(due_days))
+
+        task = GilTask(
+            case_id=insured.id,
+            user_id=act.assignee_user_id,
+            title=act.title,
+            description=act.description if act.description else None,
+            due_date=due_date,
+            status="פתוחה",
+            creator_id=user_id,
+            source="process_wizard",
+            milestone_instance_id=case_act.case_activity_id,
+            blocking_key=f"pw:{insured.id}:{act.activity_id}"
+        )
+        db.session.add(task)
+        db.session.flush()
+
+        case_act.task_id = task.id
+
+        result["created_task_count"] += 1
+        result["created_task_ids"].append(task.id)
+
+    return result
+
+
+def _pw_write_case_status_audit(insured, status_row, user_id=None, note=None):
+    """
+    Close previous open status audit row (if any) and open a new one.
+    Works for PW and non-PW cases.
+    """
+    now = datetime.utcnow()
+
+    prev = (
+        GilPwCaseStatusAudit.query
+        .filter(
+            GilPwCaseStatusAudit.case_id == insured.id,
+            GilPwCaseStatusAudit.ended_at.is_(None)
+        )
+        .order_by(GilPwCaseStatusAudit.started_at.desc())
+        .first()
+    )
+
+    if prev:
+        prev.ended_at = now
+        prev.ended_by_user_id = user_id
+        if prev.started_at:
+            prev.duration_seconds = int((now - prev.started_at).total_seconds())
+
+    new_row = GilPwCaseStatusAudit(
+        case_id=insured.id,
+        process_id=getattr(insured, "pw_process_id", None),
+        version_id=getattr(insured, "pw_version_id", None),
+        status_code=status_row.status_code,
+        status_name=status_row.status_description,
+        started_at=now,
+        started_by_user_id=user_id,
+        ended_at=None,
+        ended_by_user_id=None,
+        duration_seconds=None,
+        note=note
+    )
+    db.session.add(new_row)
+
+    return new_row
 
 def sync_insured_to_dropbox(insured, photo_path=None):
     folder_path = build_dropbox_folder_path(
@@ -1068,26 +1310,25 @@ def create_insured():
             investigator_list = request.form.getlist('investigator')
             investigator_str = '*'.join(investigator_list) if investigator_list else None
 
-            # Handle clinic/koopa new entry
+            # Handle clinic new entry
             clinic = request.form.get('clinic')
             if clinic == '__new__':
                 clinic_name = request.form.get('new_clinic', '').strip()
                 if clinic_name:
-                    # Save to database
                     new_clinic = GilClinics(clinic_name=clinic_name)
                     db.session.add(new_clinic)
                     db.session.commit()
-                    clinic = clinic_name  # Set the new clinic as the selected one
+                    clinic = clinic_name
 
+            # Handle koopa new entry
             koopa = request.form.get('koopa')
             if koopa == '__new__':
                 koopa_name = request.form.get('new_koopa', '').strip()
                 if koopa_name:
-                    # Save to database
                     new_koopa = GilKoopa(koopa_name=koopa_name)
                     db.session.add(new_koopa)
                     db.session.commit()
-                    koopa = koopa_name  # Set the new koopa as the selected one
+                    koopa = koopa_name
 
             insured = GilInsured(
                 ref_number=request.form.get('ref_number'),
@@ -1121,10 +1362,65 @@ def create_insured():
                     photo.save(os.path.join(upload_folder, photo_filename))
                     insured.photo = photo_filename
                 else:
-                    return jsonify({'status': 'error', 'message': 'רק קבצי JPG או PNG מותרים'}), 400
+                    return jsonify({
+                        'status': 'error',
+                        'message': 'רק קבצי JPG או PNG מותרים'
+                    }), 400
+
+            # ----------------------------------------
+            # Attach Process Wizard automatically
+            # ----------------------------------------
+            pw_process, pw_version = _pw_find_process_for_case(
+                insured.insurance,
+                insured.claim_type
+            )
+
+            if pw_process and pw_version:
+                insured.pw_process_id = pw_process.process_id
+                insured.pw_version_id = pw_version.version_id
+
+                # Set first step status automatically
+                first_step = _pw_get_first_step(pw_version.version_id)
+                if first_step:
+                    insured.status = first_step.status_code
 
             db.session.add(insured)
+
+            if pw_process and pw_version:
+                insured.pw_process_id = pw_process.process_id
+                insured.pw_version_id = pw_version.version_id
+
+                first_step = _pw_get_first_step(pw_version.version_id)
+                if first_step:
+                    insured.status = first_step.status_code
+
+                    status_row = DorCaseStatus.query.filter_by(
+                        status_code=first_step.status_code,
+                        active_ind=1
+                    ).first()
+
+                    if status_row:
+                        _pw_write_case_status_audit(
+                            insured=insured,
+                            status_row=status_row,
+                            user_id=user.get("id"),
+                            note="Initial status set on case creation"
+                        )
+
+
             db.session.commit()
+
+            # ----------------------------------------
+            # Generate first-step PW activities/tasks
+            # only after insured.id exists
+            # ----------------------------------------
+            if insured.pw_process_id and insured.pw_version_id and insured.status:
+                _pw_generate_case_activities_for_status(
+                    insured,
+                    insured.status,
+                    user.get("id")
+                )
+                db.session.commit()
 
             # Sync to Dropbox
             photo_path = os.path.join(upload_folder, insured.photo) if photo and insured.photo else None
@@ -1144,13 +1440,15 @@ def create_insured():
                 "message": "שגיאה ביצירת מבוטח"
             }), 500
 
-    return render_template('insured.html',
-                           insured=None,
-                           investigators=investigators,
-                           user=user,
-                           roles=roles_list,
-                           clinics=clinics,
-                           koopa=koopa)
+    return render_template(
+        'insured.html',
+        insured=None,
+        investigators=investigators,
+        user=user,
+        roles=roles_list,
+        clinics=clinics,
+        koopa=koopa
+    )
 
 @main.route('/insured/<int:id>/edit', methods=['GET', 'POST'])
 def edit_insured(id):
@@ -4367,11 +4665,29 @@ def investigator_complete_task(task_id):
     if task.user_id != user_id:
         return jsonify({"status": "error", "message": "Forbidden"}), 403
 
-    # Move to completed
-    task.status = "הושלמה"
-    db.session.commit()
+    try:
+        # Move task to completed
+        task.status = "הושלמה"
 
-    return jsonify({"status": "success"})
+        # Sync linked PW case activity if exists
+        case_activity = (
+            GilPwCaseActivity.query
+            .filter(GilPwCaseActivity.task_id == task.id)
+            .first()
+        )
+
+        if case_activity and (case_activity.status or "").strip().lower() != "completed":
+            case_activity.status = "completed"
+            case_activity.completed_at = datetime.utcnow()
+            case_activity.completed_by = user_id
+
+        db.session.commit()
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"investigator_complete_task failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to complete task"}), 500
 
 ##################### Investigator Calendar #######################
 
@@ -5113,14 +5429,19 @@ def pw_admin_process_builder(process_id):
 
     process = GilPwProcess.query.get_or_404(process_id)
 
-    # ✅ statuses dropdown (new reference table)
-    # Adjust model name if yours is different
+    # ✅ statuses dropdown
     case_statuses = (
         DorCaseStatus.query
         .filter(DorCaseStatus.active_ind == 1)
         .order_by(DorCaseStatus.sort_order.asc(), DorCaseStatus.status_description.asc())
         .all()
     )
+
+    # ✅ NEW: status code -> description lookup
+    status_label_map = {
+        (s.status_code or "").strip(): (s.status_description or "").strip()
+        for s in case_statuses
+    }
 
     requested_version_id = request.args.get("version_id", type=int)
 
@@ -5140,7 +5461,6 @@ def pw_admin_process_builder(process_id):
 
     steps = []
     if selected_version:
-        # ✅ eager-load s.status and s.activities to avoid template surprises
         steps = (
             GilPwStatusStep.query
             .options(
@@ -5152,12 +5472,18 @@ def pw_admin_process_builder(process_id):
             .all()
         )
 
-        # stable activities order (for display)
         for s in steps:
             s.activities_sorted = sorted(
                 (s.activities or []),
                 key=lambda a: (a.sort_order or 0, a.activity_id)
             )
+
+            # ✅ attach blocked status description
+            for a in s.activities_sorted:
+                a.blocked_status_label = status_label_map.get(
+                    (a.blocked_status_code or "").strip(),
+                    a.blocked_status_code or ""
+                )
 
     return render_template(
         "pw_process_builder.html",
@@ -5169,7 +5495,7 @@ def pw_admin_process_builder(process_id):
         selected_version=selected_version,
         steps=steps,
         role_options=role_options,
-        case_statuses=case_statuses,   # ✅ IMPORTANT
+        case_statuses=case_statuses,
         user_options=users_list,
     )
 
@@ -5581,6 +5907,9 @@ def pw_admin_version_finalize(version_id):
         current_app.logger.error(f"pw_admin_version_finalize failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to publish version"}), 500
 
+################## PW CHANGE STATUS/STAGE ##############
+
+
 
 @main.route("/admin/insured/<int:insured_id>/change-status", methods=["GET", "POST"])
 def admin_change_insured_status(insured_id):
@@ -5725,6 +6054,7 @@ def api_pw_case_next_statuses(insured_id: int):
         return jsonify({"status": "error", "message": "Failed to load statuses"}), 500
 
 
+
 @main.route("/api/pw/cases/<int:insured_id>/status", methods=["POST"])
 def api_pw_case_set_status(insured_id: int):
     user, err = _require_login_json()
@@ -5744,35 +6074,282 @@ def api_pw_case_set_status(insured_id: int):
         if not row:
             return jsonify({"status": "error", "message": "Invalid status"}), 400
 
-        # Save current status as description (matches your current implementation)
+        user_id = user.get("id") if isinstance(user, dict) else None
+
+        # ---------------------------------------------------------
+        # 1) HARD BLOCK: open blocking activities/tasks
+        # ---------------------------------------------------------
+        blockers = _pw_get_open_blockers_for_target(insured.id, row.status_code)
+        if blockers:
+            blocker_titles = []
+            for b in blockers:
+                title = (b["title"] or "").strip() or (b["task_title"] or "").strip() or f"Activity #{b['activity_id']}"
+                blocker_titles.append(title)
+
+            return jsonify({
+                "status": "blocked",
+                "message": "לא ניתן לשנות סטטוס. קיימות פעילויות/משימות חוסמות פתוחות.",
+                "blockers": blocker_titles
+            }), 400
+
+        # ---------------------------------------------------------
+        # 2) WARNING ONLY: unfinished non-blocking activities
+        #    from this case (dragged from previous stages etc.)
+        # ---------------------------------------------------------
+        warn_sql = text("""
+            SELECT
+                ca.case_activity_id,
+                sa.title,
+                sa.activity_type,
+                sa.blocking_ind,
+                st.step_order,
+                st.status_code AS step_status_code
+            FROM gil_pw_case_activity ca
+            JOIN gil_pw_step_activity sa
+                ON sa.activity_id = ca.activity_id
+            JOIN gil_pw_status_step st
+                ON st.step_id = sa.step_id
+            WHERE ca.case_id = :case_id
+              AND IFNULL(ca.status, 'open') <> 'completed'
+              AND IFNULL(sa.blocking_ind, 0) = 0
+            ORDER BY st.step_order, sa.sort_order, sa.activity_id
+        """)
+        warn_rows = db.session.execute(warn_sql, {"case_id": insured.id}).mappings().all()
+
+        warning_titles = []
+        for r in warn_rows:
+            title = (r["title"] or "").strip()
+            if title:
+                warning_titles.append(title)
+
+        # ---------------------------------------------------------
+        # 3) Save current status
+        # ---------------------------------------------------------
         insured.status = row.status_description
         insured.updated_at = datetime.utcnow()
 
+        # ---------------------------------------------------------
+        # 4) Status audit
+        # ---------------------------------------------------------
+        _pw_write_case_status_audit(
+            insured=insured,
+            status_row=row,
+            user_id=user_id,
+            note=None
+        )
+
+        # ---------------------------------------------------------
+        # 5) PW hook
+        # ---------------------------------------------------------
+        pw_result = _pw_generate_case_activities_for_status(
+            insured=insured,
+            status_code=row.status_code,
+            user_id=user_id
+        )
+
         db.session.commit()
-
-        # ---------------------------------------------------------
-        # PW hook - future logic will go here
-        # Only if case is linked to PW
-        # ---------------------------------------------------------
-        pw_attached = bool(getattr(insured, "pw_process_id", None) and getattr(insured, "pw_version_id", None))
-
-        # For next phase:
-        # if pw_attached:
-        #     generate case activities for this status
-        #     generate tasks for task-type activities
-        #     prevent duplicates
 
         return jsonify({
             "status": "success",
             "new_status": insured.status,
             "new_status_code": status_code,
-            "pw_attached": pw_attached
+            "warning_unfinished_previous": warning_titles,
+            "pw_attached": pw_result["pw_attached"],
+            "pw_step_found": pw_result["step_found"],
+            "pw_created_count": pw_result["created_count"],
+            "pw_skipped_count": pw_result["skipped_count"],
+            "pw_created_activity_ids": pw_result["created_activity_ids"],
+            "pw_created_task_count": pw_result["created_task_count"],
+            "pw_created_task_ids": pw_result["created_task_ids"],
+            "pw_skipped_task_missing_assignee": pw_result["skipped_task_missing_assignee"],
         })
 
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"api_pw_case_set_status failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to update status"}), 500
+
+@main.route("/api/pw/cases/<int:insured_id>/activities", methods=["GET"])
+def api_pw_case_activities(insured_id):
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    insured = GilInsured.query.get_or_404(insured_id)
+
+    # if case has no process attached
+    if not insured.pw_process_id or not insured.pw_version_id:
+        return jsonify({
+            "status": "success",
+            "activities": []
+        })
+
+    sql = text("""
+        SELECT
+            ca.case_activity_id,
+            ca.case_id,
+            ca.status,
+            ca.completed_at,
+            ca.completed_by,
+            ca.note,
+            ca.task_id,
+
+            sa.activity_id,
+            sa.title,
+            sa.description,
+            sa.activity_type,
+            sa.blocking_ind,
+            sa.blocked_status_code,
+            sa.sort_order,
+
+            st.step_id,
+            st.step_order,
+            st.status_code AS step_status_code,
+
+            s.status_description AS blocked_status_label,
+
+            t.id AS task_id_real,
+            t.title AS task_title,
+            t.status AS task_status,
+            t.user_id AS task_user_id
+
+        FROM gil_pw_case_activity ca
+        JOIN gil_pw_step_activity sa
+            ON sa.activity_id = ca.activity_id
+        JOIN gil_pw_status_step st
+            ON st.step_id = sa.step_id
+        LEFT JOIN dor_case_status s
+            ON s.status_code COLLATE utf8mb4_unicode_ci =
+               sa.blocked_status_code COLLATE utf8mb4_unicode_ci
+        LEFT JOIN gil_tasks t
+            ON t.id = ca.task_id
+        WHERE ca.case_id = :insured_id
+        ORDER BY
+            st.step_order,
+            sa.sort_order,
+            sa.activity_id
+    """)
+
+    rows = db.session.execute(sql, {"insured_id": insured_id}).mappings().all()
+
+    activities = []
+    for r in rows:
+        activities.append({
+            "case_activity_id": r["case_activity_id"],
+            "case_id": r["case_id"],
+            "status": r["status"],
+            "completed_at": r["completed_at"].isoformat() if r["completed_at"] else None,
+            "completed_by": r["completed_by"],
+            "note": r["note"],
+            "task_id": r["task_id"],
+
+            "activity_id": r["activity_id"],
+            "title": r["title"],
+            "description": r["description"],
+            "activity_type": r["activity_type"],
+            "blocking_ind": r["blocking_ind"],
+            "blocked_status_code": r["blocked_status_code"],
+            "blocked_status_label": r["blocked_status_label"],
+
+            "step_id": r["step_id"],
+            "step_order": r["step_order"],
+            "step_status_code": r["step_status_code"],
+
+            "task_title": r["task_title"],
+            "task_status": r["task_status"],
+            "task_user_id": r["task_user_id"],
+        })
+
+    return jsonify({
+        "status": "success",
+        "activities": activities
+    })
+
+@main.route("/api/pw/case-activities/complete", methods=["POST"])
+def api_pw_case_activities_complete():
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    payload = request.get_json(silent=True) or {}
+    ids = payload.get("case_activity_ids") or []
+
+    if not isinstance(ids, list) or not ids:
+        return jsonify({"status": "error", "message": "No activities selected"}), 400
+
+    try:
+        user_id = user.get("id")
+        completed_ids = []
+        skipped_ids = []
+
+        sql = text("""
+            SELECT
+                ca.case_activity_id,
+                ca.status,
+                sa.activity_type,
+                sa.blocking_ind
+            FROM gil_pw_case_activity ca
+            JOIN gil_pw_step_activity sa
+                ON sa.activity_id = ca.activity_id
+            WHERE ca.case_activity_id IN :ids
+        """).bindparams(bindparam("ids", expanding=True))
+
+        rows = db.session.execute(sql, {"ids": ids}).mappings().all()
+
+        row_map = {int(r["case_activity_id"]): r for r in rows}
+
+        for raw_id in ids:
+            try:
+                case_activity_id = int(raw_id)
+            except Exception:
+                skipped_ids.append(raw_id)
+                continue
+
+            r = row_map.get(case_activity_id)
+            if not r:
+                skipped_ids.append(case_activity_id)
+                continue
+
+            activity_type = (r["activity_type"] or "").strip().lower()
+            is_blocking = int(r["blocking_ind"] or 0) == 1
+            current_status = (r["status"] or "").strip().lower()
+
+            # safe rule for phase 1:
+            # allow only non-task + non-blocking + not already completed
+            if activity_type == "task" or is_blocking or current_status == "completed":
+                skipped_ids.append(case_activity_id)
+                continue
+
+            db.session.execute(text("""
+                UPDATE gil_pw_case_activity
+                SET status = 'completed',
+                    completed_at = NOW(),
+                    completed_by = :user_id
+                WHERE case_activity_id = :case_activity_id
+            """), {
+                "user_id": user_id,
+                "case_activity_id": case_activity_id
+            })
+
+            completed_ids.append(case_activity_id)
+
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "completed_ids": completed_ids,
+            "skipped_ids": skipped_ids,
+            "message": f"Completed {len(completed_ids)} activities"
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"api_pw_case_activities_complete failed: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to complete activities"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

@@ -167,7 +167,11 @@
                           <div class="fw-bold">{{ a.title }}</div>
                           <div class="small text-muted">
                             סוג: {{ a.activity_type }}
-                            {% if a.blocking_ind %} • <span class="text-danger fw-bold">חוסם</span>{% endif %}
+                            {% if a.blocking_ind %}
+                              • <span class="text-danger fw-bold">
+                                  חוסם{% if a.blocked_status_code %} {{ a.blocked_status_label }}{% endif %}
+                                </span>
+                            {% endif %}
                             {% if a.default_assignee_role %} • תפקיד: {{ a.default_assignee_role }}{% endif %}
                             {% if a.due_days_offset is not none %} • יעד: +{{ a.due_days_offset }} ימים{% endif %}
                           </div>
@@ -177,21 +181,22 @@
                         </div>
 
                         <div class="d-flex gap-2">
-                          <button class="btn btn-outline-secondary btn-sm"
-                                  onclick="openActivityModal('edit', null, {
-                                    activity_id: {{ a.activity_id }},
-                                    step_id: {{ s.step_id }},
-                                    title: {{ (a.title or '')|tojson }},
-                                    description: {{ (a.description or '')|tojson }},
-                                    activity_type: {{ (a.activity_type or 'task')|tojson }},
-                                    blocking_ind: {{ 1 if a.blocking_ind else 0 }},
-                                    blocked_status_code: {{ (a.blocked_status_code or '')|tojson }},
-                                    default_assignee_role: {{ (a.default_assignee_role or '')|tojson }},
-                                    due_days_offset: {{ (a.due_days_offset if a.due_days_offset is not none else 'null') }},
-                                    sort_order: {{ a.sort_order or 10 }}
-                                  })">
-                            <i class="bi bi-pencil"></i>
-                          </button>
+<button class="btn btn-outline-secondary btn-sm"
+        onclick='openActivityModal("edit", null, {
+          activity_id: {{ a.activity_id }},
+          step_id: {{ s.step_id }},
+          title: {{ (a.title or "")|tojson }},
+          description: {{ (a.description or "")|tojson }},
+          activity_type: {{ (a.activity_type or "task")|tojson }},
+          blocking_ind: {{ 1 if a.blocking_ind else 0 }},
+          blocked_status_code: {{ (a.blocked_status_code or "")|tojson }},
+          default_assignee_role: {{ (a.default_assignee_role or "")|tojson }},
+          assignee_user_id: {{ (a.assignee_user_id if a.assignee_user_id is not none else 'null') }},
+          due_days_offset: {{ (a.due_days_offset if a.due_days_offset is not none else 'null') }},
+          sort_order: {{ a.sort_order or 10 }}
+        })'>
+  <i class="bi bi-pencil"></i>
+</button>
 
                           <button class="btn btn-outline-danger btn-sm"
                                   onclick="deleteActivity({{ a.activity_id }})">
@@ -223,18 +228,7 @@
   </div>
 </section>
 
-<script>
-async function createDraftVersion(processId){
-  const res = await fetch(`/admin/pw/processes/${processId}/versions/create`, { method: "POST" });
-  const data = await res.json();
-  if(data.status !== "success"){
-    alert(data.message || "יצירת גרסה נכשלה");
-    return;
-  }
-  // go to builder on the new version
-  window.location.href = `/admin/pw/processes/${processId}/builder?version_id=${data.version_id}`;
-}
-</script>
+
 
 <!-- STEP MODAL -->
 <div class="modal fade" id="pwStepModal" tabindex="-1" aria-hidden="true">
@@ -377,46 +371,88 @@ async function createDraftVersion(processId){
 </div>
 
 <script>
+const pwSteps = [
+  {% for s in steps %}
+    {
+      step_id: {{ s.step_id }},
+      step_order: {{ s.step_order }},
+      status_code: {{ (s.status_code or '')|tojson }},
+      status_label: {{ (s.status.status_description if s.status else '')|tojson }}
+    }{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
 
-  // steps list for "blocked status" dropdown
-  const pwSteps = [
-    {% for s in steps %}
-      {
-        step_id: {{ s.step_id }},
-        step_order: {{ s.step_order }},
-        status_code: {{ (s.status_code or '')|tojson }},
-        status_label: {{ (s.status.status_description if s.status else '')|tojson }}
-      }{% if not loop.last %},{% endif %}
-    {% endfor %}
-  ];
+const pwCaseStatuses = [
+  {% for s in case_statuses %}
+    {
+      status_code: {{ (s.status_code or '')|tojson }},
+      status_label: {{ (s.status_description or '')|tojson }},
+      sort_order: {{ s.sort_order or 0 }}
+    }{% if not loop.last %},{% endif %}
+  {% endfor %}
+];
 
-function computeNextStatusesFromStatusCode(currentStatusCode){
+let pwStepModal = null;
+let pwActivityModal = null;
+
+document.addEventListener("DOMContentLoaded", function () {
+  pwStepModal = new bootstrap.Modal(document.getElementById("pwStepModal"));
+  pwActivityModal = new bootstrap.Modal(document.getElementById("pwActivityModal"));
+
+  const blockingCb = document.getElementById("pw_act_blocking");
+  if (blockingCb) {
+    blockingCb.addEventListener("change", syncBlockingUI);
+  }
+
+  document.addEventListener("click", function (e) {
+    const editStepBtn = e.target.closest(".js-edit-step");
+    if (editStepBtn) {
+      const stepData = {
+        step_id: parseInt(editStepBtn.dataset.stepId, 10),
+        version_id: parseInt(editStepBtn.dataset.versionId, 10),
+        step_order: parseInt(editStepBtn.dataset.stepOrder, 10),
+        status_code: editStepBtn.dataset.statusCode || "",
+        status_label: editStepBtn.dataset.statusLabel || "",
+        is_terminal: (editStepBtn.dataset.isTerminal === "1")
+      };
+      openStepModal("edit", null, stepData);
+      return;
+    }
+
+    const upBtn = e.target.closest(".js-step-up");
+    const downBtn = e.target.closest(".js-step-down");
+    if (upBtn || downBtn) {
+      handleStepReorder(upBtn, downBtn);
+    }
+  });
+});
+
+function computeNextStatusesFromStatusCode(currentStatusCode) {
   const cur = pwCaseStatuses.find(x => x.status_code === currentStatusCode);
-  if(!cur) return [];
+  if (!cur) return [];
 
   return pwCaseStatuses
     .filter(x => x.sort_order > cur.sort_order)
-    .sort((a,b) => a.sort_order - b.sort_order);
+    .sort((a, b) => a.sort_order - b.sort_order);
 }
 
-function fillBlockedStatusDropdown(currentStepId, selectedCode=null){
+function fillBlockedStatusDropdown(currentStepId, selectedCode = null) {
   const wrap = document.getElementById("pw_blocked_wrap");
   const sel = document.getElementById("pw_act_blocked_status");
-  if(!wrap || !sel) return;
+  if (!wrap || !sel) return;
 
-  // find current step and its status_code
   const curStep = pwSteps.find(x => String(x.step_id) === String(currentStepId));
   const currentStatusCode = curStep ? curStep.status_code : null;
 
   const opts = currentStatusCode ? computeNextStatusesFromStatusCode(currentStatusCode) : [];
   sel.innerHTML = "";
 
-  if(opts.length === 0){
+  if (!opts.length) {
     wrap.style.display = "none";
     return;
   }
 
-  for(const s of opts){
+  for (const s of opts) {
     const o = document.createElement("option");
     o.value = s.status_code;
     o.textContent = s.status_label;
@@ -424,20 +460,22 @@ function fillBlockedStatusDropdown(currentStepId, selectedCode=null){
   }
 
   const defaultCode = opts[0].status_code;
-  sel.value = (selectedCode && opts.some(x => x.status_code === selectedCode)) ? selectedCode : defaultCode;
+  sel.value = (selectedCode && opts.some(x => x.status_code === selectedCode))
+    ? selectedCode
+    : defaultCode;
 
   wrap.style.display = "block";
 }
 
-function syncBlockingUI(){
+function syncBlockingUI() {
   const stepId = document.getElementById("pw_act_step_id")?.value;
   const isBlocking = document.getElementById("pw_act_blocking")?.checked;
 
   const wrap = document.getElementById("pw_blocked_wrap");
   const sel = document.getElementById("pw_act_blocked_status");
-  if(!wrap || !sel) return;
+  if (!wrap || !sel) return;
 
-  if(isBlocking){
+  if (isBlocking) {
     fillBlockedStatusDropdown(stepId, sel.value || null);
   } else {
     wrap.style.display = "none";
@@ -445,37 +483,26 @@ function syncBlockingUI(){
   }
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  const cb = document.getElementById("pw_act_blocking");
-  if(cb){
-    cb.addEventListener("change", syncBlockingUI);
+async function createDraftVersion(processId) {
+  const res = await fetch(`/admin/pw/processes/${processId}/versions/create`, { method: "POST" });
+  const data = await res.json();
+
+  if (data.status !== "success") {
+    alert(data.message || "יצירת גרסה נכשלה");
+    return;
   }
-});
 
-  // hook checkbox
-  document.addEventListener("DOMContentLoaded", () => {
-    const cb = document.getElementById("pw_act_blocking");
-    if(cb){
-      cb.addEventListener("change", syncBlockingUI);
-    }
-  });
+  window.location.href = `/admin/pw/processes/${processId}/builder?version_id=${data.version_id}`;
+}
 
-
-let pwStepModal, pwActivityModal;
-
-document.addEventListener("DOMContentLoaded", function(){
-  pwStepModal = new bootstrap.Modal(document.getElementById("pwStepModal"));
-  pwActivityModal = new bootstrap.Modal(document.getElementById("pwActivityModal"));
-});
-
-function openStepModal(mode, versionId=null, data=null){
+function openStepModal(mode, versionId = null, data = null) {
   document.getElementById("pw_step_mode").value = mode;
 
   const orderEl = document.getElementById("pw_step_order");
   const statusEl = document.getElementById("step_status_code");
   const termEl = document.getElementById("pw_is_terminal");
 
-  if(mode === "create"){
+  if (mode === "create") {
     document.getElementById("pwStepModalTitle").innerText = "הוסף שלב";
     document.getElementById("pw_step_id").value = "";
     document.getElementById("pw_step_version_id").value = versionId || "";
@@ -494,7 +521,7 @@ function openStepModal(mode, versionId=null, data=null){
   pwStepModal.show();
 }
 
-async function saveStep(){
+async function saveStep() {
   const mode = document.getElementById("pw_step_mode").value;
   const stepId = document.getElementById("pw_step_id").value;
   const versionId = document.getElementById("pw_step_version_id").value;
@@ -511,12 +538,12 @@ async function saveStep(){
 
   const res = await fetch(url, {
     method: "POST",
-    headers: {"Content-Type":"application/json"},
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
 
   const data = await res.json();
-  if(data.status !== "success"){
+  if (data.status !== "success") {
     alert(data.message || "שגיאה בשמירת שלב");
     return;
   }
@@ -524,35 +551,34 @@ async function saveStep(){
   location.reload();
 }
 
-async function deleteStep(stepId){
-  if(!confirm("למחוק שלב? (ימחקו גם פעילויות תחתיו)")) return;
+async function deleteStep(stepId) {
+  if (!confirm("למחוק שלב? (ימחקו גם פעילויות תחתיו)")) return;
 
-  const res = await fetch(`/admin/pw/steps/${encodeURIComponent(stepId)}/delete`, { method:"POST" });
+  const res = await fetch(`/admin/pw/steps/${encodeURIComponent(stepId)}/delete`, { method: "POST" });
   const data = await res.json();
 
-  if(data.status !== "success"){
+  if (data.status !== "success") {
     alert(data.message || "שגיאה במחיקת שלב");
     return;
   }
+
   location.reload();
 }
 
-function openActivityModal(mode, stepId=null, data=null){
+function openActivityModal(mode, stepId = null, data = null) {
   document.getElementById("pw_act_mode").value = mode;
 
   const titleEl = document.getElementById("pw_act_title");
-  const descEl  = document.getElementById("pw_act_desc");
-  const typeEl  = document.getElementById("pw_act_type");
-  const roleEl  = document.getElementById("pw_act_role");
-  const dueEl   = document.getElementById("pw_act_due");
-  const sortEl  = document.getElementById("pw_act_sort");
+  const descEl = document.getElementById("pw_act_desc");
+  const typeEl = document.getElementById("pw_act_type");
+  const roleEl = document.getElementById("pw_act_role");
+  const dueEl = document.getElementById("pw_act_due");
+  const sortEl = document.getElementById("pw_act_sort");
   const blockEl = document.getElementById("pw_act_blocking");
   const blockedStatusEl = document.getElementById("pw_act_blocked_status");
-
-  // ✅ NEW: assignee dropdown
   const assigneeEl = document.getElementById("pw_act_assignee_user");
 
-  if(mode === "create"){
+  if (mode === "create") {
     document.getElementById("pwActivityModalTitle").innerText = "הוסף פעילות";
     document.getElementById("pw_act_id").value = "";
     document.getElementById("pw_act_step_id").value = stepId || "";
@@ -564,15 +590,13 @@ function openActivityModal(mode, stepId=null, data=null){
     dueEl.value = "";
     sortEl.value = 10;
     blockEl.checked = false;
+    if (blockedStatusEl) blockedStatusEl.innerHTML = "";
+    if (assigneeEl) assigneeEl.value = "";
 
-    // ✅ reset blocked UI
-    if(blockedStatusEl) blockedStatusEl.value = "";
     const wrap = document.getElementById("pw_blocked_wrap");
-    if(wrap) wrap.style.display = "none";
+    if (wrap) wrap.style.display = "none";
 
-    // ✅ NEW: reset assignee
-    if(assigneeEl) assigneeEl.value = "";
-
+    syncBlockingUI();
   } else {
     document.getElementById("pwActivityModalTitle").innerText = "ערוך פעילות";
     document.getElementById("pw_act_id").value = data.activity_id;
@@ -586,20 +610,23 @@ function openActivityModal(mode, stepId=null, data=null){
     sortEl.value = data.sort_order || 10;
     blockEl.checked = (data.blocking_ind == 1);
 
-    // ✅ NEW: prefill assignee
-    if(assigneeEl) assigneeEl.value = data.assignee_user_id || "";
+    if (assigneeEl) {
+      assigneeEl.value = (data.assignee_user_id === null || data.assignee_user_id === undefined)
+        ? ""
+        : String(data.assignee_user_id);
+    }
 
-    // keep your existing blocked logic
-    if(data.blocked_status_code && blockedStatusEl){
+    syncBlockingUI();
+
+    if (data.blocked_status_code && blockedStatusEl) {
       blockedStatusEl.value = data.blocked_status_code;
     }
-    syncBlockingUI();
   }
 
   pwActivityModal.show();
 }
 
-async function saveActivity(){
+async function saveActivity() {
   const mode = document.getElementById("pw_act_mode").value;
   const actId = document.getElementById("pw_act_id").value;
   const stepId = document.getElementById("pw_act_step_id").value;
@@ -607,7 +634,7 @@ async function saveActivity(){
   const activityType = document.getElementById("pw_act_type").value;
   const assigneeUserId = document.getElementById("pw_act_assignee_user").value;
 
-  if(activityType === "task" && !assigneeUserId){
+  if (activityType === "task" && !assigneeUserId) {
     alert("בשביל פעילות מסוג task חובה לבחור משתמש לביצוע");
     return;
   }
@@ -618,8 +645,8 @@ async function saveActivity(){
     activity_type: document.getElementById("pw_act_type").value,
     blocking_ind: document.getElementById("pw_act_blocking").checked ? 1 : 0,
     blocked_status_code: document.getElementById("pw_act_blocking").checked
-    ? document.getElementById("pw_act_blocked_status").value
-    : null,
+      ? document.getElementById("pw_act_blocked_status").value
+      : null,
     default_assignee_role: document.getElementById("pw_act_role").value,
     assignee_user_id: assigneeUserId ? parseInt(assigneeUserId, 10) : null,
     due_days_offset: document.getElementById("pw_act_due").value,
@@ -632,12 +659,12 @@ async function saveActivity(){
 
   const res = await fetch(url, {
     method: "POST",
-    headers: {"Content-Type":"application/json"},
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload)
   });
 
   const data = await res.json();
-  if(data.status !== "success"){
+  if (data.status !== "success") {
     alert(data.message || "שגיאה בשמירת פעילות");
     return;
   }
@@ -645,74 +672,47 @@ async function saveActivity(){
   location.reload();
 }
 
-async function deleteActivity(activityId){
-  if(!confirm("למחוק פעילות?")) return;
+async function deleteActivity(activityId) {
+  if (!confirm("למחוק פעילות?")) return;
 
-  const res = await fetch(`/admin/pw/activities/${encodeURIComponent(activityId)}/delete`, { method:"POST" });
+  const res = await fetch(`/admin/pw/activities/${encodeURIComponent(activityId)}/delete`, { method: "POST" });
   const data = await res.json();
 
-  if(data.status !== "success"){
+  if (data.status !== "success") {
     alert(data.message || "שגיאה במחיקת פעילות");
     return;
   }
+
   location.reload();
 }
-</script>
 
-<script>
-  document.addEventListener("click", function (e) {
-    const btn = e.target.closest(".js-edit-step");
-    if (!btn) return;
-
-    const stepData = {
-      step_id: parseInt(btn.dataset.stepId, 10),
-      version_id: parseInt(btn.dataset.versionId, 10),
-      step_order: parseInt(btn.dataset.stepOrder, 10),
-      status_code: btn.dataset.statusCode || "",
-      status_label: btn.dataset.statusLabel || "",
-      is_terminal: (btn.dataset.isTerminal === "1")
-    };
-
-    openStepModal("edit", null, stepData);
-  });
-</script>
-
-<script>
-document.addEventListener("click", function(e){
-  const upBtn = e.target.closest(".js-step-up");
-  const downBtn = e.target.closest(".js-step-down");
-  if(!upBtn && !downBtn) return;
-
+function handleStepReorder(upBtn, downBtn) {
   const row = (upBtn || downBtn).closest("tr");
-  if(!row) return;
+  if (!row) return;
 
   const tbody = row.closest("tbody");
-  if(!tbody) return;
+  if (!tbody) return;
 
-  // helper: returns [stepRow, optionalDetailsRow]
-  function getStepPair(stepRow){
+  function getStepPair(stepRow) {
     const details = stepRow.nextElementSibling;
-    // details row is the one with colspan="4" you render for activities
     const isDetails = details && details.querySelector("td[colspan='4']");
     return isDetails ? [stepRow, details] : [stepRow];
   }
 
-  // list of step rows only (not activities rows)
   const stepRows = Array.from(tbody.querySelectorAll("tr"))
-    .filter(r => r.querySelector(".js-step-up")); // step row marker
+    .filter(r => r.querySelector(".js-step-up"));
 
   const idx = stepRows.indexOf(row);
-  if(idx === -1) return;
+  if (idx === -1) return;
 
   const targetIdx = upBtn ? idx - 1 : idx + 1;
-  if(targetIdx < 0 || targetIdx >= stepRows.length) return;
+  if (targetIdx < 0 || targetIdx >= stepRows.length) return;
 
   const targetRow = stepRows[targetIdx];
 
   const pairA = getStepPair(row);
   const pairB = getStepPair(targetRow);
 
-  // small animation
   pairA.forEach(r => r.style.transition = "transform 180ms ease");
   pairB.forEach(r => r.style.transition = "transform 180ms ease");
 
@@ -721,68 +721,53 @@ document.addEventListener("click", function(e){
   pairB.forEach(r => r.style.transform = `translateY(${dir * 12}px)`);
 
   setTimeout(() => {
-    pairA.concat(pairB).forEach(r => { r.style.transition=""; r.style.transform=""; });
+    pairA.concat(pairB).forEach(r => {
+      r.style.transition = "";
+      r.style.transform = "";
+    });
 
-    // swap pairs in DOM
-    if(upBtn){
-      // move A above B
+    if (upBtn) {
       pairA.forEach(r => tbody.insertBefore(r, targetRow));
     } else {
-      // move A below B (insert after B’s pair)
       const afterB = pairB[pairB.length - 1].nextElementSibling;
       pairA.forEach(r => tbody.insertBefore(r, afterB));
     }
 
-    // ordered step ids (from the buttons that have data-step-id)
     const ordered = Array.from(tbody.querySelectorAll("tr"))
       .filter(r => r.querySelector(".js-step-up"))
       .map(r => r.querySelector(".js-step-up").dataset.stepId);
 
     const versionId = {{ selected_version.version_id if selected_version else "null" }};
-    if(!versionId) return;
+    if (!versionId) return;
 
     fetch(`/admin/pw/versions/${versionId}/steps/reorder`, {
       method: "POST",
-      headers: {"Content-Type":"application/json"},
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ordered_step_ids: ordered })
     });
 
-    // update visible order numbers
     Array.from(tbody.querySelectorAll("tr"))
       .filter(r => r.querySelector(".js-step-up"))
       .forEach((row, index) => {
-          const cell = row.querySelector("td:first-child");
-          if(cell) cell.textContent = index + 1;
+        const cell = row.querySelector("td:first-child");
+        if (cell) cell.textContent = index + 1;
       });
-
   }, 190);
-});
-</script>
+}
 
-<script>
-async function finalizeVersion(versionId){
-  if(!confirm("לסיים את הגרסה ולהפוך אותה לגרסה הפעילה לתיקים חדשים?")) return;
+async function finalizeVersion(versionId) {
+  if (!confirm("לסיים את הגרסה ולהפוך אותה לגרסה הפעילה לתיקים חדשים?")) return;
 
   const res = await fetch(`/admin/pw/versions/${versionId}/finalize`, { method: "POST" });
   const data = await res.json();
-  if(data.status !== "success"){
+
+  if (data.status !== "success") {
     alert(data.message || "שגיאה בסיום גרסה");
     return;
   }
+
   location.reload();
 }
-</script>
-
-<script>
-  const pwCaseStatuses = [
-    {% for s in case_statuses %}
-      {
-        status_code: {{ (s.status_code or '')|tojson }},
-        status_label: {{ (s.status_description or '')|tojson }},
-        sort_order: {{ s.sort_order or 0 }}
-      }{% if not loop.last %},{% endif %}
-    {% endfor %}
-  ];
 </script>
 
 {% endblock %}
