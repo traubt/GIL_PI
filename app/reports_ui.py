@@ -6,6 +6,7 @@ from io import BytesIO
 from urllib.request import urlopen, Request
 from pathlib import Path
 from flask import current_app
+from .report_naming import build_report_display_name
 
 
 
@@ -349,10 +350,10 @@ def editor_page():
 @reports_ui_bp.route('/save_draft', methods=['POST'])
 def save_draft():
     payload = request.get_json(silent=True) or {}
-    report_id  = payload.get('report_id')
-    insured_id = payload.get('insured_id')
-    report_type = payload.get('report_type', 'TRACKING')
 
+    report_id = payload.get('report_id')
+    insured_id = payload.get('insured_id')
+    report_type = (payload.get('report_type') or 'TRACKING').strip()
 
     insured = db.session.get(GilInsured, insured_id) if insured_id else None
 
@@ -360,25 +361,53 @@ def save_draft():
         rpt = db.session.get(GilReport, int(report_id))
         if not rpt:
             return jsonify({'status': 'error', 'message': 'Report not found'}), 404
+
         if not insured and rpt.case_id:
             insured = db.session.get(GilInsured, rpt.case_id)
+
     else:
         if not insured:
             return jsonify({'status': 'error', 'message': 'Missing insured_id'}), 400
+
         rpt = GilReport(
             case_id=insured.id,
             report_type=report_type,
             template_key=_template_key(getattr(insured, 'insurance', None), report_type),
             status='Draft',
-            version_no=payload.get('version_no', 0) or 0,
+            version_no=int(payload.get('version_no') or 0),
         )
         db.session.add(rpt)
 
-    rpt.title = payload.get('title') or rpt.title
-    rpt.editor_json = json.dumps(payload, ensure_ascii=False)
+    if getattr(rpt, 'status', None) != 'Final':
+        rpt.status = 'Draft'
 
-    ref_number = _get_first_nonempty(insured or object(), 'ref_number','ref', default=None)
+    editor_json = payload
+    rpt.editor_json = json.dumps(editor_json, ensure_ascii=False)
+
+    ref_number = _get_first_nonempty(insured or object(), 'ref_number', 'ref', default=None)
     rpt.reference_no = _compute_reference(ref_number, int(rpt.version_no or 0))
+
+    # ---- New naming convention ----
+    full_name = (
+        (payload.get('db') or {}).get('full_name')
+        or getattr(insured, 'full_name', None)
+        or getattr(insured, 'name', None)
+        or ''
+    )
+
+    invoice_no = (
+        payload.get('inv_number')
+        or (payload.get('invoice') or {}).get('inv_number')
+        or ''
+    )
+
+    rpt.title = build_report_display_name(
+        report_type=report_type,
+        full_name=full_name,
+        reference_no=rpt.reference_no or '',
+        invoice_no=invoice_no,
+    )
+
     rpt.updated_at = datetime.utcnow()
     db.session.commit()
 
@@ -388,8 +417,51 @@ def save_draft():
         'status_str': rpt.status,
         'version_no': rpt.version_no,
         'reference_no': rpt.reference_no,
+        'title': rpt.title,
     })
 
+@reports_ui_bp.route('/load_draft', methods=['GET'])
+def load_draft():
+    insured_id = request.args.get('insured_id', type=int)
+    report_id = request.args.get('report_id', type=int)
+
+    rpt = None
+
+    if report_id:
+        rpt = db.session.get(GilReport, report_id)
+        if not rpt:
+            return jsonify({'status': 'error', 'message': 'Report not found'}), 404
+
+    elif insured_id:
+        rpt = (
+            GilReport.query
+            .filter(
+                GilReport.case_id == insured_id,
+                GilReport.status == 'Draft'
+            )
+            .order_by(GilReport.updated_at.desc(), GilReport.id.desc())
+            .first()
+        )
+        if not rpt:
+            return jsonify({'status': 'empty', 'message': 'No draft found'})
+
+    else:
+        return jsonify({'status': 'error', 'message': 'Missing insured_id or report_id'}), 400
+
+    try:
+        editor_data = json.loads(rpt.editor_json) if rpt.editor_json else {}
+    except Exception:
+        editor_data = {}
+
+    return jsonify({
+        'status': 'ok',
+        'report_id': rpt.id,
+        'status_str': rpt.status,
+        'version_no': rpt.version_no,
+        'reference_no': rpt.reference_no,
+        'report_type': rpt.report_type,
+        'editor_json': editor_data
+    })
 
 @reports_ui_bp.route('/finalize', methods=['POST'])
 def finalize():

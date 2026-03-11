@@ -19,6 +19,8 @@ import json
 from datetime import datetime as _dt
 from sqlalchemy import func
 from flask import session
+from .activity_logger import log_user_activity
+from .report_naming import build_report_display_name, build_report_filename
 
 
 DOCX_TEMPLATES_DIR = getattr(
@@ -2195,7 +2197,276 @@ def api_save_tracking_report_media_links(tracking_report_id: int):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def _save_rendered_docx_to_disk(tpl, ctx, report_id: int) -> tuple[str, str]:
+    """
+    Render DOCX and save it under instance/generated_reports.
+    Returns (abs_path, filename)
+    """
+    out_dir = os.path.join(current_app.instance_path, "generated_reports")
+    os.makedirs(out_dir, exist_ok=True)
 
+    stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"report_{report_id}_{stamp}.docx"
+    abs_path = os.path.join(out_dir, filename)
+
+    tpl.render(ctx)
+    tpl.save(abs_path)
+
+    return abs_path, filename
+
+@reports_docx_bp.route("/finalize", methods=["POST"])
+def finalize_tracking_report():
+    import json
+    import os
+    import datetime
+    from datetime import datetime as _dt
+
+    user_data = session.get("user")
+    user = json.loads(user_data) if user_data else {}
+    if not user:
+        return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+    payload = request.get_json(silent=True) or {}
+
+    try:
+        insured_id = payload.get("insured_id")
+        tracking_date = (payload.get("tracking_date") or "").strip()
+
+        if not insured_id:
+            return jsonify({"status": "error", "message": "insured_id is required"}), 400
+
+        if not tracking_date:
+            return jsonify({"status": "error", "message": "tracking_date is required"}), 400
+
+        try:
+            tracking_date_db = _dt.strptime(tracking_date, "%Y-%m-%d").date()
+        except Exception:
+            return jsonify({"status": "error", "message": "Invalid tracking_date format"}), 400
+
+        report = (
+            GilTrackingReport.query
+            .filter(
+                GilTrackingReport.insured_id == insured_id,
+                GilTrackingReport.report_date == tracking_date_db
+            )
+            .order_by(GilTrackingReport.id.desc())
+            .first()
+        )
+
+        if not report:
+            return jsonify({"status": "error", "message": "Tracking report not found"}), 404
+
+        report_id = report.id
+        tmpl_key = (payload.get("template") or "siudi").strip().lower()
+
+        # -----------------------------
+        # Build overrides exactly like render_docx_download
+        # -----------------------------
+        overrides = {
+            "activity_date": payload.get("activity_date", "").strip(),
+            "surv_place": payload.get("surv_place", "").strip(),
+            "surv_city": payload.get("surv_city", "").strip(),
+            "injury_type": payload.get("injury_type", "").strip(),
+            "background": payload.get("background", "").strip(),
+            "occupation": payload.get("occupation", "").strip(),
+            "social_media": payload.get("social_media", "").strip(),
+            "social_media_identification": payload.get("social_media_identification", "").strip(),
+            "tracking_date": tracking_date,
+            "start_time": payload.get("start_time", "").strip(),
+            "end_time": payload.get("end_time", "").strip(),
+            "summary": payload.get("summary", "").strip(),
+            "authorities_1": payload.get("authorities_1", "").strip(),
+            "authorities_2": payload.get("authorities_2", "").strip(),
+            "phone": payload.get("phone", "").strip(),
+            "address": payload.get("address", "").strip(),
+            "dnb": payload.get("dnb", "").strip(),
+        }
+
+        ref_number = (payload.get("ref_number") or "").strip()
+        reference_no = (payload.get("reference_no") or "").strip()
+        version_no = payload.get("version_no")
+
+        ctx = get_report_context(report_id, insured_id=insured_id, overrides=overrides)
+        ctx = _apply_ref_and_version(
+            ctx,
+            ref_number=ref_number,
+            reference_no=reference_no,
+            version_no=version_no,
+        )
+
+        db_ctx = ctx.get("db", {})
+        ctx["tracking_date_ddmmyyyy"] = _iso_to_ddmmyyyy_dash(
+            db_ctx.get("tracking_date", "")
+        )
+
+        ctx["photo_pages"] = []
+        ctx["social_photos"] = []
+        ctx["authorities_table_photo"] = ""
+        ctx["authorities_table_photo_2"] = ""
+
+        template_path = load_template_docx(map_template_key(tmpl_key))
+        tpl = DocxTemplate(template_path)
+
+        # -----------------------------
+        # Same special handling as render_docx_download
+        # -----------------------------
+        if tmpl_key == "menora_life_followup":
+            raw = (payload.get("tracking_raw") or "").strip()
+            ctx["tracking_rows"] = _parse_tracking_rows(raw) if raw else []
+
+        if tmpl_key == "menora_life_photos":
+            iso = (payload.get("photo_date") or "").strip()
+            if iso:
+                ctx.setdefault("db", {})["photo_date"] = ddmmyyyy(iso)
+
+        if tmpl_key == "siudi_invoice":
+            inv_date_iso = (payload.get("inv_date") or "").strip()
+            ctx.setdefault("insured", {})
+            ctx.setdefault("claim", {})
+            ctx.setdefault("totals", {})
+
+            ctx.update({
+                "inv_date": ddmmyyyy(inv_date_iso),
+                "inv_number": (payload.get("inv_number") or "").strip(),
+                "inv_ref": (payload.get("inv_ref") or "").strip(),
+            })
+            ctx["insured"]["id_number"] = (payload.get("insured", {}).get("id_number") or "").strip()
+            ctx["claim"]["number"] = (payload.get("claim", {}).get("number") or "").strip()
+            ctx["claim"]["subject"] = (payload.get("claim", {}).get("subject") or "").strip()
+            ctx["totals"].update({
+                "subtotal": (payload.get("totals", {}).get("subtotal") or "").strip(),
+                "vat_rate": (payload.get("totals", {}).get("vat_rate") or "").strip(),
+                "vat_amount": (payload.get("totals", {}).get("vat_amount") or "").strip(),
+                "total": (payload.get("totals", {}).get("total") or "").strip(),
+            })
+
+        if tmpl_key == "menora_life_invoice":
+            inv_date_str = (payload.get("inv_date") or "").strip()
+            followup_date_text = (payload.get("life_followup_date") or "").strip()
+
+            inv_iso = _to_iso(inv_date_str) or inv_date_str
+            inv_date_dmy = ddmmyyyy(inv_iso) if "-" in (inv_iso or "") else inv_date_str
+
+            life_items = payload.get("life_items") or []
+            if isinstance(life_items, str):
+                try:
+                    life_items = json.loads(life_items)
+                except Exception:
+                    life_items = []
+
+            totals = payload.get("totals") or {}
+
+            ctx.setdefault("insured", {})
+            ctx.setdefault("claim", {})
+
+            ctx.update({
+                "inv_date": inv_date_dmy,
+                "inv_number": (payload.get("inv_number") or "").strip(),
+                "inv_ref": (payload.get("inv_ref") or "").strip(),
+                "life_followup_date": followup_date_text,
+                "life_items": life_items,
+                "life_subtotal": (totals.get("subtotal") or "").strip(),
+                "life_vat_amount": (totals.get("vat_amount") or "").strip(),
+                "life_total": (totals.get("total") or "").strip(),
+            })
+
+            ctx["claim"]["number"] = payload.get("claim", {}).get("number") or ctx["db"].get("claim_number", "")
+            ctx["claim"]["subject"] = payload.get("claim", {}).get("subject") or ctx["db"].get("full_name", "")
+            ctx["insured"]["id_number"] = payload.get("insured", {}).get("id_number") or ctx["db"].get("id_number", "")
+
+        # -----------------------------
+        # Build report filename (Dor naming convention)
+        # -----------------------------
+        full_name = (
+                ctx.get("db", {}).get("full_name")
+                or ctx.get("insured", {}).get("full_name")
+                or ctx.get("insured", {}).get("name")
+                or ""
+        )
+
+        invoice_no = (payload.get("inv_number") or "").strip()
+
+        final_base_name = build_report_display_name(
+            report_type=tmpl_key,
+            full_name=full_name,
+            reference_no=reference_no or ctx.get("db", {}).get("ref_number", ""),
+            invoice_no=invoice_no,
+        )
+
+        # -----------------------------
+        # Save DOCX locally
+        # -----------------------------
+        abs_path, temp_filename = _save_rendered_docx_to_disk(tpl, ctx, report_id)
+
+        final_docx_filename = build_report_filename(
+            report_type=tmpl_key,
+            full_name=full_name,
+            reference_no=reference_no or ctx.get("db", {}).get("ref_number", ""),
+            invoice_no=invoice_no,
+            ext="docx"
+        )
+
+        # -----------------------------
+        # Upload to Dropbox
+        # -----------------------------
+        try:
+            from .routes import dbx
+        except Exception:
+            dbx = None
+
+        if not dbx:
+            return jsonify({"status": "error", "message": "Dropbox client not available"}), 500
+
+        insured_folder = str(insured_id or report.insured_id or "")
+        report_folder = str(report_id)
+
+        dropbox_dir = f"/GilReports/{insured_folder}/{report_folder}"
+        dropbox_path = f"{dropbox_dir}/{final_docx_filename}"
+
+        try:
+            dbx.files_create_folder_v2(dropbox_dir)
+        except Exception:
+            pass
+
+        with open(abs_path, "rb") as f:
+            dbx.files_upload(f.read(), dropbox_path, mute=True)
+
+        # -----------------------------
+        # Update report status
+        # -----------------------------
+        if hasattr(report, "status"):
+            report.status = "Final"
+
+        if hasattr(report, "title"):
+            report.title = final_base_name
+
+        if hasattr(report, "finalized_at"):
+            report.finalized_at = datetime.datetime.now()
+
+        if hasattr(report, "final_docx_path"):
+            report.final_docx_path = dropbox_path
+
+        if hasattr(report, "updated_by_user_id"):
+            report.updated_by_user_id = user.get("id")
+
+        log_user_activity(
+            user_data=user,
+            activity=f"Finalize tracking report #{report_id} for insured #{insured_id}"
+        )
+
+        db.session.commit()
+
+        return jsonify({
+            "status": "ok",
+            "message": "Report finalized successfully",
+            "dropbox_path": dropbox_path,
+            "report_id": report_id
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("finalize_tracking_report failed")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 

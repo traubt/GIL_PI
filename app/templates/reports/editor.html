@@ -72,8 +72,9 @@
 
 
       <div class="d-flex gap-2">
-<!--        <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>-->
-        <button id="btnFinalize" class="btn btn-outline-primary" disabled>סגירת דו״ח (סופי)</button>
+
+        <button id="btnFinalizeReport" class="btn btn-danger"> סיום דו"ח</button>
+        <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>
         <button id="sendEmail" class="btn btn-primary">שלח אימייל</button>
 <!--        <button id="btnPreview" class="btn btn-primary">תצוגה מקדימה (PDF)</button>-->
 
@@ -1196,12 +1197,14 @@ window.safeUUID = (function () {
     if (!payload) payload = {};
     if (!window.state) return payload;
 
-    payload.ref_number   = window.state.ref_number   || "";
+    payload.ref_number   = window.state.ref_number || "";
     payload.version_no   = (window.state.version_no ?? 0);
     payload.reference_no = window.state.reference_no || "";
 
     return payload;
   }
+
+  window.attachRefAndVersion = attachRefAndVersion;
 
 
   function showBusy(text){
@@ -1497,14 +1500,53 @@ function applyTemplateSections() {
 
   /* ============================== 3) SAVE / FINALIZE / GREEN PREVIEW ============================== */
   async function saveDraft(){
-    if (typeof window.getSelectedReportImages === 'function') {
-      state.photos = window.getSelectedReportImages();
-    }
+    const draftPayload = {
+      report_id: window.state.report_id || null,
+      insured_id: window.state.insured_id || "",
+      report_type: document.getElementById('reportType')?.value || window.state.report_type || "TRACKING",
+      version_no: window.state.version_no ?? 0,
+      status_str: window.state.status_str || "Draft",
+      reference_no: window.state.reference_no || "",
+      ref_number: window.state.ref_number || "",
+      title: document.getElementById('reportType')?.selectedOptions?.[0]?.textContent?.trim() || "",
+
+      db: {
+        ref_number: document.getElementById('db_ref_number')?.value?.trim() || "",
+        full_name: document.getElementById('db_full_name')?.value?.trim() || "",
+        birth_date: document.getElementById('db_birth_date')?.value?.trim() || "",
+        gender: document.getElementById('db_gender')?.value?.trim() || "",
+        id_number: document.getElementById('db_id_number')?.value?.trim() || "",
+        claim_number: document.getElementById('db_claim_number')?.value?.trim() || "",
+        phone: document.getElementById('db_phone')?.value?.trim() || "",
+        address: document.getElementById('db_address')?.value?.trim() || "",
+        city: document.getElementById('db_city')?.value?.trim() || ""
+      },
+
+      ctx: {
+        activity_date: document.getElementById('ctx_activity_date')?.value?.trim() || "",
+        surv_place: document.getElementById('ctx_surv_place')?.value?.trim() || "",
+        surv_city: document.getElementById('ctx_surv_city')?.value?.trim() || "",
+        injury_type: document.getElementById('ctx_injury_type')?.value?.trim() || ""
+      },
+
+      life_injury_type: document.getElementById('life_injury_type')?.value?.trim() || "",
+      background: document.getElementById('db_background')?.value?.trim() || "",
+      occupation: document.getElementById('db_occupation')?.value?.trim() || "",
+      social_media: document.getElementById('db_social_media')?.value?.trim() || "",
+      social_media_identification: document.getElementById('db_social_media_identification')?.value?.trim() || "",
+      authorities_1: document.getElementById('db_authorities_1')?.value?.trim() || "",
+      authorities_2: document.getElementById('db_authorities_2')?.value?.trim() || "",
+      dnb: document.getElementById('db_dnb')?.value?.trim() || "",
+      tracking_date: document.getElementById('db_tracking_date')?.value?.trim() || "",
+      summary: document.getElementById('db_summary')?.value?.trim() || ""
+    };
+
     const res = await fetch('/reports/save_draft', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(state)
+      body: JSON.stringify(draftPayload)
     });
+
     const j = await res.json();
     if (j.status === 'ok') {
       state.report_id    = j.report_id;
@@ -1514,30 +1556,13 @@ function applyTemplateSections() {
       updateMetaBadges();
       return true;
     }
+
     alert('שגיאה בשמירה');
     return false;
   }
+
   $('#btnSaveDraft')?.addEventListener('click', async ()=>{ if (await saveDraft()) alert('נשמר כטיוטה ✅'); });
-  $('#btnFinalize')?.addEventListener('click', async ()=>{
-    if (typeof window.getSelectedReportImages === 'function') {
-      state.photos = window.getSelectedReportImages();
-    }
-    const ok = await saveDraft(); if (!ok) return;
-    const fd = new FormData();
-    fd.append('action','finalize');
-    fd.append('report_id', state.report_id);
-    const res = await fetch('/reports/finalize', { method:'POST', body: fd });
-    const j = await res.json();
-    if (j.status === 'ok') {
-      state.status_str = j.status_str;
-      state.version_no = j.version_no;
-      state.reference_no = j.reference_no;
-      updateMetaBadges();
-      alert('הדו״ח סומן כסופי ✅');
-    } else {
-      alert('שגיאה בסגירת דו״ח');
-    }
-  });
+
   // Green preview button
   $('#btnPreview')?.addEventListener('click', () => {
     const holder = document.getElementById('previewHolder');
@@ -1561,6 +1586,137 @@ function applyTemplateSections() {
   updateMetaBadges();
   window.saveDraft = saveDraft;
 
+  async function loadDraftIntoEditor() {
+    try {
+      const insuredId = Number(window.state?.insured_id || 0);
+      const reportId = Number(window.state?.report_id || 0);
+
+      if (!insuredId && !reportId) return;
+
+      let url = '';
+      if (reportId) {
+        url = `/reports/load_draft?report_id=${reportId}`;
+      } else {
+        url = `/reports/load_draft?insured_id=${insuredId}`;
+      }
+
+      const res = await fetch(url, { method: 'GET' });
+      const j = await res.json();
+
+      if (!j || j.status !== 'ok' || !j.editor_json) {
+        return;
+      }
+
+      const draft = j.editor_json || {};
+
+      // ---- state metadata ----
+      window.state.report_id    = j.report_id || window.state.report_id || null;
+      window.state.status_str   = j.status_str || window.state.status_str || 'Draft';
+      window.state.version_no   = (j.version_no ?? window.state.version_no ?? 0);
+      window.state.reference_no = j.reference_no || window.state.reference_no || '';
+      window.state.report_type  = j.report_type || draft.report_type || window.state.report_type || 'TRACKING';
+
+      // ---- merge saved state ----
+      if (draft.db && typeof draft.db === 'object') {
+        window.state.db = { ...(window.state.db || {}), ...draft.db };
+      }
+      if (draft.ctx && typeof draft.ctx === 'object') {
+        window.state.ctx = { ...(window.state.ctx || {}), ...draft.ctx };
+      }
+
+      if (draft.ref_number) {
+        window.state.ref_number = draft.ref_number;
+      }
+
+      // ---- report type dropdown ----
+      const rtSel = document.getElementById('reportType');
+      const savedReportType = draft.report_type || j.report_type || '';
+      if (rtSel && savedReportType) {
+        rtSel.value = savedReportType;
+      }
+
+      // ---- insured selector ----
+      const insuredSel = document.getElementById('insuredId');
+      if (insuredSel && insuredId) {
+        insuredSel.value = String(insuredId);
+        const opt = insuredSel.selectedOptions?.[0];
+        if (opt && window.fillInsuredCardFromOption) {
+          window.fillInsuredCardFromOption(opt);
+        }
+      }
+
+      // ---- DB / insured fields ----
+      const setVal = (id, val) => {
+        const el = document.getElementById(id);
+        if (el && val !== undefined && val !== null) {
+          el.value = val;
+        }
+      };
+
+      setVal('db_ref_number', window.state.db?.ref_number || '');
+      setVal('db_full_name', window.state.db?.full_name || '');
+      setVal('db_birth_date', window.state.db?.birth_date || '');
+      setVal('db_gender', window.state.db?.gender || '');
+      setVal('db_id_number', window.state.db?.id_number || '');
+      setVal('db_claim_number', window.state.db?.claim_number || '');
+      setVal('db_phone', window.state.db?.phone || '');
+      setVal('db_address', window.state.db?.address || '');
+      setVal('db_city', window.state.db?.city || '');
+
+      // ---- context fields ----
+      setVal('ctx_activity_date', window.state.ctx?.activity_date || '');
+      setVal('ctx_surv_place', window.state.ctx?.surv_place || '');
+      setVal('ctx_surv_city', window.state.ctx?.surv_city || '');
+      setVal('ctx_injury_type', window.state.ctx?.injury_type || '');
+
+      // ---- text fields we care about ----
+      const directMap = {
+        life_injury_type: draft.life_injury_type,
+        db_background: draft.background || draft.db_background,
+        db_occupation: draft.occupation || draft.db_occupation,
+        db_social_media: draft.social_media || draft.db_social_media,
+        db_social_media_identification: draft.social_media_identification || draft.db_social_media_identification,
+        db_authorities_1: draft.authorities_1 || draft.db_authorities_1,
+        db_authorities_2: draft.authorities_2 || draft.db_authorities_2,
+        db_dnb: draft.dnb || draft.db_dnb,
+        db_summary: draft.summary || draft.db_summary,
+        db_tracking_date: draft.tracking_date || draft.db_tracking_date
+      };
+
+      Object.entries(directMap).forEach(([id, val]) => setVal(id, val || ''));
+
+      // ---- update UI ----
+      applyTemplateSections();
+      updateMetaBadges();
+
+      // ---- if tracking date was restored, trigger the same change flow
+      //      so investigator activities (or admin override activities) load too
+      const trackingDateEl = document.getElementById('db_tracking_date');
+      const restoredTrackingDate = trackingDateEl?.value?.trim() || '';
+
+      if (trackingDateEl && restoredTrackingDate) {
+        // wait a tick so the existing listeners/UI are fully ready
+        setTimeout(() => {
+          trackingDateEl.dispatchEvent(new Event('change', { bubbles: true }));
+        }, 0);
+      }
+
+      // refresh preview badge text if needed
+      const badge = document.getElementById('templateBadge');
+      if (badge) {
+        badge.innerHTML = `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
+      }
+
+      console.log('[Draft] loaded into editor:', j);
+
+    } catch (err) {
+      console.error('[Draft] failed to load draft:', err);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    loadDraftIntoEditor();
+  });
 
   /* ============================== 4) PHOTOS: LOCAL DROPBOX IMPORT ============================== */
   (function(){
@@ -1779,35 +1935,37 @@ function applyTemplateSections() {
       return 'tracking';
     }
 
-  const v  = String(raw).trim();
-  const up = v.toUpperCase();
+    const v  = String(raw).trim();
+    const up = v.toUpperCase();
 
-  // --- Menora Life reports ---
-  if (v === 'menora_life_followup' || up === 'MENORA_LIFE_FOLLOWUP')
-    return 'menora_life_followup';
+    // --- Menora Life reports ---
+    if (v === 'menora_life_followup' || up === 'MENORA_LIFE_FOLLOWUP')
+      return 'menora_life_followup';
 
-  if (v === 'menora_life_photos'   || up === 'MENORA_LIFE_PHOTOS')
-    return 'menora_life_photos';            // placeholder
+    if (v === 'menora_life_photos'   || up === 'MENORA_LIFE_PHOTOS')
+      return 'menora_life_photos';            // placeholder
 
-  if (v === 'menora_life_photoid'  || up === 'MENORA_LIFE_PHOTOID')
-    return 'id_photos';            // ✅ reuse Photo-ID endpoints/template
+    if (v === 'menora_life_photoid'  || up === 'MENORA_LIFE_PHOTOID')
+      return 'id_photos';            // ✅ reuse Photo-ID endpoints/template
 
-  if (v === 'menora_life_invoice'  || up === 'MENORA_LIFE_INVOICE')
-    return 'menora_life_invoice';
+    if (v === 'menora_life_invoice'  || up === 'MENORA_LIFE_INVOICE')
+      return 'menora_life_invoice';
 
 
-    // --- Classic סיעודי bundle ---
-    if (up === 'ID_PHOTOS' || up === 'PHOTO_ID')   return 'id_photos';
-    if (up === 'SIUDI' || up === 'MENORA_SIUDI')   return 'siudi';
-    if (up === 'SIUDI_INVOICE')                   return 'siudi_invoice';
+      // --- Classic סיעודי bundle ---
+      if (up === 'ID_PHOTOS' || up === 'PHOTO_ID')   return 'id_photos';
+      if (up === 'SIUDI' || up === 'MENORA_SIUDI')   return 'siudi';
+      if (up === 'SIUDI_INVOICE')                   return 'siudi_invoice';
 
-    // Legacy types (we mostly don’t use them anymore, but keep a safe fallback)
-    const map = { TRACKING: 'tracking', PERSONAL: 'personal', PHOTOSET: 'photoset' };
-    if (map[up]) return map[up];
+      // Legacy types (we mostly don’t use them anymore, but keep a safe fallback)
+      const map = { TRACKING: 'tracking', PERSONAL: 'personal', PHOTOSET: 'photoset' };
+      if (map[up]) return map[up];
 
-    alert(`No template found for "${raw}"`);
-    return 'tracking';
-  }
+      alert(`No template found for "${raw}"`);
+      return 'tracking';
+    }
+
+    window.selectedTemplateKey = selectedTemplateKey;
 
 
 
@@ -3154,6 +3312,81 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
       if (!insuredId || !iso) return;
 
       await importTrackingPhotosToEditor(insuredId, iso);
+  });
+
+  document.getElementById("btnFinalizeReport").addEventListener("click", async function () {
+      if (!confirm("האם אתה בטוח שברצונך לסיים את הדוח? לאחר סיום לא ניתן לערוך.")) {
+          return;
+      }
+
+      try {
+          let reportId = Number(window.state?.report_id || 0);
+
+          // If draft was never saved in this session, save first to get report_id
+          if (!reportId) {
+              if (typeof window.saveDraft === "function") {
+                  const ok = await window.saveDraft();
+                  if (!ok) {
+                      alert("שגיאה בשמירת טיוטה לפני סיום הדוח");
+                      return;
+                  }
+                  reportId = Number(window.state?.report_id || 0);
+              }
+          }
+
+          if (!reportId) {
+              alert("לא נמצא report_id. שמור טיוטה ונסה שוב.");
+              return;
+          }
+
+          const payload = window.attachRefAndVersion({
+              insured_id: window.state?.insured_id || null,
+              tracking_date: document.getElementById("db_tracking_date")?.value?.trim() || "",
+              template: window.selectedTemplateKey(),
+              activity_date: window.state?.ctx?.activity_date || "",
+              surv_place: document.getElementById("ctx_surv_place")?.value?.trim() || "",
+              surv_city: document.getElementById("ctx_surv_city")?.value?.trim() || "",
+              injury_type: document.getElementById("life_injury_type")?.value?.trim()
+                  || document.getElementById("ctx_injury_type")?.value?.trim()
+                  || "",
+              background: document.getElementById("db_background")?.value?.trim() || "",
+              occupation: document.getElementById("db_occupation")?.value?.trim() || "",
+              social_media: document.getElementById("db_social_media")?.value?.trim() || "",
+              social_media_identification: document.getElementById("db_social_media_identification")?.value?.trim() || "",
+              authorities_1: document.getElementById("db_authorities_1")?.value?.trim() || "",
+              authorities_2: document.getElementById("db_authorities_2")?.value?.trim() || "",
+              summary: document.getElementById("db_summary")?.value?.trim() || "",
+              phone: document.getElementById("db_phone")?.value?.trim() || "",
+              address: document.getElementById("db_address")?.value?.trim() || "",
+              dnb: document.getElementById("db_dnb")?.value?.trim() || ""
+          });
+
+          const res = await fetch(`/reports/finalize`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload)
+          });
+
+          const raw = await res.text();
+          let data = null;
+
+          try {
+              data = raw ? JSON.parse(raw) : null;
+          } catch (e) {
+              throw new Error(`Server returned non-JSON response (HTTP ${res.status})`);
+          }
+
+          if (!res.ok || !data || data.status !== "ok") {
+              throw new Error(data?.message || `Finalize failed (HTTP ${res.status})`);
+          }
+
+          alert("הדוח נשמר והועלה ל-Dropbox");
+          location.reload();
+
+      } catch (err) {
+          console.error("Finalize report failed:", err);
+          alert("שגיאה בסיום הדוח: " + (err.message || err));
+      }
   });
 
 })();
