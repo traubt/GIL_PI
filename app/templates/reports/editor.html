@@ -36,6 +36,49 @@
     font-weight: bold;
     text-decoration: underline;
   }
+
+      .thumb-grid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:.75rem; }
+  .thumb{ display:block; border:1px solid #e5e7eb; border-radius:.5rem; padding:.5rem; background:#fff; }
+  .thumb img{ width:100%; height:110px; object-fit:cover; border-radius:.35rem; display:block; }
+  .thumb .name{ display:inline-block; font-size:.75rem; color:#6b7280; margin-inline-start:.5rem; max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; vertical-align:middle; }
+
+  /* NEW: reorder controls */
+  .thumb-toolbar{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:.35rem;
+    margin-bottom:.35rem;
+  }
+  .thumb-move{
+    display:flex;
+    align-items:center;
+    gap:.25rem;
+  }
+  .thumb-move .btn{
+    padding:.1rem .4rem;
+    line-height:1.1;
+  }
+  .thumb-order-badge{
+    font-size:.7rem;
+    color:#6b7280;
+    white-space:nowrap;
+  }
+
+  #busyOverlay{ position:fixed; inset:0; z-index:2000; background:rgba(255,255,255,0.82); display:none; align-items:center; justify-content:center; text-align:center; font-weight:600; }
+  #busyOverlay .panel{ padding:18px 24px; border-radius:12px; background:#fff; box-shadow:0 8px 30px rgba(0,0,0,.1); }
+  #busyOverlay .spinner{ width:36px; height:36px; border-radius:50%; border:4px solid #d9d9d9; border-top-color:#0d6efd; animation:spin .9s linear infinite; margin:0 auto 10px; }
+  @keyframes spin{ to{ transform: rotate(360deg) } }
+
+  .template-ph::placeholder {
+    color: #adb5bd;
+  }
+
+  .label-strong {
+    font-weight: bold;
+    text-decoration: underline;
+  }
+
   </style>
 
   <div class="pagetitle">
@@ -1804,39 +1847,124 @@ function applyTemplateSections() {
       return out;
     };
 
-    function setStatus(msg){ if(statusEl) statusEl.textContent = msg || ''; }
-    function clearGrids(){ if(gridL) gridL.innerHTML=''; if(gridP) gridP.innerHTML=''; }
+function setStatus(msg){ if(statusEl) statusEl.textContent = msg || ''; }
+function clearGrids(){ if(gridL) gridL.innerHTML=''; if(gridP) gridP.innerHTML=''; }
 
-    function makeThumbCard(item){
-      const wrap = document.createElement('label');
-      wrap.className = 'thumb'; wrap.style.cursor = 'pointer';
-      const box = document.createElement('input');
-      box.type = 'checkbox'; box.checked = item.selected; box.style.marginInlineEnd = '.35rem';
-      box.addEventListener('change', () => { item.selected = box.checked; });
-      if (item.type.startsWith('image/')){
-        const img = document.createElement('img'); img.src = item.serverUrl || item.url; img.alt = item.name; wrap.appendChild(img);
-      } else {
-        const div = document.createElement('div');
-        div.style.cssText='height:110px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:#f3f4f6';
-        div.textContent='וידאו'; wrap.appendChild(div);
-      }
-      const meta = document.createElement('div'); meta.style.marginTop='.35rem';
-      meta.innerHTML = `<span class="name" title="${item.name}">${item.name}</span>`;
-      wrap.appendChild(meta); wrap.insertBefore(box, wrap.firstChild);
-      return wrap;
-    }
+function movePickedItem(itemId, delta){
+  const idx = picked.findIndex(x => x.id === itemId);
+  if (idx < 0) return;
 
-    function addItemToGrid(item){
-      const card = makeThumbCard(item);
+  const newIdx = idx + delta;
+  if (newIdx < 0 || newIdx >= picked.length) return;
 
-      // If only one grid exists (our social-media section), drop everything there.
-      // If both exist (old layout), keep the portrait/landscape split.
-      const target = (item.orientation === 'portrait'
-                      ? (gridP || gridL)
-                      : (gridL || gridP));
+  const tmp = picked[idx];
+  picked[idx] = picked[newIdx];
+  picked[newIdx] = tmp;
 
-      if (target) target.appendChild(card);
-    }
+  renderPickedGrid();
+}
+
+function renderPickedGrid(){
+  clearGrids();
+  picked.forEach(addItemToGrid);
+}
+
+function makeThumbCard(item){
+  const wrap = document.createElement('label');
+  wrap.className = 'thumb';
+  wrap.style.cursor = 'pointer';
+
+  const idx = picked.findIndex(x => x.id === item.id);
+
+  // top toolbar
+  const toolbar = document.createElement('div');
+  toolbar.className = 'thumb-toolbar';
+
+  const moveBox = document.createElement('div');
+  moveBox.className = 'thumb-move';
+
+  const btnPrev = document.createElement('button');
+  btnPrev.type = 'button';
+  btnPrev.className = 'btn btn-outline-secondary btn-sm';
+  btnPrev.title = 'העבר תמונה אחורה';
+  btnPrev.innerHTML = '&rarr;';   // in RTL this feels natural as "back"
+
+  const btnNext = document.createElement('button');
+  btnNext.type = 'button';
+  btnNext.className = 'btn btn-outline-secondary btn-sm';
+  btnNext.title = 'העבר תמונה קדימה';
+  btnNext.innerHTML = '&larr;';
+
+  btnPrev.disabled = (idx <= 0);
+  btnNext.disabled = (idx === -1 || idx >= picked.length - 1);
+
+  btnPrev.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    movePickedItem(item.id, -1);
+  });
+
+  btnNext.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    movePickedItem(item.id, +1);
+  });
+
+  moveBox.appendChild(btnPrev);
+  moveBox.appendChild(btnNext);
+
+  const orderBadge = document.createElement('div');
+  orderBadge.className = 'thumb-order-badge';
+  orderBadge.textContent = `#${idx + 1}`;
+
+  toolbar.appendChild(moveBox);
+  toolbar.appendChild(orderBadge);
+  wrap.appendChild(toolbar);
+
+  // selection checkbox
+  const box = document.createElement('input');
+  box.type = 'checkbox';
+  box.checked = item.selected;
+  box.style.marginInlineEnd = '.35rem';
+  box.addEventListener('change', () => { item.selected = box.checked; });
+
+  // media preview
+  if (item.type.startsWith('image/')){
+    const img = document.createElement('img');
+    img.src = item.serverUrl || item.url;
+    img.alt = item.name;
+    wrap.appendChild(img);
+  } else {
+    const div = document.createElement('div');
+    div.style.cssText = 'height:110px;display:flex;align-items:center;justify-content:center;border-radius:6px;background:#f3f4f6';
+    div.textContent = 'וידאו';
+    wrap.appendChild(div);
+  }
+
+  // filename/meta
+  const meta = document.createElement('div');
+  meta.style.marginTop = '.35rem';
+  meta.innerHTML = `<span class="name" title="${item.name}">${item.name}</span>`;
+  wrap.appendChild(meta);
+
+  // keep checkbox at top, under toolbar
+  wrap.insertBefore(box, wrap.children[1] || wrap.firstChild);
+
+  return wrap;
+}
+
+function addItemToGrid(item){
+  const card = makeThumbCard(item);
+
+  // Keep the existing layout logic exactly as-is:
+  // if 2 grids exist, preserve portrait/landscape split;
+  // if only 1 exists, everything goes there.
+  const target = (item.orientation === 'portrait'
+                  ? (gridP || gridL)
+                  : (gridL || gridP));
+
+  if (target) target.appendChild(card);
+}
 
 
     async function handleFiles(fileList){
@@ -1861,7 +1989,8 @@ function applyTemplateSections() {
         const item = { id: (window.safeUUID ? window.safeUUID() : (Math.random().toString(36).slice(2) + Date.now())),
                name: file.name, type: file.type || 'application/octet-stream',
                url, width, height, orientation, selected: true };
-        picked.push(item); addItemToGrid(item);
+        picked.push(item);
+        renderPickedGrid();
         done++; setStatus(`נבחרו ${fileList.length} קבצים • נטענו ${done}/${fileList.length}`);
       }
       setStatus(`ייבוא הושלם: ${picked.length} קבצים (מסומנים כברירת מחדל).`);
@@ -1963,7 +2092,7 @@ function applyTemplateSections() {
           };
 
           picked.push(item);
-          addItemToGrid(item);
+          renderPickedGrid();
         }
 
         setStatus(`יובאו ${picked.length} תמונות לתצוגה`);
