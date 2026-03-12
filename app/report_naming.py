@@ -37,10 +37,13 @@ def build_report_display_name(
     report_type: str,
     full_name: str = "",
     reference_no: str = "",
-    invoice_no: str = ""
+    invoice_no: str = "",
+    version_no: int | None = 0,
 ) -> str:
     """
     Human-readable report title / base filename without extension.
+    version_no=0 -> no suffix
+    version_no>0 -> append " - v<no>"
     """
     label = report_label_from_type(report_type)
     full_name = _clean_part(full_name)
@@ -62,7 +65,17 @@ def build_report_display_name(
         if reference_no:
             parts.append(reference_no)
 
-    return sanitize_filename(" - ".join(parts))
+    base = " - ".join(parts)
+
+    try:
+        v = int(version_no or 0)
+    except Exception:
+        v = 0
+
+    if v > 0:
+        base += f" - v{v}"
+
+    return sanitize_filename(base)
 
 
 def build_report_filename(
@@ -70,13 +83,16 @@ def build_report_filename(
     full_name: str = "",
     reference_no: str = "",
     invoice_no: str = "",
-    ext: str = "pdf"
+    ext: str = "pdf",
+    version_no: int | None = 0,
 ) -> str:
     base = build_report_display_name(
         report_type=report_type,
         full_name=full_name,
         reference_no=reference_no,
         invoice_no=invoice_no,
+        version_no=version_no,
     )
     ext = (ext or "pdf").lstrip(".")
     return f"{base}.{ext}"
+

@@ -72,7 +72,7 @@
 
 
       <div class="d-flex gap-2">
-
+        <button type="button" id="btnCreateNewVersion" class="btn btn-outline-dark">  צור גרסה חדשה</button>
         <button type="button" id="btnHistoricalReports" class="btn btn-secondary">דוחות הסטוריים</button>
         <button type="button" id="btnManualFinalizeReport" class="btn btn-warning">סיום ידני</button>
         <button id="btnFinalizeReport" class="btn btn-danger"> סיום דו"ח</button>
@@ -1624,6 +1624,20 @@ function applyTemplateSections() {
   applyTemplateSections();
   updateMetaBadges();
   window.saveDraft = saveDraft;
+
+
+  (function () {
+    const qs = new URLSearchParams(window.location.search);
+
+    window.state = window.state || {};
+
+    const insuredId = Number(qs.get("insured_id") || window.state.insured_id || 0);
+    const reportId  = Number(qs.get("report_id")  || window.state.report_id  || 0);
+
+    if (insuredId) window.state.insured_id = insuredId;
+    if (reportId)  window.state.report_id  = reportId;
+  })();
+
 
   async function loadDraftIntoEditor() {
     try {
@@ -3646,6 +3660,57 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 </script>
 
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const btnCreateVersion = document.getElementById("btnCreateNewVersion");
+  if (!btnCreateVersion) return;
 
+  btnCreateVersion.addEventListener("click", async function () {
+    try {
+      let sourceReportId = Number(window.state?.report_id || 0);
+
+      if (!sourceReportId) {
+        alert("לא נמצא report_id. שמור טיוטה או טען דו\"ח לפני יצירת גרסה חדשה.");
+        return;
+      }
+
+      const currentVersion = Number(window.state?.version_no ?? 0);
+      const suggested = currentVersion + 1;
+
+      const raw = prompt(`בחר גרסה חדשה (${suggested}, ${suggested + 1}, ...)`, String(suggested));
+      if (raw === null) return;
+
+      const versionNo = Number(raw);
+      if (!Number.isInteger(versionNo) || versionNo < 0) {
+        alert("מספר גרסה לא תקין");
+        return;
+      }
+
+      const res = await fetch("/reports/create-version", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_report_id: sourceReportId,
+          version_no: versionNo
+        })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || data.status !== "ok") {
+        throw new Error(data.message || "Failed to create new version");
+      }
+
+      // Open the editor fresh on the new report version
+      const insuredId = window.state?.insured_id || "";
+      window.location.href = `/reports/editor?insured_id=${encodeURIComponent(insuredId)}&report_id=${encodeURIComponent(data.report_id)}`;
+
+    } catch (err) {
+      console.error("create new version failed:", err);
+      alert("שגיאה ביצירת גרסה חדשה: " + (err.message || err));
+    }
+  });
+});
+</script>
 
 {% endblock %}

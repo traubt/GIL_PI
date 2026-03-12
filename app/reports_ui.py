@@ -535,7 +535,8 @@ def finalize():
                 full_name=full_name,
                 reference_no=(payload.get("reference_no") or rpt.reference_no or ""),
                 invoice_no="",
-                ext="pdf"
+                ext="pdf",
+                version_no=rpt.version_no
             )
 
             case_root = build_dropbox_folder_path(
@@ -1190,3 +1191,79 @@ def open_dropbox_pdf():
     except Exception as e:
         current_app.logger.exception("open_dropbox_pdf failed")
         return str(e), 500
+
+@reports_ui_bp.route('/create-version', methods=['POST'])
+def create_version():
+    payload = request.get_json(silent=True) or request.form or {}
+
+    source_report_id = payload.get("source_report_id")
+    version_no = payload.get("version_no")
+
+    if not source_report_id:
+        return jsonify({"status": "error", "message": "Missing source_report_id"}), 400
+
+    try:
+        version_no = int(version_no)
+    except Exception:
+        return jsonify({"status": "error", "message": "Invalid version_no"}), 400
+
+    if version_no < 0:
+        return jsonify({"status": "error", "message": "version_no must be 0 or higher"}), 400
+
+    src = db.session.get(GilReport, int(source_report_id))
+    if not src:
+        return jsonify({"status": "error", "message": "Source report not found"}), 404
+
+    # Prevent duplicate version per case + reference + template
+    existing = (
+        GilReport.query
+        .filter(
+            GilReport.case_id == src.case_id,
+            GilReport.template_key == src.template_key,
+            GilReport.reference_no == src.reference_no,
+            GilReport.version_no == version_no
+        )
+        .first()
+    )
+    if existing:
+        return jsonify({
+            "status": "error",
+            "message": f"Version {version_no} already exists for this report"
+        }), 400
+
+    try:
+        new_rpt = GilReport(
+            case_id=src.case_id,
+            insurer_id=src.insurer_id,
+            report_type=src.report_type,
+            template_key=src.template_key,
+            title=src.title,
+            status='Draft',
+            version_no=version_no,
+            reference_no=src.reference_no,
+            editor_json=src.editor_json,
+            generated_html=None,
+            generated_pdf_path=None,
+            created_by=src.created_by,
+            updated_by=src.updated_by,
+        )
+
+        # optional column if mapped in model
+        if hasattr(new_rpt, "finalize_mode"):
+            new_rpt.finalize_mode = None
+
+        db.session.add(new_rpt)
+        db.session.commit()
+
+        return jsonify({
+            "status": "ok",
+            "report_id": new_rpt.id,
+            "version_no": new_rpt.version_no,
+            "reference_no": new_rpt.reference_no,
+            "status_str": new_rpt.status
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("create_version failed")
+        return jsonify({"status": "error", "message": str(e)}), 500
