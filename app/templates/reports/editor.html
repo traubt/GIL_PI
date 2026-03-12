@@ -73,6 +73,7 @@
 
       <div class="d-flex gap-2">
 
+        <button type="button" id="btnManualFinalizeReport" class="btn btn-warning">סיום ידני</button>
         <button id="btnFinalizeReport" class="btn btn-danger"> סיום דו"ח</button>
         <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>
         <button id="sendEmail" class="btn btn-primary">שלח אימייל</button>
@@ -579,6 +580,27 @@
 </main>
 
 <a id="downloadDummy" style="display:none" rel="noopener" target="_blank"></a>
+
+<div class="modal fade" id="manualFinalizeModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">בחירת דו"ח PDF מסיום ידני</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="manualFinalizeFolder" class="small text-muted mb-2"></div>
+        <div id="manualFinalizeList"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
+        <button type="button" class="btn btn-primary" id="btnConfirmManualFinalize" disabled>
+          אשר סיום ידני
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 // Safe UUID function: uses crypto.randomUUID when available (HTTPS/localhost),
@@ -3407,6 +3429,140 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
 })();
 
 </script>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  let manualFinalizeSelection = null;
+  let manualFinalizeModal = null;
+
+  function getCurrentReportIdForManual() {
+    return Number(window.state?.report_id || 0);
+  }
+
+  async function openManualFinalizeModal() {
+    let reportId = getCurrentReportIdForManual();
+
+    if (!reportId) {
+      if (typeof window.saveDraft === "function") {
+        const ok = await window.saveDraft();
+        if (!ok) {
+          alert("שגיאה בשמירת טיוטה לפני סיום ידני");
+          return;
+        }
+        reportId = getCurrentReportIdForManual();
+      }
+    }
+
+    if (!reportId) {
+      alert("לא נמצא report_id. שמור טיוטה ונסה שוב.");
+      return;
+    }
+
+    const res = await fetch(`/reports/manual-finalize/list-pdfs?report_id=${reportId}`);
+    const data = await res.json();
+
+    if (!res.ok || data.status !== "ok") {
+      throw new Error(data.message || "Failed to load PDF list");
+    }
+
+    const listEl = document.getElementById("manualFinalizeList");
+    const folderEl = document.getElementById("manualFinalizeFolder");
+    const confirmBtn = document.getElementById("btnConfirmManualFinalize");
+
+    folderEl.textContent = `תיקיית דוחות: ${data.folder || ""}`;
+    listEl.innerHTML = "";
+    confirmBtn.disabled = true;
+    manualFinalizeSelection = null;
+
+    if (!data.files || !data.files.length) {
+      listEl.innerHTML = '<div class="alert alert-warning mb-0">לא נמצאו קבצי PDF בתיקיית דוחות.</div>';
+    } else {
+      const html = data.files.map((f, idx) => `
+        <div class="form-check border rounded p-2 mb-2">
+          <input class="form-check-input" type="radio" name="manual_finalize_pdf" id="manual_pdf_${idx}"
+                 value="${f.path}" data-name="${f.name}">
+          <label class="form-check-label w-100" for="manual_pdf_${idx}">
+            <div><strong>${f.name}</strong></div>
+            <div class="small text-muted">${f.path}</div>
+          </label>
+        </div>
+      `).join("");
+      listEl.innerHTML = html;
+
+      document.querySelectorAll('input[name="manual_finalize_pdf"]').forEach(r => {
+        r.addEventListener("change", function () {
+          manualFinalizeSelection = {
+            path: this.value,
+            name: this.dataset.name || ""
+          };
+          confirmBtn.disabled = !manualFinalizeSelection;
+        });
+      });
+    }
+
+    if (!manualFinalizeModal) {
+      manualFinalizeModal = new bootstrap.Modal(document.getElementById("manualFinalizeModal"));
+    }
+    manualFinalizeModal.show();
+  }
+
+  async function confirmManualFinalize() {
+    const reportId = getCurrentReportIdForManual();
+
+    if (!reportId || !manualFinalizeSelection?.path) {
+      alert("יש לבחור קובץ PDF.");
+      return;
+    }
+
+    console.log("[Manual Finalize] report_id=", reportId, "path=", manualFinalizeSelection.path);
+
+    const res = await fetch("/reports/manual-finalize/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        report_id: reportId,
+        dropbox_path: manualFinalizeSelection.path,
+        file_name: manualFinalizeSelection.name
+      })
+    });
+
+    const data = await res.json();
+
+    if (!res.ok || data.status !== "ok") {
+      throw new Error(data.message || "Manual finalize failed");
+    }
+
+    manualFinalizeModal.hide();
+    alert("הדו\"ח סומן כסיום ידני בהצלחה");
+    location.reload();
+  }
+
+  const openBtn = document.getElementById("btnManualFinalizeReport");
+  if (openBtn) {
+    openBtn.addEventListener("click", async function () {
+      try {
+        await openManualFinalizeModal();
+      } catch (err) {
+        console.error("openManualFinalizeModal failed:", err);
+        alert("שגיאה בטעינת קבצי PDF: " + (err.message || err));
+      }
+    });
+  }
+
+  const confirmBtn = document.getElementById("btnConfirmManualFinalize");
+  if (confirmBtn) {
+    confirmBtn.addEventListener("click", async function () {
+      try {
+        await confirmManualFinalize();
+      } catch (err) {
+        console.error("confirmManualFinalize failed:", err);
+        alert("שגיאה בסיום ידני: " + (err.message || err));
+      }
+    });
+  }
+});
+</script>
+
 
 
 {% endblock %}

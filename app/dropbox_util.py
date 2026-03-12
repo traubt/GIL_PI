@@ -241,6 +241,34 @@ def build_media_folder_path(
 
     return _join_dropbox(case_root, sub)
 
+def list_pdfs_in_folder(dbx_client: dropbox.Dropbox, folder_path: str) -> List[Dict]:
+    """
+    Return PDFs directly under folder_path:
+      { 'name': <file>, 'path': <dropbox path>, 'size_bytes': <int> }
+    If the folder doesn't exist, returns [].
+    """
+    files: List[Dict] = []
+    try:
+        res = dbx_client.files_list_folder(folder_path)
+    except dropbox.exceptions.ApiError:
+        return files
+
+    entries = list(res.entries)
+    while res.has_more:
+        res = dbx_client.files_list_folder_continue(res.cursor)
+        entries.extend(res.entries)
+
+    for e in entries:
+        if isinstance(e, dropbox.files.FileMetadata) and e.name.lower().endswith(".pdf"):
+            files.append({
+                "name": e.name,
+                "path": e.path_display or e.path_lower,
+                "size_bytes": getattr(e, "size", None),
+            })
+
+    files.sort(key=lambda x: (x["name"] or "").lower())
+    return files
+
 
 def ensure_folder_exists(dbx_client: dropbox.Dropbox, folder_path: str) -> None:
     """

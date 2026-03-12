@@ -8,7 +8,7 @@ from pathlib import Path
 from flask import current_app
 from .report_naming import build_report_display_name
 from .report_naming import build_report_filename
-from .dropbox_util import get_dbx, build_dropbox_folder_path, ensure_folder_exists
+from .dropbox_util import get_dbx, build_dropbox_folder_path, ensure_folder_exists, list_pdfs_in_folder
 
 
 
@@ -1093,3 +1093,79 @@ def serve_report_photo():
 
     return send_file(path_abs)
 
+
+@reports_ui_bp.route('/manual-finalize/list-pdfs', methods=['GET'])
+def manual_finalize_list_pdfs():
+    report_id = request.args.get("report_id")
+    if not report_id:
+        return jsonify({"status": "error", "message": "Missing report_id"}), 400
+
+    rpt = db.session.get(GilReport, int(report_id))
+    if not rpt:
+        return jsonify({"status": "error", "message": "Report not found"}), 404
+
+    insured = db.session.get(GilInsured, rpt.case_id)
+    if not insured:
+        return jsonify({"status": "error", "message": "Insured not found"}), 404
+
+    case_root = build_dropbox_folder_path(
+        insurance=_get_first_nonempty(insured, 'insurance'),
+        claim_type=_get_first_nonempty(insured, 'claim_type'),
+        last_name=_get_first_nonempty(insured, 'last_name'),
+        first_name=_get_first_nonempty(insured, 'first_name'),
+        id_number=_get_first_nonempty(insured, 'id_number'),
+        claim_number=_get_first_nonempty(insured, 'claim_number'),
+    )
+
+    if not case_root:
+        return jsonify({"status": "error", "message": "Could not build Dropbox insured folder path"}), 400
+
+    reports_dir = f"{case_root}/דוחות"
+    dbx = get_dbx()
+    pdfs = list_pdfs_in_folder(dbx, reports_dir)
+
+    return jsonify({
+        "status": "ok",
+        "report_id": rpt.id,
+        "folder": reports_dir,
+        "files": pdfs
+    })
+
+@reports_ui_bp.route('/manual-finalize/select', methods=['POST'])
+def manual_finalize_select():
+    payload = request.get_json(silent=True) or request.form or {}
+
+    report_id = payload.get("report_id")
+    selected_path = (payload.get("dropbox_path") or "").strip()
+    selected_name = (payload.get("file_name") or "").strip()
+
+    if not report_id:
+        return jsonify({"status": "error", "message": "Missing report_id"}), 400
+    if not selected_path:
+        return jsonify({"status": "error", "message": "Missing dropbox_path"}), 400
+
+    rpt = db.session.get(GilReport, int(report_id))
+    if not rpt:
+        return jsonify({"status": "error", "message": "Report not found"}), 404
+
+    try:
+        rpt.status = "Final"
+        rpt.finalize_mode = "manual"
+        rpt.generated_pdf_path = selected_path
+
+        if hasattr(rpt, "title") and selected_name:
+            rpt.title = selected_name.rsplit(".", 1)[0]
+
+        db.session.commit()
+
+        return jsonify({
+            "status": "ok",
+            "status_str": rpt.status,
+            "finalize_mode": rpt.finalize_mode,
+            "generated_pdf_path": rpt.generated_pdf_path,
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("manual_finalize_select failed")
+        return jsonify({"status": "error", "message": str(e)}), 500

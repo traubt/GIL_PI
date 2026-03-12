@@ -417,6 +417,8 @@ class GilReport(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    finalize_mode = db.Column(db.String(20))
+
 
 class GilReportPhoto(db.Model):
     __tablename__ = 'gil_report_photos'
