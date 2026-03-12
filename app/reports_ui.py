@@ -1093,7 +1093,6 @@ def serve_report_photo():
 
     return send_file(path_abs)
 
-
 @reports_ui_bp.route('/manual-finalize/list-pdfs', methods=['GET'])
 def manual_finalize_list_pdfs():
     report_id = request.args.get("report_id")

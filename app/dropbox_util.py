@@ -323,4 +323,3 @@ def upload_media_file(
         "name": original,
         "stored_name": filename,
     }
-

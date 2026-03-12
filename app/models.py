@@ -539,7 +539,6 @@ class GilTrackingReportActivity(db.Model):
     ###################### Expenses ####################
 
 
-
 class GilTrackingExpense(db.Model):
     __tablename__ = "gil_tracking_expenses"
 
