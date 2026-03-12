@@ -3339,32 +3339,47 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
               return;
           }
 
-          const payload = window.attachRefAndVersion({
-              insured_id: window.state?.insured_id || null,
-              tracking_date: document.getElementById("db_tracking_date")?.value?.trim() || "",
-              template: window.selectedTemplateKey(),
-              activity_date: window.state?.ctx?.activity_date || "",
-              surv_place: document.getElementById("ctx_surv_place")?.value?.trim() || "",
-              surv_city: document.getElementById("ctx_surv_city")?.value?.trim() || "",
-              injury_type: document.getElementById("life_injury_type")?.value?.trim()
-                  || document.getElementById("ctx_injury_type")?.value?.trim()
-                  || "",
-              background: document.getElementById("db_background")?.value?.trim() || "",
-              occupation: document.getElementById("db_occupation")?.value?.trim() || "",
-              social_media: document.getElementById("db_social_media")?.value?.trim() || "",
-              social_media_identification: document.getElementById("db_social_media_identification")?.value?.trim() || "",
-              authorities_1: document.getElementById("db_authorities_1")?.value?.trim() || "",
-              authorities_2: document.getElementById("db_authorities_2")?.value?.trim() || "",
-              summary: document.getElementById("db_summary")?.value?.trim() || "",
-              phone: document.getElementById("db_phone")?.value?.trim() || "",
-              address: document.getElementById("db_address")?.value?.trim() || "",
-              dnb: document.getElementById("db_dnb")?.value?.trim() || ""
-          });
+          // Find the current preview PDF URL exactly as loaded in the page
+          const previewEl =
+              document.getElementById("preview-pdf") ||
+              document.querySelector('iframe[src*="/preview-pdf"]') ||
+              document.querySelector('embed[src*="/preview-pdf"]') ||
+              document.querySelector('object[data*="/preview-pdf"]');
+
+          const previewUrl =
+              previewEl?.src ||
+              previewEl?.getAttribute("src") ||
+              previewEl?.data ||
+              previewEl?.getAttribute("data") ||
+              "";
+
+          if (!previewUrl || !previewUrl.includes("/preview-pdf")) {
+              alert("לא נמצא PDF תצוגה מקדימה לסיום הדוח.");
+              return;
+          }
+
+          // Fetch the exact PDF bytes currently shown in preview
+          const pdfRes = await fetch(previewUrl, { method: "GET" });
+          if (!pdfRes.ok) {
+              throw new Error(`Failed to fetch preview PDF (HTTP ${pdfRes.status})`);
+          }
+
+          const pdfBlob = await pdfRes.blob();
+
+          // Use FormData so we can send the actual PDF file
+          const fd = new FormData();
+          fd.append("action", "finalize");
+          fd.append("report_id", String(reportId));
+          fd.append("insured_id", String(window.state?.insured_id || ""));
+          fd.append("template", window.selectedTemplateKey() || "");
+          fd.append("ref_number", window.state?.ref_number || "");
+          fd.append("reference_no", window.state?.reference_no || "");
+          fd.append("version_no", String(window.state?.version_no ?? 0));
+          fd.append("pdf_file", pdfBlob, "preview.pdf");
 
           const res = await fetch(`/reports/finalize`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload)
+              body: fd
           });
 
           const raw = await res.text();

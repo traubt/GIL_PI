@@ -7,6 +7,8 @@ from urllib.request import urlopen, Request
 from pathlib import Path
 from flask import current_app
 from .report_naming import build_report_display_name
+from .report_naming import build_report_filename
+from .dropbox_util import get_dbx, build_dropbox_folder_path, ensure_folder_exists
 
 
 
@@ -465,8 +467,18 @@ def load_draft():
 
 @reports_ui_bp.route('/finalize', methods=['POST'])
 def finalize():
-    action = request.form.get('action')
-    report_id = request.form.get('report_id') or request.args.get('report_id')
+    from dropbox.files import WriteMode
+
+    payload = request.form or request.args or {}
+    pdf_file = request.files.get("pdf_file")
+
+    current_app.logger.info(f"[REPORTS_UI FINALIZE] content_type={request.content_type}")
+    current_app.logger.info(f"[REPORTS_UI FINALIZE] form_keys={list(payload.keys()) if payload else []}")
+    current_app.logger.info(f"[REPORTS_UI FINALIZE] has_pdf_file={bool(pdf_file)}")
+
+    action = payload.get('action') or 'finalize'
+    report_id = payload.get('report_id')
+
     if not report_id:
         return jsonify({'status': 'error', 'message': 'Missing report_id'}), 400
 
@@ -475,27 +487,113 @@ def finalize():
         return jsonify({'status': 'error', 'message': 'Report not found'}), 404
 
     insured = db.session.get(GilInsured, rpt.case_id)
+    if not insured:
+        return jsonify({'status': 'error', 'message': 'Insured not found'}), 404
+
     ref_number = _get_first_nonempty(insured, 'ref_number', 'ref', default=None)
 
-    if action == 'version':
-        rpt.version_no = (rpt.version_no or 0) + 1
-        rpt.status = 'Revised'
-        rpt.reference_no = _compute_reference(ref_number, rpt.version_no)
-    elif action == 'save_to_dropbox':
-        pass
-    elif action == 'send_to_insurer':
-        rpt.status = 'Submitted'
-    elif action == 'finalize':
-        rpt.status = 'Final'
-        rpt.reference_no = _compute_reference(ref_number, int(rpt.version_no or 0))
+    try:
+        if action == 'version':
+            rpt.version_no = (rpt.version_no or 0) + 1
+            rpt.status = 'Revised'
+            rpt.reference_no = _compute_reference(ref_number, rpt.version_no)
 
-    db.session.commit()
-    return jsonify({
-        'status': 'ok',
-        'status_str': rpt.status,
-        'version_no': rpt.version_no,
-        'reference_no': rpt.reference_no
-    })
+            db.session.commit()
+            return jsonify({
+                'status': 'ok',
+                'status_str': rpt.status,
+                'version_no': rpt.version_no,
+                'reference_no': rpt.reference_no
+            })
+
+        elif action == 'send_to_insurer':
+            rpt.status = 'Submitted'
+
+            db.session.commit()
+            return jsonify({
+                'status': 'ok',
+                'status_str': rpt.status,
+                'version_no': rpt.version_no,
+                'reference_no': rpt.reference_no
+            })
+
+        elif action == 'finalize':
+            if not pdf_file:
+                return jsonify({'status': 'error', 'message': 'Missing PDF file'}), 400
+
+            rpt.reference_no = _compute_reference(ref_number, int(rpt.version_no or 0))
+
+            full_name = (
+                _get_first_nonempty(insured, 'full_name')
+                or f"{_get_first_nonempty(insured, 'last_name')} {_get_first_nonempty(insured, 'first_name')}".strip()
+                or _get_first_nonempty(insured, 'name')
+                or ""
+            )
+
+            final_pdf_filename = build_report_filename(
+                report_type=(payload.get("template") or rpt.template_key or rpt.report_type or "tracking"),
+                full_name=full_name,
+                reference_no=(payload.get("reference_no") or rpt.reference_no or ""),
+                invoice_no="",
+                ext="pdf"
+            )
+
+            case_root = build_dropbox_folder_path(
+                insurance=_get_first_nonempty(insured, 'insurance'),
+                claim_type=_get_first_nonempty(insured, 'claim_type'),
+                last_name=_get_first_nonempty(insured, 'last_name'),
+                first_name=_get_first_nonempty(insured, 'first_name'),
+                id_number=_get_first_nonempty(insured, 'id_number'),
+                claim_number=_get_first_nonempty(insured, 'claim_number'),
+            )
+
+            if not case_root:
+                return jsonify({'status': 'error', 'message': 'Could not build Dropbox insured folder path'}), 400
+
+            dropbox_reports_dir = f"{case_root}/דוחות"
+            dbx = get_dbx()
+            ensure_folder_exists(dbx, dropbox_reports_dir)
+
+            target_dropbox_path = f"{dropbox_reports_dir}/{final_pdf_filename}"
+
+            pdf_bytes = pdf_file.read()
+            if not pdf_bytes:
+                return jsonify({'status': 'error', 'message': 'Uploaded PDF is empty'}), 400
+
+            dbx.files_upload(
+                pdf_bytes,
+                target_dropbox_path,
+                mode=WriteMode.overwrite,
+                mute=True
+            )
+
+            rpt.status = 'Final'
+
+            if hasattr(rpt, 'dropbox_path'):
+                rpt.dropbox_path = target_dropbox_path
+            if hasattr(rpt, 'generated_pdf_path'):
+                rpt.generated_pdf_path = target_dropbox_path
+            if hasattr(rpt, 'final_pdf_path'):
+                rpt.final_pdf_path = target_dropbox_path
+            if hasattr(rpt, 'title'):
+                rpt.title = final_pdf_filename.rsplit('.', 1)[0]
+
+            db.session.commit()
+
+            return jsonify({
+                'status': 'ok',
+                'status_str': rpt.status,
+                'version_no': rpt.version_no,
+                'reference_no': rpt.reference_no,
+                'dropbox_path': target_dropbox_path
+            })
+
+        return jsonify({'status': 'error', 'message': f'Unsupported action: {action}'}), 400
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception("reports_ui.finalize failed")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
 # ---------- Preview (header/footer via wkhtmltopdf) ----------
