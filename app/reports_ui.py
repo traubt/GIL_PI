@@ -5,7 +5,7 @@ from PIL import Image, UnidentifiedImageError  # <— add
 from io import BytesIO
 from urllib.request import urlopen, Request
 from pathlib import Path
-from flask import current_app
+from flask import Blueprint, render_template, request, jsonify, current_app, Response
 from .report_naming import build_report_display_name
 from .report_naming import build_report_filename
 from .dropbox_util import get_dbx, build_dropbox_folder_path, ensure_folder_exists, list_pdfs_in_folder
@@ -1168,3 +1168,25 @@ def manual_finalize_select():
         db.session.rollback()
         current_app.logger.exception("manual_finalize_select failed")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+@reports_ui_bp.route("/dropbox/open-pdf")
+def open_dropbox_pdf():
+    path = request.args.get("path")
+
+    if not path:
+        return "Missing path", 400
+
+    try:
+        dbx = get_dbx()
+
+        md, res = dbx.files_download(path)
+        pdf_bytes = res.content
+
+        return Response(
+            pdf_bytes,
+            mimetype="application/pdf"
+        )
+
+    except Exception as e:
+        current_app.logger.exception("open_dropbox_pdf failed")
+        return str(e), 500

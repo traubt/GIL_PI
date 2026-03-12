@@ -73,6 +73,7 @@
 
       <div class="d-flex gap-2">
 
+        <button type="button" id="btnHistoricalReports" class="btn btn-secondary">דוחות הסטוריים</button>
         <button type="button" id="btnManualFinalizeReport" class="btn btn-warning">סיום ידני</button>
         <button id="btnFinalizeReport" class="btn btn-danger"> סיום דו"ח</button>
         <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>
@@ -592,12 +593,29 @@
         <div id="manualFinalizeFolder" class="small text-muted mb-2"></div>
         <div id="manualFinalizeList"></div>
       </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">סגור</button>
-        <button type="button" class="btn btn-primary" id="btnConfirmManualFinalize" disabled>
-          אשר סיום ידני
-        </button>
-      </div>
+        <div class="modal-footer">
+
+          <button type="button"
+                  class="btn btn-info"
+                  id="btnViewHistoricalReport"
+                  disabled>
+              צפייה
+          </button>
+
+          <button type="button"
+                  class="btn btn-primary"
+                  id="btnConfirmManualFinalize"
+                  disabled>
+              אשר סיום ידני
+          </button>
+
+          <button type="button"
+                  class="btn btn-secondary"
+                  data-bs-dismiss="modal">
+              סגור
+          </button>
+
+        </div>
     </div>
   </div>
 </div>
@@ -3433,19 +3451,39 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
 document.addEventListener("DOMContentLoaded", function () {
   let manualFinalizeSelection = null;
   let manualFinalizeModal = null;
+  let modalMode = "manual"; // "manual" | "view"
 
   function getCurrentReportIdForManual() {
     return Number(window.state?.report_id || 0);
   }
 
-  async function openManualFinalizeModal() {
+  function setModalMode(mode) {
+    modalMode = mode;
+
+    const confirmBtn = document.getElementById("btnConfirmManualFinalize");
+    const viewBtn = document.getElementById("btnViewHistoricalReport");
+
+    if (!confirmBtn || !viewBtn) return;
+
+    if (mode === "manual") {
+      confirmBtn.style.display = "inline-block";
+      viewBtn.style.display = "none";
+      confirmBtn.disabled = !manualFinalizeSelection;
+    } else {
+      confirmBtn.style.display = "none";
+      viewBtn.style.display = "inline-block";
+      viewBtn.disabled = !manualFinalizeSelection;
+    }
+  }
+
+  async function openManualFinalizeModal(mode = "manual") {
     let reportId = getCurrentReportIdForManual();
 
     if (!reportId) {
       if (typeof window.saveDraft === "function") {
         const ok = await window.saveDraft();
         if (!ok) {
-          alert("שגיאה בשמירת טיוטה לפני סיום ידני");
+          alert("שגיאה בשמירת טיוטה לפני פתיחת הדוחות");
           return;
         }
         reportId = getCurrentReportIdForManual();
@@ -3467,25 +3505,33 @@ document.addEventListener("DOMContentLoaded", function () {
     const listEl = document.getElementById("manualFinalizeList");
     const folderEl = document.getElementById("manualFinalizeFolder");
     const confirmBtn = document.getElementById("btnConfirmManualFinalize");
+    const viewBtn = document.getElementById("btnViewHistoricalReport");
 
     folderEl.textContent = `תיקיית דוחות: ${data.folder || ""}`;
     listEl.innerHTML = "";
-    confirmBtn.disabled = true;
     manualFinalizeSelection = null;
+
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (viewBtn) viewBtn.disabled = true;
 
     if (!data.files || !data.files.length) {
       listEl.innerHTML = '<div class="alert alert-warning mb-0">לא נמצאו קבצי PDF בתיקיית דוחות.</div>';
     } else {
       const html = data.files.map((f, idx) => `
         <div class="form-check border rounded p-2 mb-2">
-          <input class="form-check-input" type="radio" name="manual_finalize_pdf" id="manual_pdf_${idx}"
-                 value="${f.path}" data-name="${f.name}">
+          <input class="form-check-input"
+                 type="radio"
+                 name="manual_finalize_pdf"
+                 id="manual_pdf_${idx}"
+                 value="${f.path}"
+                 data-name="${f.name}">
           <label class="form-check-label w-100" for="manual_pdf_${idx}">
             <div><strong>${f.name}</strong></div>
             <div class="small text-muted">${f.path}</div>
           </label>
         </div>
       `).join("");
+
       listEl.innerHTML = html;
 
       document.querySelectorAll('input[name="manual_finalize_pdf"]').forEach(r => {
@@ -3494,7 +3540,9 @@ document.addEventListener("DOMContentLoaded", function () {
             path: this.value,
             name: this.dataset.name || ""
           };
-          confirmBtn.disabled = !manualFinalizeSelection;
+
+          if (confirmBtn) confirmBtn.disabled = false;
+          if (viewBtn) viewBtn.disabled = false;
         });
       });
     }
@@ -3502,6 +3550,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!manualFinalizeModal) {
       manualFinalizeModal = new bootstrap.Modal(document.getElementById("manualFinalizeModal"));
     }
+
+    setModalMode(mode);
     manualFinalizeModal.show();
   }
 
@@ -3536,14 +3586,36 @@ document.addEventListener("DOMContentLoaded", function () {
     location.reload();
   }
 
-  const openBtn = document.getElementById("btnManualFinalizeReport");
-  if (openBtn) {
-    openBtn.addEventListener("click", async function () {
+  function viewHistoricalReport() {
+    if (!manualFinalizeSelection?.path) {
+      alert("יש לבחור קובץ PDF.");
+      return;
+    }
+
+    const url = "/reports/dropbox/open-pdf?path=" + encodeURIComponent(manualFinalizeSelection.path);
+    window.open(url, "_blank");
+  }
+
+  const openManualBtn = document.getElementById("btnManualFinalizeReport");
+  if (openManualBtn) {
+    openManualBtn.addEventListener("click", async function () {
       try {
-        await openManualFinalizeModal();
+        await openManualFinalizeModal("manual");
       } catch (err) {
-        console.error("openManualFinalizeModal failed:", err);
+        console.error("openManualFinalizeModal(manual) failed:", err);
         alert("שגיאה בטעינת קבצי PDF: " + (err.message || err));
+      }
+    });
+  }
+
+  const openHistoryBtn = document.getElementById("btnHistoricalReports");
+  if (openHistoryBtn) {
+    openHistoryBtn.addEventListener("click", async function () {
+      try {
+        await openManualFinalizeModal("view");
+      } catch (err) {
+        console.error("openManualFinalizeModal(view) failed:", err);
+        alert("שגיאה בטעינת דוחות היסטוריים: " + (err.message || err));
       }
     });
   }
@@ -3556,6 +3628,18 @@ document.addEventListener("DOMContentLoaded", function () {
       } catch (err) {
         console.error("confirmManualFinalize failed:", err);
         alert("שגיאה בסיום ידני: " + (err.message || err));
+      }
+    });
+  }
+
+  const viewBtn = document.getElementById("btnViewHistoricalReport");
+  if (viewBtn) {
+    viewBtn.addEventListener("click", function () {
+      try {
+        viewHistoricalReport();
+      } catch (err) {
+        console.error("viewHistoricalReport failed:", err);
+        alert("שגיאה בפתיחת הדו\"ח: " + (err.message || err));
       }
     });
   }
