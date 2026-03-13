@@ -407,22 +407,35 @@
 
     let activeFilter = "all";
 
-    function openCaseDemo(caseNumber){
-      // IMPORTANT:
-      // In the real system, admin "עדכן" opens the insured by GilInsured.id (PK), NOT by "מספר תיק".
-      // In production you can have: case_number=67799 but insured_id=2581.
-      // So /insured/67799/edit can be a 404 even though the route exists.
+    async function openCaseDemo(caseNumber){
       const demoMap = {
-        67799: 2581, // חואגה סעד (adjust if your local insured id differs)
+        67799: 2581
       };
 
       const insuredId = demoMap[caseNumber];
-      if(insuredId){
-        window.location.href = `/insured/${insuredId}/edit`;
+      if (!insuredId) {
+        alert("UI Demo: פתיחת תיק " + caseNumber + "\n(כעת אין מיפוי ל-insured_id בדמו. נבצע חיבור אמיתי בהמשך.)");
         return;
       }
 
-      alert("UI Demo: פתיחת תיק " + caseNumber + "\\n(כעת אין מיפוי ל-insured_id בדמו. נבצע חיבור אמיתי בהמשך.)");
+      try {
+        const res = await fetch(`/api/investigator/case-access/${insuredId}`);
+        const data = await res.json();
+
+        if (res.ok && data.status === "success" && data.url) {
+          window.location.href = data.url;
+          return;
+        }
+
+        if (res.status === 403) {
+          alert("אין לך אישור להכנס לתיק זה. מנהל צריך לאשר גישה.");
+          return;
+        }
+
+        alert(data.message || "שגיאה בפתיחת התיק");
+      } catch (err) {
+        alert("שגיאה בפתיחת התיק");
+      }
     }
 
     function apply(){

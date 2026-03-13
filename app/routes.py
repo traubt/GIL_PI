@@ -1466,6 +1466,11 @@ def edit_insured(id):
     roles = TocRole.query.all()
     roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
 
+    if user.get("role") == "Investigator":
+        allowed, inv_row, _user = require_case_access_or_403(insured.id, insured.ref_number or "")
+        if not allowed:
+            return redirect(url_for("main.investigator_cases"))
+
     investigators = GilInvestigator.query.order_by(GilInvestigator.full_name).all()
 
     upload_folder = current_app.config.get('UPLOAD_FOLDER')
@@ -6493,6 +6498,33 @@ def inline_update_insured(insured_id):
         db.session.rollback()
         current_app.logger.error(f'inline_update_insured error: {e}')
         return jsonify({'status': 'error', 'message': 'שגיאה בעדכון'}), 500
+
+@main.route("/api/investigator/case-access/<int:insured_id>", methods=["GET"])
+def api_investigator_case_access(insured_id):
+    try:
+        user_data = session.get("user")
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"status": "error", "message": "Not logged in"}), 401
+
+        insured = GilInsured.query.get_or_404(insured_id)
+
+        allowed, inv_row, _user = require_case_access_or_403(insured.id, insured.ref_number or "")
+        if not allowed:
+            return jsonify({
+                "status": "forbidden",
+                "message": "אין לך אישור להכנס לתיק זה. מנהל צריך לאשר גישה."
+            }), 403
+
+        return jsonify({
+            "status": "success",
+            "insured_id": insured.id,
+            "url": f"/insured/{insured.id}/edit"
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"api_investigator_case_access error: {e}")
+        return jsonify({"status": "error", "message": "Server error"}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
