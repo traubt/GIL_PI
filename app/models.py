@@ -185,6 +185,8 @@ class GilInsured(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     investigator = db.Column(db.String(200))
     parkinson_ind = db.Column( db.SmallInteger,   nullable=False,  server_default="0" )
+    severity = db.Column(db.String(20), nullable=False, default='רגיל')
+    case_status = db.Column(db.String(20), nullable=False, default='פתוח')
 
     pw_process_id = db.Column(
         db.Integer,
@@ -459,8 +461,25 @@ class GilTrackingReport(db.Model):
     report_date = db.Column(db.Date, nullable=False)
     mileage_km = db.Column(db.Integer, nullable=True)
 
-    note = db.Column(db.Text, nullable=True)
+    note = db.Column(db.Text, nullable=True)                 # investigator note
+    manager_note = db.Column(db.Text, nullable=True)         # admin-only note
+    manager_approved_ind = db.Column(db.Boolean, nullable=False, default=False)
+
     status = db.Column(db.String(20), nullable=False, default='Draft')
+
+    finalized_at = db.Column(db.DateTime, nullable=True)
+    finalized_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("toc_users.id", ondelete="SET NULL"),
+        nullable=True
+    )
+
+    reopened_at = db.Column(db.DateTime, nullable=True)
+    reopened_by_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey("toc_users.id", ondelete="SET NULL"),
+        nullable=True
+    )
 
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -475,6 +494,9 @@ class GilTrackingReport(db.Model):
     insured = db.relationship('GilInsured', backref=db.backref('tracking_reports', lazy='select'))
     investigator = db.relationship('GilInvestigator', backref=db.backref('tracking_reports', lazy='select'))
 
+    finalized_by = db.relationship("User", foreign_keys=[finalized_by_user_id])
+    reopened_by = db.relationship("User", foreign_keys=[reopened_by_user_id])
+
     activities = db.relationship(
         'GilTrackingReportActivity',
         backref='report',
@@ -482,7 +504,6 @@ class GilTrackingReport(db.Model):
         order_by='GilTrackingReportActivity.sort_order.asc()'
     )
 
-    # ✅ IMPORTANT: DO NOT use backref='report' here, because GilTrackingExpense already has .report
     expenses = db.relationship(
         'GilTrackingExpense',
         back_populates='report',
@@ -490,10 +511,6 @@ class GilTrackingReport(db.Model):
         lazy='select',
         order_by='GilTrackingExpense.expense_id.asc()'
     )
-
-    @property
-    def active_expenses(self):
-        return [e for e in (self.expenses or []) if not getattr(e, "deleted_ind", False)]
 
 
 class GilTrackingReportActivity(db.Model):

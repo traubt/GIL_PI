@@ -50,6 +50,8 @@
               <th><input type="text" placeholder="🔍" style="width:100%"></th>
               <th><input type="text" placeholder="🔍" style="width:100%"></th>
               <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
+              <th><input type="text" placeholder="🔍" style="width:100%"></th>
               <th></th>
             </tr>
 
@@ -67,9 +69,11 @@
               <th>ביטוח</th>
               <th>סוג חקירה</th>
               <th>מספר תביעה</th>
-              <th>מגדר</th>
-              <th>סטטוס</th>
-              <th>נוהל פרקינסון</th>
+<th>מגדר</th>
+<th>דחיפות</th>
+<th>שלב תהליך</th>
+<th>מצב תיק</th>
+<th>נוהל פרקינסון</th>
               <th>פעולות</th>
             </tr>
           </thead>
@@ -98,9 +102,31 @@
               <td>{{ insured.insurance }}</td>
               <td>{{ insured.claim_type }}</td>
               <td>{{ insured.claim_number }}</td>
-              <td>{{ insured.gender }}</td>
-              <td class="insured-status-cell">{{ insured.status }}</td>
-              <td class="text-center">{{ 1 if insured.parkinson_ind else 0 }}</td>
+<td>{{ insured.gender }}</td>
+
+<td class="severity-cell">
+  <select class="form-select form-select-sm inline-severity"
+          data-id="{{ insured.id }}">
+    <option value="רגיל" {{ 'selected' if insured.severity == 'רגיל' else '' }}>רגיל</option>
+    <option value="דחוף" {{ 'selected' if insured.severity == 'דחוף' else '' }}>דחוף</option>
+  </select>
+</td>
+
+<td class="insured-status-cell">
+  {{ insured.status }}
+</td>
+
+<td class="case-status-cell">
+  <select class="form-select form-select-sm inline-case-status"
+          data-id="{{ insured.id }}">
+    <option value="פתוח" {{ 'selected' if insured.case_status == 'פתוח' else '' }}>פתוח</option>
+    <option value="ממתין" {{ 'selected' if insured.case_status == 'ממתין' else '' }}>ממתין</option>
+    <option value="בתהליך" {{ 'selected' if insured.case_status == 'בתהליך' else '' }}>בתהליך</option>
+    <option value="סגור" {{ 'selected' if insured.case_status == 'סגור' else '' }}>סגור</option>
+  </select>
+</td>
+
+<td class="text-center">{{ 1 if insured.parkinson_ind else 0 }}</td>
               <td class="text-center">
                 <div class="dropdown">
                   <button class="btn btn-sm btn-outline-secondary"
@@ -663,6 +689,66 @@ $(function () {
 
     new bootstrap.Modal(document.getElementById('assignInvestigatorModal')).show();
   }
+
+    // ==== Inline update: severity ====
+  $(document).on('change', '.inline-severity', function () {
+    const insuredId = $(this).data('id');
+    const value = $(this).val();
+    const $el = $(this);
+
+    $el.prop('disabled', true);
+
+    $.ajax({
+      url: `/insured/${insuredId}/inline_update`,
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({
+        field: 'severity',
+        value: value
+      }),
+      success: function (res) {
+        if (res.status !== 'success') {
+          alert(res.message || 'שגיאה בעדכון דחיפות');
+        }
+      },
+      error: function (xhr) {
+        alert(xhr.responseJSON?.message || 'שגיאת שרת בעדכון דחיפות');
+      },
+      complete: function () {
+        $el.prop('disabled', false);
+      }
+    });
+  });
+
+  // ==== Inline update: case_status ====
+  $(document).on('change', '.inline-case-status', function () {
+    const insuredId = $(this).data('id');
+    const value = $(this).val();
+    const $el = $(this);
+
+    $el.prop('disabled', true);
+
+    $.ajax({
+      url: `/insured/${insuredId}/inline_update`,
+      method: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify({
+        field: 'case_status',
+        value: value
+      }),
+      success: function (res) {
+        if (res.status !== 'success') {
+          alert(res.message || 'שגיאה בעדכון מצב תיק');
+        }
+      },
+      error: function (xhr) {
+        alert(xhr.responseJSON?.message || 'שגיאת שרת בעדכון מצב תיק');
+      },
+      complete: function () {
+        $el.prop('disabled', false);
+      }
+    });
+  });
 
   // click: bulk assign button (top)
   $('#bulkAssignBtn').on('click', function () {

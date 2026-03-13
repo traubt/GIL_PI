@@ -1440,6 +1440,8 @@ def create_insured():
                 "message": "שגיאה ביצירת מבוטח"
             }), 500
 
+    is_admin_user = user_is_admin_or_manager(user)
+
     return render_template(
         'insured.html',
         insured=None,
@@ -1447,7 +1449,8 @@ def create_insured():
         user=user,
         roles=roles_list,
         clinics=clinics,
-        koopa=koopa
+        koopa=koopa,
+        is_admin_user=is_admin_user
     )
 
 @main.route('/insured/<int:id>/edit', methods=['GET', 'POST'])
@@ -1548,13 +1551,18 @@ def edit_insured(id):
             current_app.logger.error(f"Error updating insured: {str(e)}")
             return jsonify({'status': 'error', 'message': 'שגיאה בעדכון פרטי המבוטח'}), 500
 
+    is_admin_user = user_is_admin_or_manager(user)
+
     return render_template('insured.html',
                            insured=insured,
                            investigators=investigators,
                            user=user,
                            roles=roles_list,
                            clinics=clinics,
-                           koopa=koopa)
+                           koopa=koopa,
+                           is_admin_user=is_admin_user
+                           )
+
 
 @main.route('/insured/assign_investigator', methods=['POST'])
 def assign_investigator():
@@ -2956,6 +2964,8 @@ def api_tracking_reports_list():
 
 from sqlalchemy import func
 
+from sqlalchemy import func
+
 @main.route("/api/tracking_reports/<int:report_id>", methods=["GET"])
 def api_tracking_report_get(report_id):
     try:
@@ -2971,15 +2981,18 @@ def api_tracking_report_get(report_id):
 
         items_q = GilTrackingReportActivity.query.filter_by(report_id=r.report_id)
 
-        # ✅ Filter by source (insured page = investigator, editor = admin)
+        # filter by source if requested
         if req_source:
             items_q = items_q.filter(GilTrackingReportActivity.source == req_source)
 
-            # ✅ Show latest set for that source
-            max_set = db.session.query(func.max(GilTrackingReportActivity.set_no)) \
-                .filter(GilTrackingReportActivity.report_id == r.report_id,
-                        GilTrackingReportActivity.source == req_source) \
+            max_set = (
+                db.session.query(func.max(GilTrackingReportActivity.set_no))
+                .filter(
+                    GilTrackingReportActivity.report_id == r.report_id,
+                    GilTrackingReportActivity.source == req_source
+                )
                 .scalar()
+            )
 
             if max_set is not None:
                 items_q = items_q.filter(GilTrackingReportActivity.set_no == max_set)
@@ -2989,16 +3002,23 @@ def api_tracking_report_get(report_id):
             GilTrackingReportActivity.activity_id.asc()
         ).all()
 
-        expenses = GilTrackingExpense.query.filter_by(report_id=r.report_id, deleted_ind=False) \
-            .order_by(GilTrackingExpense.expense_date.asc(), GilTrackingExpense.expense_id.asc()) \
+        expenses = (
+            GilTrackingExpense.query
+            .filter_by(report_id=r.report_id, deleted_ind=False)
+            .order_by(GilTrackingExpense.expense_date.asc(), GilTrackingExpense.expense_id.asc())
             .all()
+        )
 
         exp_out = []
-        total = 0
+        total = 0.0
+
         for e in expenses:
-            media = GilTrackingExpenseMedia.query.filter_by(expense_id=e.expense_id) \
-                .order_by(GilTrackingExpenseMedia.media_id.asc()) \
+            media = (
+                GilTrackingExpenseMedia.query
+                .filter_by(expense_id=e.expense_id)
+                .order_by(GilTrackingExpenseMedia.media_id.asc())
                 .all()
+            )
 
             amt = float(e.amount or 0)
             total += amt
@@ -3028,14 +3048,22 @@ def api_tracking_report_get(report_id):
                 "investigator_id": r.investigator_id,
                 "report_date": normalize_date(r.report_date),
                 "status": r.status or "Draft",
+
+                # investigator note
                 "note": r.note or "",
+
+                # NEW manager fields
+                "manager_note": getattr(r, "manager_note", "") or "",
+                "manager_approved_ind": bool(getattr(r, "manager_approved_ind", False)),
+                "is_admin": user_is_admin_or_manager(user),
+
                 "mileage_km": r.mileage_km,
                 "items": [{
                     "activity_id": it.activity_id,
                     "activity_time": normalize_time(it.activity_time),
                     "description": it.description or "",
                     "sort_order": int(it.sort_order or 0),
-                    "source": it.source  # optional, but useful for debugging
+                    "source": it.source
                 } for it in items],
                 "expenses": exp_out,
                 "expenses_total": f"{total:.2f}"
@@ -3053,13 +3081,11 @@ def api_tracking_report_save():
     """
     Saves a tracking report + activities + expenses.
 
-    IMPORTANT BEHAVIOR (per your new rule):
-    - We KEEP Start/End in DB.
-    - We DO NOT delete all activities for the report.
-    - We version activities PER SOURCE using (source, set_no, is_current).
-      * Investigator save -> source='investigator'
-      * Admin/Manager save -> source='admin'
-    - On save: previous sets for that source are marked is_current=0, new set inserted as is_current=1.
+    New behavior:
+    - note = investigator note
+    - manager_note = admin-only note
+    - manager_approved_ind = admin-only checkbox
+    - Final report cannot be edited by non-admin
     """
     try:
         from datetime import datetime
@@ -3072,15 +3098,14 @@ def api_tracking_report_save():
         ref_number = (payload.get("ref_number") or "").strip()
         report_date_in = (payload.get("report_date") or "").strip()
         note = (payload.get("note") or "").strip()
+        manager_note = (payload.get("manager_note") or "").strip()
+        manager_approved_ind = bool(payload.get("manager_approved_ind"))
         items = payload.get("items") or []
-        report_id = payload.get("report_id")  # optional
+        report_id = payload.get("report_id")
 
         expenses_in = payload.get("expenses") or []
         deleted_expense_ids = payload.get("deleted_expense_ids") or []
 
-        # -----------------------------
-        # mileage validation
-        # -----------------------------
         mileage_in = payload.get("mileage_km", None)
         mileage_km = None
         try:
@@ -3102,8 +3127,10 @@ def api_tracking_report_save():
         if not allowed:
             return jsonify({"status": "error", "message": "Access denied"}), 403
 
+        is_admin = user_is_admin_or_manager(user)
+
         # -----------------------------
-        # Load existing report (by report_id OR by (insured_id, ref_number, report_date))
+        # Load existing report
         # -----------------------------
         r = None
         if report_id:
@@ -3116,8 +3143,8 @@ def api_tracking_report_save():
                 report_date=d
             ).first()
 
-        # Final => cannot edit for non-admin/manager
-        if r and (r.status == "Final") and (not user_is_admin_or_manager(user)):
+        # non-admin cannot edit final
+        if r and (r.status == "Final") and (not is_admin):
             return jsonify({"status": "error", "message": "Report is Final and cannot be edited"}), 403
 
         # -----------------------------
@@ -3125,7 +3152,7 @@ def api_tracking_report_save():
         # -----------------------------
         investigator_id = None
 
-        if user_is_admin_or_manager(user):
+        if is_admin:
             investigator_id = payload.get("investigator_id")
 
             if not investigator_id and r:
@@ -3159,31 +3186,46 @@ def api_tracking_report_save():
                 note=note,
                 mileage_km=mileage_km
             )
+
+            # NEW admin fields
+            if is_admin:
+                r.manager_note = manager_note
+                r.manager_approved_ind = manager_approved_ind
+            else:
+                r.manager_note = None
+                r.manager_approved_ind = False
+
             db.session.add(r)
-            db.session.flush()  # ensures r.report_id exists
+            db.session.flush()
         else:
-            # Investigator cannot edit other investigator's report
-            if (not user_is_admin_or_manager(user)) and (r.investigator_id != int(investigator_id)):
+            if (not is_admin) and (r.investigator_id != int(investigator_id)):
                 return jsonify({"status": "error", "message": "Cannot edit another investigator's report"}), 403
 
             r.note = note
             r.mileage_km = mileage_km
             r.updated_at = datetime.utcnow()
 
+            # NEW admin fields
+            if is_admin:
+                r.manager_note = manager_note
+                r.manager_approved_ind = manager_approved_ind
+
         # -----------------------------
-        # Replace activities (PER SOURCE, versioned)
+        # Replace activities per source
         # -----------------------------
         user_id = (user or {}).get("id") or None
-        source = "admin" if user_is_admin_or_manager(user) else "investigator"
+        source = "admin" if is_admin else "investigator"
 
-        # next set_no for this report+source
-        max_set = db.session.query(func.max(GilTrackingReportActivity.set_no)).filter(
-            GilTrackingReportActivity.report_id == r.report_id,
-            GilTrackingReportActivity.source == source
-        ).scalar()
+        max_set = (
+            db.session.query(func.max(GilTrackingReportActivity.set_no))
+            .filter(
+                GilTrackingReportActivity.report_id == r.report_id,
+                GilTrackingReportActivity.source == source
+            )
+            .scalar()
+        )
         next_set_no = int(max_set or 0) + 1
 
-        # mark previous current sets for this source as not current
         GilTrackingReportActivity.query.filter(
             GilTrackingReportActivity.report_id == r.report_id,
             GilTrackingReportActivity.source == source,
@@ -3193,12 +3235,10 @@ def api_tracking_report_save():
             synchronize_session=False
         )
 
-        # insert new set
         for idx, it in enumerate(items):
             t = (it.get("activity_time") or "").strip()
             desc = (it.get("description") or "").strip()
 
-            # keep DB clean: ignore empty rows only
             if not t or not desc:
                 continue
 
@@ -3251,12 +3291,14 @@ def api_tracking_report_save():
 
             ex_date = parse_date_flexible(ex_date_in) if ex_date_in else None
 
-            # ignore empty expense rows
             if not ex_desc and ex_amount == 0:
                 continue
 
             if ex_id:
-                row = GilTrackingExpense.query.filter_by(expense_id=ex_id, report_id=r.report_id).first()
+                row = GilTrackingExpense.query.filter_by(
+                    expense_id=ex_id,
+                    report_id=r.report_id
+                ).first()
                 if not row:
                     continue
 
@@ -3285,12 +3327,12 @@ def api_tracking_report_save():
 
         db.session.commit()
 
-        # -----------------------------
-        # Return expenses WITH DB IDs so UI can upload invoice immediately
-        # -----------------------------
-        expenses = GilTrackingExpense.query.filter_by(report_id=r.report_id, deleted_ind=False) \
-            .order_by(GilTrackingExpense.expense_date.asc(), GilTrackingExpense.expense_id.asc()) \
+        expenses = (
+            GilTrackingExpense.query
+            .filter_by(report_id=r.report_id, deleted_ind=False)
+            .order_by(GilTrackingExpense.expense_date.asc(), GilTrackingExpense.expense_id.asc())
             .all()
+        )
 
         exp_out = []
         total = 0.0
@@ -3298,9 +3340,12 @@ def api_tracking_report_save():
             amt = float(e.amount or 0)
             total += amt
 
-            media = GilTrackingExpenseMedia.query.filter_by(expense_id=e.expense_id) \
-                .order_by(GilTrackingExpenseMedia.media_id.asc()) \
+            media = (
+                GilTrackingExpenseMedia.query
+                .filter_by(expense_id=e.expense_id)
+                .order_by(GilTrackingExpenseMedia.media_id.asc())
                 .all()
+            )
 
             exp_out.append({
                 "expense_id": e.expense_id,
@@ -3324,6 +3369,8 @@ def api_tracking_report_save():
             "report_date": normalize_date(r.report_date),
             "status_value": r.status or "Draft",
             "mileage_km": r.mileage_km,
+            "manager_note": getattr(r, "manager_note", "") or "",
+            "manager_approved_ind": bool(getattr(r, "manager_approved_ind", False)),
             "saved_source": source,
             "saved_set_no": next_set_no,
             "expenses": exp_out,
@@ -3408,19 +3455,79 @@ def api_tracking_report_delete(report_id):
 
 @main.route('/tracking-report/finalize', methods=['POST'])
 def finalize_tracking_report():
-    data = request.get_json()
-    report_id = data.get('report_id')
+    try:
+        user_data = session.get('user')
+        user = json.loads(user_data) if user_data else {}
+        if not user_is_admin_or_manager(user):
+            return jsonify({'status': 'error', 'message': 'רק מנהל יכול לסיים דוח'}), 403
 
-    report = GilTrackingReport.query.get_or_404(report_id)
-    report.status = 'Final'
-    report.last_edited = datetime.utcnow()
+        data = request.get_json(silent=True) or {}
+        report_id = data.get('report_id')
 
-    db.session.commit()
+        if not report_id:
+            return jsonify({'status': 'error', 'message': 'report_id missing'}), 400
 
-    return jsonify({'status': 'ok'})
+        report = GilTrackingReport.query.get_or_404(report_id)
+
+        allowed, inv_row, _ = require_case_access_or_403(report.insured_id, report.ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        if not bool(getattr(report, "manager_approved_ind", False)):
+            return jsonify({'status': 'error', 'message': 'לא ניתן לסיים דוח ללא אישור מנהל'}), 400
+
+        report.status = 'Final'
+        report.updated_at = datetime.utcnow()
+
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'report_id': report.report_id,
+            'new_status': report.status
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"finalize_tracking_report error: {e}")
+        return jsonify({'status': 'error', 'message': 'שגיאה בסיום הדוח'}), 500
 
 
+@main.route('/tracking-report/reopen', methods=['POST'])
+def reopen_tracking_report():
+    try:
+        user_data = session.get('user')
+        user = json.loads(user_data) if user_data else {}
+        if not user_is_admin_or_manager(user):
+            return jsonify({'status': 'error', 'message': 'רק מנהל יכול לפתוח דוח'}), 403
 
+        data = request.get_json(silent=True) or {}
+        report_id = data.get('report_id')
+
+        if not report_id:
+            return jsonify({'status': 'error', 'message': 'report_id missing'}), 400
+
+        report = GilTrackingReport.query.get_or_404(report_id)
+
+        allowed, inv_row, _ = require_case_access_or_403(report.insured_id, report.ref_number)
+        if not allowed:
+            return jsonify({"status": "error", "message": "Access denied"}), 403
+
+        report.status = 'Draft'
+        report.updated_at = datetime.utcnow()
+
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'report_id': report.report_id,
+            'new_status': report.status
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"reopen_tracking_report error: {e}")
+        return jsonify({'status': 'error', 'message': 'שגיאה בפתיחת הדוח'}), 500
 
 
 ################  UPLOAD MEDIA BY INVESTIGATORS  #################
@@ -6350,6 +6457,42 @@ def api_pw_case_activities_complete():
         db.session.rollback()
         current_app.logger.error(f"api_pw_case_activities_complete failed: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to complete activities"}), 500
+
+
+@main.route('/insured/<int:insured_id>/inline_update', methods=['POST'])
+def inline_update_insured(insured_id):
+    try:
+        data = request.get_json(silent=True) or {}
+        field = (data.get('field') or '').strip()
+        value = (data.get('value') or '').strip()
+
+        insured = GilInsured.query.get_or_404(insured_id)
+
+        allowed_fields = {
+            'severity': {'רגיל', 'דחוף'},
+            'case_status': {'פתוח', 'ממתין', 'בתהליך', 'סגור'}
+        }
+
+        if field not in allowed_fields:
+            return jsonify({'status': 'error', 'message': 'שדה לא נתמך'}), 400
+
+        if value not in allowed_fields[field]:
+            return jsonify({'status': 'error', 'message': 'ערך לא תקין'}), 400
+
+        setattr(insured, field, value)
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'insured_id': insured.id,
+            'field': field,
+            'value': value
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f'inline_update_insured error: {e}')
+        return jsonify({'status': 'error', 'message': 'שגיאה בעדכון'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
