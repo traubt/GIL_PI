@@ -20,6 +20,8 @@ from app.models import GilInsured
 from datetime import datetime, timedelta, date
 from .dropbox_util import get_dbx
 from sqlalchemy import text, bindparam
+from .activity_logger import log_user_activity as write_user_activity
+from .task_helper import create_task_record
 
 from decimal import Decimal, InvalidOperation
 
@@ -2541,17 +2543,21 @@ def create_task():
         else:
             due_date = None
 
-        task = GilTask(
-            case_id=int(case_id),
-            user_id=int(user_id),
+        task = create_task_record(
+            case_id=case_id,
+            user_id=user_id,
             title=title,
-            description=description if description else None,
+            description=description,
             due_date=due_date,
             status=status,
-            creator_id=creator_id
+            creator_id=creator_id,
+            commit=False
         )
 
-        db.session.add(task)
+        if not task:
+            db.session.rollback()
+            return jsonify({"status": "error", "message": "Failed to create task"}), 500
+
         db.session.commit()
 
         return jsonify({
@@ -2615,17 +2621,19 @@ def bulk_create_tasks():
             if not cid:
                 continue
 
-            task = GilTask(
-                case_id=int(cid),
-                user_id=int(user_id),             # ✅ important
+            task = create_task_record(
+                case_id=cid,
+                user_id=user_id,
                 title=title,
-                description=description if description else None,
+                description=description,
                 due_date=due_date,
                 status=status,
-                creator_id=creator_id
+                creator_id=creator_id,
+                commit=False
             )
-            db.session.add(task)
-            created += 1
+
+            if task:
+                created += 1
 
         db.session.commit()
 
@@ -3152,6 +3160,8 @@ def api_tracking_report_save():
         if r and (r.status == "Final") and (not is_admin):
             return jsonify({"status": "error", "message": "Report is Final and cannot be edited"}), 403
 
+        old_manager_note = ((getattr(r, "manager_note", None) or "").strip()) if r else ""
+
         # -----------------------------
         # Determine investigator_id
         # -----------------------------
@@ -3329,6 +3339,57 @@ def api_tracking_report_save():
                     updated_at=datetime.utcnow()
                 )
                 db.session.add(row)
+
+        # -----------------------------
+        # Create task when manager comment changed
+        # -----------------------------
+        new_manager_note = (manager_note or "").strip()
+        manager_note_changed = is_admin and (new_manager_note != old_manager_note)
+
+        if manager_note_changed and new_manager_note:
+            assignee_user_id = None
+
+            if r.investigator_id:
+                inv_assignee = GilInvestigator.query.get(r.investigator_id)
+                if inv_assignee and inv_assignee.user_id:
+                    assignee_user_id = inv_assignee.user_id
+
+            if assignee_user_id:
+                insured_row = GilInsured.query.get(r.insured_id)
+                insured_name = ""
+                if insured_row:
+                    insured_name = f"{insured_row.first_name or ''} {insured_row.last_name or ''}".strip()
+
+                task_title = f"הערת מנהל - תיק {r.ref_number}"
+                task_description = new_manager_note
+
+                create_task_record(
+                    case_id=r.insured_id,
+                    user_id=assignee_user_id,
+                    title=task_title,
+                    description=task_description,
+                    due_date=date.today(),
+                    status="פתוחה",
+                    creator_id=(user or {}).get("id"),
+                    commit=False
+                )
+
+        # -----------------------------
+        # Log user activity
+        # -----------------------------
+        try:
+            user_data = json.loads(session.get("user", "{}"))
+
+            insured = GilInsured.query.get(r.insured_id)
+            full_name = f"{insured.first_name or ''} {insured.last_name or ''}".strip()
+
+            write_user_activity(
+                user_data,
+                f"Investigator report {full_name} {r.ref_number} was saved",
+                shop="GIL"
+            )
+        except Exception as e:
+            current_app.logger.error(f"user activity log failed: {e}")
 
         db.session.commit()
 
