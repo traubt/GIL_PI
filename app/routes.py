@@ -22,6 +22,7 @@ from .dropbox_util import get_dbx
 from sqlalchemy import text, bindparam
 from .activity_logger import log_user_activity as write_user_activity
 from .task_helper import create_task_record
+from .analytics_queries import *
 
 from decimal import Decimal, InvalidOperation
 
@@ -67,6 +68,8 @@ dbx = dropbox.Dropbox(
     app_key=DROPBOX_APP_KEY,
     app_secret=DROPBOX_APP_SECRET
 )
+
+
 
 def build_dropbox_folder_path(insurance, claim_type, last_name, first_name, id_number, claim_number):
     base_path = f"/360/ביטוח/{insurance}/{claim_type}"
@@ -673,7 +676,7 @@ def login_post():
     if user.role == "Investigator":
         return redirect(url_for("main.investigator_dashboard"))
     else:
-        return redirect(url_for('main.admin_insured'))
+        return redirect(url_for('main.admin_dashboard'))
 
 @main.route('/welcome/<username>')
 def welcome(username):
@@ -6586,6 +6589,68 @@ def api_investigator_case_access(insured_id):
     except Exception as e:
         current_app.logger.error(f"api_investigator_case_access error: {e}")
         return jsonify({"status": "error", "message": "Server error"}), 500
+
+############################  Admin Dashboard ###############################
+@main.route('/admin/dashboard')
+def admin_dashboard():
+    user_data = session.get('user')
+    if not user_data:
+        return redirect(url_for('main.login'))
+
+    user = json.loads(user_data)
+
+    db_user = User.query.get(user.get("id"))
+    if not db_user:
+        return redirect(url_for('main.login'))
+
+    roles = TocRole.query.all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    return render_template(
+        'admin_dashboard.html',
+        user=user,
+        db_user=db_user,
+        roles=roles_list
+    )
+
+############################# Analytics #############################
+@main.route('/analytics')
+def analytics():
+    user_data = session.get('user')
+    user = json.loads(user_data)
+
+    roles = TocRole.query.all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    return render_template(
+        'analytics.html',
+        user=user,
+        roles=roles_list,
+        active_menu='analytics'
+    )
+
+@main.route('/get_analytics_report', methods=['GET'])
+def get_analytics_report():
+    try:
+        report_type = request.args.get('reportType')
+        from_date = request.args.get('fromDate')
+        to_date = request.args.get('toDate')
+
+        if report_type == "תיקים דחופים שהתקבלו בטווח תאריכים":
+            data = get_urgent_cases_received(from_date, to_date)
+
+        elif report_type == "דוח משימות פתוחות":
+            data = get_open_tasks_report(from_date, to_date)
+
+        else:
+            return jsonify({"message": "Unknown report type"}), 400
+
+        columns = [{"title": key} for key in data[0].keys()] if data else []
+        return jsonify({"columns": columns, "data": data})
+
+    except Exception as e:
+        current_app.logger.exception("Analytics report failed")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

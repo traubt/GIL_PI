@@ -5,9 +5,25 @@
   <ul class="sidebar-nav" id="sidebar-nav">
 
     <li class="nav-item">
-      <a class="nav-link collapsed" href="{{ url_for('main.admin_insured') }}">
-        <i class="bi bi-grid"></i>
-        <span>דף הבית</span>
+      <a class="nav-link collapsed" href="{{ url_for('main.admin_dashboard') }}">
+          <i class="bi bi-grid"></i>
+          <span>דשבורד</span>
+      </a>
+    </li>
+
+    <li class="nav-item">
+      <a class="nav-link {{ 'collapsed' if active_menu != 'insured_admin' else '' }}"
+         href="{{ url_for('main.admin_insured') }}">
+        <i class="bi bi-folder2-open"></i>
+        <span>תיקים</span>
+      </a>
+    </li>
+
+    <li class="nav-item">
+      <a class="nav-link {{ 'collapsed' if active_menu != 'analytics' else '' }}"
+         href="{{ url_for('main.analytics') }}">
+        <i class="bi bi-bar-chart-line"></i>
+        <span>אנליטיקס</span>
       </a>
     </li>
 
@@ -45,14 +61,6 @@
     </li>
 
 
-
-    <li class="nav-item" id="openai">
-      <a class="nav-link collapsed" href="{{ url_for('main.ChatGPT') }}">
-        <i class="bi bi-robot"></i>
-        <span>360 עוזר חכם</span>
-      </a>
-    </li>
-
 <li class="nav-item" id="tasks_admin">
   <a class="nav-link collapsed" href="{{ url_for('main.admin_tasks') }}">
     <i class="bi bi-list-task"></i>
@@ -69,8 +77,6 @@
 </li>
 
 
-
-
     <li class="nav-item" id="appointments">
       <a class="nav-link collapsed" href="{{ url_for('main.appointments_calendar') }}">
         <i class="bi bi-calendar3"></i>
@@ -82,6 +88,13 @@
       <a class="nav-link" href="{{ url_for('reports_ui.editor_page') }}">
         <i class="bi bi-file-earmark-text"></i>
         <span>דוחות חקירה</span>
+      </a>
+    </li>
+
+    <li class="nav-item" id="openai">
+      <a class="nav-link collapsed" href="{{ url_for('main.ChatGPT') }}">
+        <i class="bi bi-robot"></i>
+        <span>360 עוזר חכם</span>
       </a>
     </li>
 

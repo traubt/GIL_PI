@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>GIL PI - אנליטיקס</title>
+  <meta content="" name="description">
+  <meta content="" name="keywords">
+
+  <link href="static/assets/vendor/bootstrap/css/bootstrap.min.css" rel="stylesheet">
+  <link href="static/assets/vendor/bootstrap-icons/bootstrap-icons.css" rel="stylesheet">
+  <link href="static/assets/vendor/boxicons/css/boxicons.min.css" rel="stylesheet">
+  <link href="static/assets/vendor/quill/quill.snow.css" rel="stylesheet">
+  <link href="static/assets/vendor/quill/quill.bubble.css" rel="stylesheet">
+  <link href="static/assets/vendor/remixicon/remixicon.css" rel="stylesheet">
+  <link href="static/assets/css/style.css" rel="stylesheet">
+
+  <script src="static/assets/js/functions.js"></script>
+
+  <!-- jQuery / DataTables -->
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
+
+  <link rel="stylesheet" href="https://cdn.datatables.net/buttons/2.4.2/css/buttons.dataTables.min.css">
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/dataTables.buttons.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.html5.min.js"></script>
+  <script src="https://cdn.datatables.net/buttons/2.4.2/js/buttons.print.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <link rel="stylesheet" href="https://cdn.datatables.net/fixedheader/3.4.0/css/fixedHeader.dataTables.min.css">
+  <script src="https://cdn.datatables.net/fixedheader/3.4.0/js/dataTables.fixedHeader.min.js"></script>
+
+  <!-- Bootstrap datepicker -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/css/bootstrap-datepicker.min.css" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-datepicker/1.9.0/js/bootstrap-datepicker.min.js"></script>
+
+  <style>
+    .analytics-hero {
+      border: 1px solid #e9ecef;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+      box-shadow: 0 8px 24px rgba(16, 24, 40, 0.05);
+    }
+
+    .analytics-hero .card-body {
+      padding: 1.5rem;
+    }
+
+.report-option {
+  border: 1px solid #e9ecef;
+  border-radius: 14px;
+  padding: 12px 14px;
+  transition: all 0.2s ease;
+  background: #fff;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.report-option:hover {
+  border-color: #86b7fe;
+  background: #f8fbff;
+}
+
+.report-option input[type="radio"] {
+  margin: 0;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.report-option label {
+  cursor: pointer;
+  width: auto;
+  margin-bottom: 0;
+  font-weight: 500;
+  flex: 1 1 auto;
+}
+
+    .filters-card,
+    .results-card {
+      border: 1px solid #e9ecef;
+      border-radius: 18px;
+      box-shadow: 0 8px 24px rgba(16, 24, 40, 0.05);
+    }
+
+    .section-title {
+      font-weight: 700;
+      font-size: 1rem;
+      margin-bottom: 1rem;
+      color: #344054;
+    }
+
+    .table-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+
+    .spinner-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(255, 255, 255, 0.75);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .spinner-overlay .spinner-border {
+      width: 3rem;
+      height: 3rem;
+    }
+
+    .dataTables_wrapper {
+      max-height: 62vh;
+      overflow-y: auto;
+      overflow-x: auto;
+    }
+
+    #analytics_report_tbl thead input {
+      width: 100%;
+      min-width: 120px;
+      border: 1px solid #d0d5dd;
+      border-radius: 8px;
+      padding: 6px 8px;
+      font-size: 12px;
+      direction: rtl;
+    }
+
+    .empty-state {
+      display: none;
+      text-align: center;
+      padding: 30px 20px;
+      color: #667085;
+    }
+
+    .empty-state i {
+      font-size: 2rem;
+      display: block;
+      margin-bottom: 8px;
+      color: #98a2b3;
+    }
+
+  #analytics_report_tbl thead tr.filters-row th {
+    padding: 6px 8px;
+    background: #f8fafc;
+  }
+
+  #analytics_report_tbl thead tr.filters-row input {
+    width: 100%;
+    min-width: 110px;
+    border: 1px solid #d0d5dd;
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 12px;
+    direction: rtl;
+  }
+  </style>
+</head>
+
+<body>
+
+  {% include 'header-bar.html' %}
+  {% include 'side-bar.html' %}
+
+  <main id="main" class="main">
+
+    <div class="pagetitle">
+      <h1>אנליטיקס</h1>
+      <nav>
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="/admin_dashboard">דף הבית</a></li>
+          <li class="breadcrumb-item active">אנליטיקס</li>
+        </ol>
+      </nav>
+    </div>
+
+    <section class="section">
+      <div class="row g-4">
+
+<!--        <div class="col-12">-->
+<!--          <div class="card analytics-hero">-->
+<!--            <div class="card-body">-->
+<!--              <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">-->
+<!--                <div>-->
+<!--                  <h5 class="card-title mb-1">מרכז אנליטיקה</h5>-->
+<!--                  <div class="text-muted">מסך דוחות גנרי להצגת כל דוח שמוחזר מהשרת</div>-->
+<!--                </div>-->
+<!--                <div class="badge bg-primary-subtle text-primary px-3 py-2">-->
+<!--                  Proof of Concept-->
+<!--                </div>-->
+<!--              </div>-->
+<!--            </div>-->
+<!--          </div>-->
+<!--        </div>-->
+
+        <!-- Report selection -->
+        <div class="col-lg-4">
+          <div class="card filters-card">
+            <div class="card-body">
+              <h5 class="card-title">בחירת דוח</h5>
+
+              <div class="section-title">דוחות זמינים</div>
+
+              <div class="report-option">
+                <input class="form-check-input" type="radio" name="analyticsReport"
+                       id="urgentCasesReceived"
+                       value="תיקים דחופים שהתקבלו בטווח תאריכים" checked>
+                <label for="urgentCasesReceived">תיקים דחופים שהתקבלו בטווח תאריכים</label>
+              </div>
+
+              <div class="report-option">
+                <input class="form-check-input" type="radio" name="analyticsReport"
+                       id="openTasksReport"
+                       value="דוח משימות פתוחות">
+                <label for="openTasksReport">דוח משימות פתוחות</label>
+              </div>
+
+              <!-- future reports
+              <div class="report-option">
+                <input class="form-check-input" type="radio" name="analyticsReport"
+                       id="tasksByInvestigator"
+                       value="משימות פתוחות לפי חוקר">
+                <label for="tasksByInvestigator">משימות פתוחות לפי חוקר</label>
+              </div>
+              -->
+            </div>
+          </div>
+        </div>
+
+        <!-- Filters -->
+        <div class="col-lg-8">
+          <div class="card filters-card">
+            <div class="card-body">
+              <h5 class="card-title">מסננים</h5>
+
+              <div class="row g-3 align-items-end">
+                <div class="col-md-5">
+                  <label for="fromDate" class="form-label">מתאריך</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                    <input type="text" id="fromDate" class="form-control datepicker" autocomplete="off">
+                  </div>
+                </div>
+
+                <div class="col-md-5">
+                  <label for="toDate" class="form-label">עד תאריך</label>
+                  <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-calendar3"></i></span>
+                    <input type="text" id="toDate" class="form-control datepicker" autocomplete="off">
+                  </div>
+                </div>
+
+                <div class="col-md-2 d-grid">
+                  <button id="runReport" class="btn btn-primary">
+                    <i class="bi bi-play-fill"></i> הפעל
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-3 d-flex gap-2 flex-wrap">
+                <button class="btn btn-outline-secondary btn-sm quick-range" data-range="7">7 ימים</button>
+                <button class="btn btn-outline-secondary btn-sm quick-range" data-range="30">30 ימים</button>
+                <button class="btn btn-outline-secondary btn-sm quick-range" data-range="90">90 ימים</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div class="col-12">
+          <div class="card results-card">
+            <div class="card-body">
+              <div class="table-toolbar">
+                <div>
+                  <h5 class="card-title mb-1">תוצאות הדוח</h5>
+                  <div id="reportMeta" class="text-muted small">טרם הופעל דוח</div>
+                </div>
+              </div>
+
+              <div id="emptyState" class="empty-state">
+                <i class="bi bi-bar-chart-line"></i>
+                הפעל דוח כדי לראות נתונים
+              </div>
+
+              <table id="analytics_report_tbl" class="table table-striped table-hover w-100" style="display:none;">
+                <thead></thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <div class="spinner-overlay" id="spinnerOverlay">
+    <div class="spinner-border text-primary" role="status"></div>
+    <div class="fw-semibold">טוען נתונים...</div>
+  </div>
+
+  <script src="static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+
+    function formatLocalDateTime(value) {
+      if (!value) return '';
+
+      const date = new Date(value);
+      if (isNaN(date.getTime())) return value;
+
+      const day = String(date.getDate()).padStart(2, '0');
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const year = date.getFullYear();
+
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+
+      // If time is 00:00, show only date
+      if (hours === '00' && minutes === '00') {
+        return `${day}-${month}-${year}`;
+      }
+
+      return `${day}-${month}-${year} ${hours}:${minutes}`;
+    }
+
+    function isDateColumn(title) {
+      const dateKeywords = ['תאריך', 'date', 'due_date', 'created', 'modified'];
+      const lower = String(title || '').toLowerCase();
+      return dateKeywords.some(k => lower.includes(k.toLowerCase()));
+    }
+
+
+    function formatDate(date) {
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function setDefaultDates(daysBack = 30) {
+      const today = new Date();
+      const from = new Date();
+      from.setDate(today.getDate() - daysBack);
+
+      $('#fromDate').datepicker('update', formatDate(from));
+      $('#toDate').datepicker('update', formatDate(today));
+    }
+
+    function showSpinner() {
+      $('#spinnerOverlay').css('display', 'flex');
+    }
+
+    function hideSpinner() {
+      $('#spinnerOverlay').hide();
+    }
+
+    function destroyTableIfExists() {
+      if ($.fn.DataTable.isDataTable('#analytics_report_tbl')) {
+        $('#analytics_report_tbl').DataTable().clear().destroy();
+      }
+      $('#analytics_report_tbl thead').empty();
+      $('#analytics_report_tbl tbody').empty();
+    }
+
+function renderAnalyticsTable(response, reportType) {
+  destroyTableIfExists();
+
+  const table = $('#analytics_report_tbl');
+  table.empty();
+
+  const thead = $('<thead></thead>');
+  const headerRow = $('<tr></tr>');
+  const filterRow = $('<tr class="filters-row"></tr>');
+
+  response.columns.forEach(col => {
+    headerRow.append(`<th>${col.title}</th>`);
+    filterRow.append(`
+      <th>
+        <input type="text"
+               placeholder="חיפוש ${col.title}"
+               data-column="${col.title}">
+      </th>
+    `);
+  });
+
+  thead.append(headerRow);
+  thead.append(filterRow);
+
+  table.append(thead);
+  table.append('<tbody></tbody>');
+  table.show();
+  $('#emptyState').hide();
+
+  const dt = table.DataTable({
+    data: response.data,
+    columns: response.columns.map(col => ({
+      data: col.title,
+      defaultContent: '',
+      render: function (data, type, row) {
+        if (isDateColumn(col.title)) {
+          return formatLocalDateTime(data);
+        }
+        return data ?? '';
+      }
+    })),
+    dom: 'Bfrtip',
+    buttons: [
+      {
+        extend: 'excelHtml5',
+        text: 'Download To Excel',
+        title: `${reportType}_${new Date().toISOString().slice(0, 10)}`
+      }
+    ],
+    fixedHeader: true,
+    orderCellsTop: true,
+    pageLength: 50,
+    lengthMenu: [
+      [25, 50, 100, 200],
+      [25, 50, 100, 200]
+    ],
+    language: {
+      search: "חיפוש כללי:",
+      lengthMenu: "הצג _MENU_ רשומות",
+      info: "מציג _START_ עד _END_ מתוך _TOTAL_ רשומות",
+      infoEmpty: "אין רשומות להצגה",
+      zeroRecords: "לא נמצאו תוצאות",
+      paginate: {
+        first: "ראשון",
+        last: "אחרון",
+        next: "הבא",
+        previous: "קודם"
+      }
+    },
+    initComplete: function () {
+      const api = this.api();
+
+      api.columns().every(function (index) {
+        const column = this;
+
+        $('thead tr.filters-row th:eq(' + index + ') input', table).on('keyup change', function () {
+          const searchTerm = this.value.trim();
+          if (column.search() !== searchTerm) {
+            column.search(searchTerm).draw();
+          }
+        });
+      });
+    }
+  });
+
+  $('#reportMeta').text(`הוחזרו ${response.data.length} רשומות עבור "${reportType}"`);
+}
+
+    function runAnalyticsReport() {
+      const reportType = $('input[name="analyticsReport"]:checked').val();
+      const fromDate = $('#fromDate').val();
+      const toDate = $('#toDate').val();
+
+      if (!reportType || !fromDate || !toDate) {
+        alert('נא לבחור דוח וטווח תאריכים');
+        return;
+      }
+
+      showSpinner();
+
+      $.ajax({
+        url: '/get_analytics_report',
+        method: 'GET',
+        data: {
+          reportType: reportType,
+          fromDate: fromDate,
+          toDate: toDate
+        },
+        success: function (response) {
+          if (response.columns && response.data) {
+            renderAnalyticsTable(response, reportType);
+
+            if (response.data.length === 0) {
+              destroyTableIfExists();
+              $('#analytics_report_tbl').hide();
+              $('#emptyState').show();
+              $('#reportMeta').text(`לא נמצאו נתונים עבור "${reportType}"`);
+            }
+          } else {
+            destroyTableIfExists();
+            $('#analytics_report_tbl').hide();
+            $('#emptyState').show();
+            $('#reportMeta').text('לא התקבלו נתונים מהשרת');
+          }
+        },
+        error: function (xhr) {
+          console.error('Analytics report error:', xhr);
+          alert('אירעה שגיאה בעת טעינת הדוח');
+        },
+        complete: function () {
+          hideSpinner();
+        }
+      });
+    }
+
+    $(document).ready(function () {
+      $('.datepicker').datepicker({
+        format: 'yyyy-mm-dd',
+        autoclose: true,
+        todayHighlight: true,
+        rtl: true
+      });
+
+      setDefaultDates(30);
+      $('#emptyState').show();
+
+      $('#runReport').on('click', function () {
+        runAnalyticsReport();
+      });
+
+      $('.quick-range').on('click', function () {
+        const days = parseInt($(this).data('range'), 10);
+        setDefaultDates(days);
+      });
+    });
+  </script>
+
+</body>
+</html>

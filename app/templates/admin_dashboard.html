@@ -1,0 +1,1221 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>GIL PI - Admin</title>
+
+  <!-- Favicons (reuse what you have) -->
+<link href="{{ url_for('static', filename='assets/img/toc_logo.png') }}" rel="icon">
+
+<link href="{{ url_for('static', filename='assets/vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+<link href="{{ url_for('static', filename='assets/vendor/bootstrap-icons/bootstrap-icons.css') }}" rel="stylesheet">
+<link href="{{ url_for('static', filename='assets/css/style.css') }}" rel="stylesheet">
+
+<script src="{{ url_for('static', filename='assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+
+  <!-- NiceAdmin base (optional but keeps consistency) -->
+  <link href="static/assets/css/style.css" rel="stylesheet">
+
+  <style>
+    /* ===== Mobile-first “app-like” dashboard ===== */
+
+    :root{
+      --card-radius: 16px;
+      --soft-shadow: 0 10px 24px rgba(0,0,0,.06);
+      --muted: #6c757d;
+      --bg: #f6f9ff;
+      --brand: #0d6efd;
+    }
+
+    body{
+      background: var(--bg);
+      font-family: "Open Sans", system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    }
+
+    .inv-shell{
+      max-width: 980px;
+      margin: 0 auto;
+      padding-bottom: 92px; /* space for bottom nav */
+    }
+
+    /* Top app bar */
+    .inv-topbar{
+      position: sticky;
+      top: 0;
+      z-index: 1020;
+      backdrop-filter: blur(8px);
+      background: rgba(246, 249, 255, .92);
+      border-bottom: 1px solid rgba(13,110,253,.08);
+    }
+
+    .inv-topbar-inner{
+      padding: 12px 12px 10px 12px;
+    }
+
+    .inv-title{
+      font-size: 18px;
+      font-weight: 800;
+      margin: 0;
+      line-height: 1.1;
+    }
+    .inv-subtitle{
+      margin: 2px 0 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    /* Date controls */
+    .date-strip{
+      margin-top: 10px;
+      border-radius: var(--card-radius);
+      background: #fff;
+      box-shadow: var(--soft-shadow);
+      padding: 10px;
+    }
+    .date-strip label{
+      font-size: 12px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .date-strip .form-control,
+    .date-strip .form-select{
+      height: 38px;
+      font-size: 13px;
+      border-radius: 12px;
+    }
+
+    /* KPI cards */
+    .kpi-grid{
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 768px){
+      .kpi-grid{ grid-template-columns: repeat(4, 1fr); }
+    }
+
+    .kpi{
+      background: #fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--soft-shadow);
+      padding: 12px;
+      min-height: 92px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      cursor: pointer;
+      border: 1px solid rgba(13,110,253,.06);
+    }
+    .kpi:hover{ transform: translateY(-1px); transition: .12s ease; }
+
+    .kpi .label{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .kpi .value{
+      font-size: 24px;
+      font-weight: 900;
+      letter-spacing: .2px;
+    }
+    .kpi .hint{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .kpi .icon{
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(13,110,253,.10);
+      color: var(--brand);
+    }
+
+    /* Action tiles */
+    .action-grid{
+      margin-top: 14px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (min-width: 768px){
+      .action-grid{ grid-template-columns: repeat(4, 1fr); }
+    }
+
+    .action-tile{
+      background: #fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--soft-shadow);
+      padding: 12px;
+      border: 1px solid rgba(13,110,253,.06);
+      text-decoration: none;
+      color: inherit;
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+    .action-tile .tile-icon{
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(25,135,84,.10);
+      color: #198754;
+      flex: 0 0 auto;
+      font-size: 18px;
+    }
+    .action-tile.secondary .tile-icon{
+      background: rgba(13,110,253,.10);
+      color: var(--brand);
+    }
+    .action-tile.warn .tile-icon{
+      background: rgba(255,193,7,.16);
+      color: #b8860b;
+    }
+    .action-tile.danger .tile-icon{
+      background: rgba(220,53,69,.12);
+      color: #dc3545;
+    }
+    .action-tile .tile-title{
+      font-weight: 900;
+      font-size: 13px;
+      margin: 0;
+      line-height: 1.15;
+    }
+    .action-tile .tile-sub{
+      font-size: 12px;
+      margin: 2px 0 0 0;
+      color: var(--muted);
+    }
+
+    /* Sections */
+    .section-card{
+      margin-top: 14px;
+      background: #fff;
+      border-radius: var(--card-radius);
+      box-shadow: var(--soft-shadow);
+      border: 1px solid rgba(13,110,253,.06);
+    }
+    .section-card .section-head{
+      padding: 12px 12px 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .section-title{
+      margin: 0;
+      font-weight: 900;
+      font-size: 14px;
+    }
+    .section-link{
+      font-size: 12px;
+      text-decoration: none;
+      font-weight: 800;
+    }
+    .section-body{ padding: 0 12px 12px 12px; }
+
+    .list-item{
+      padding: 10px 0;
+      border-bottom: 1px dashed rgba(0,0,0,.08);
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .list-item:last-child{ border-bottom: none; }
+    .li-title{
+      font-weight: 800;
+      margin: 0;
+      font-size: 13px;
+    }
+    .li-sub{
+      margin: 2px 0 0 0;
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .badge-soft{
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 800;
+      font-size: 11px;
+      white-space: nowrap;
+      align-self: center;
+    }
+    .badge-soft.blue{ background: rgba(13,110,253,.10); color: #0d6efd; }
+    .badge-soft.green{ background: rgba(25,135,84,.12); color: #198754; }
+    .badge-soft.yellow{ background: rgba(255,193,7,.18); color: #b8860b; }
+    .badge-soft.red{ background: rgba(220,53,69,.12); color: #dc3545; }
+
+    /* Bottom nav */
+    .bottom-nav{
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #fff;
+      border-top: 1px solid rgba(0,0,0,.08);
+      box-shadow: 0 -10px 24px rgba(0,0,0,.06);
+      z-index: 1030;
+    }
+    .bottom-nav .wrap{
+      max-width: 980px;
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 2px;
+      padding: 8px 8px 10px 8px;
+    }
+    .bottom-nav a{
+      text-decoration: none;
+      color: #111;
+      text-align: center;
+      font-size: 11px;
+      font-weight: 800;
+      padding: 6px 0;
+      border-radius: 12px;
+    }
+    .bottom-nav a .bi{ display: block; font-size: 18px; margin-bottom: 2px; color: #0d6efd; }
+    .bottom-nav a.active{ background: rgba(13,110,253,.08); }
+
+    .event-card {
+    padding: 10px 0;
+    border-bottom: 1px dashed rgba(0,0,0,.08);
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+  }
+
+  .event-card:last-child {
+    border-bottom: none;
+  }
+
+  .event-info {
+    flex: 1;
+  }
+
+  .event-title {
+    font-weight: 900;
+    font-size: 13px;
+    margin: 0;
+  }
+
+  .event-sub {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 2px;
+  }
+
+  .event-left-indicator {
+    width: 4px;
+    border-radius: 8px;
+  }
+
+  .event-left-indicator.visit { background: #0d6efd; }
+  .event-left-indicator.call { background: #198754; }
+  .event-left-indicator.meeting { background: #ffc107; }
+  .event-left-indicator.default { background: #adb5bd; }
+
+  .event-card{
+    cursor: pointer;
+  }
+
+  .event-card:hover{
+    background: rgba(13,110,253,.04);
+    border-radius: 12px;
+  }
+
+  .btn-open{
+    border-radius: 999px;
+    font-weight: 900;
+    font-size: 12px;
+    padding: 8px 12px;
+    line-height: 1;
+  }
+
+  .kpi:hover{
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(0,0,0,0.08);
+  }
+
+
+  </style>
+</head>
+
+<body>
+
+  <!-- Top Bar -->
+  <div class="inv-topbar">
+    <div class="inv-topbar-inner inv-shell">
+      <div class="d-flex align-items-start justify-content-between gap-2">
+        <div>
+          <h1 class="inv-title">דשבורד מנהל</h1>
+          <h5 class="card-title">
+          שלום, {{ user.first_name }} {{ user.last_name }} · כניסה אחרונה:
+          {{ db_user.last_login_date.strftime('%d/%m/%Y %H:%M') if db_user and db_user.last_login_date else '' }}
+          </h5>
+        </div>
+
+        <!-- Small profile button (demo) -->
+        <button class="btn btn-sm btn-outline-primary rounded-pill px-3" type="button" onclick="alert('UI Demo: Profile / Settings')">
+          <i class="bi bi-person-circle me-1"></i>פרופיל
+        </button>
+      </div>
+
+      <!-- Date Range Strip (TOC-like but mobile compact) -->
+      <div class="date-strip">
+        <div class="row g-2 align-items-end">
+          <div class="col-12 col-md-4">
+            <label class="form-label mb-1">טווח תאריכים</label>
+            <select id="datePreset" class="form-select">
+              <option value="today">היום</option>
+              <option value="wtd">מתחילת שבוע</option>
+              <option value="mtd" selected>מתחילת חודש</option>
+              <option value="custom">מותאם</option>
+            </select>
+          </div>
+
+          <div class="col-6 col-md-4">
+            <label class="form-label mb-1">מ־</label>
+            <input type="date" id="fromDate" class="form-control">
+          </div>
+
+          <div class="col-6 col-md-4">
+            <label class="form-label mb-1">עד</label>
+            <input type="date" id="toDate" class="form-control">
+          </div>
+
+          <div class="col-12 d-flex justify-content-between align-items-center mt-1">
+            <small class="text-muted">
+              <i class="bi bi-info-circle"></i>
+              טווח תאריכים משפיע על שעות עבודה וק"מ
+            </small>
+            <button class="btn btn-primary btn-sm rounded-pill px-3" type="button" id="btnRefresh">
+              <i class="bi bi-arrow-repeat me-1"></i>רענן
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Page Body -->
+  <div class="inv-shell px-2 px-sm-3">
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid">
+        <div class="kpi" style="cursor:pointer"
+          onclick="window.location.href='{{ url_for('main.admin_insured') }}'">
+        <div class="label">
+          <span>תיקים פעילים</span>
+          <span class="icon"><i class="bi bi-folder2-open"></i></span>
+        </div>
+        <div class="value" id="kpiCases">12</div>
+        <div class="hint">3 דחופים</div>
+      </div>
+
+      <div class="kpi" onclick="alert('UI Demo: Open Tasks list')">
+        <div class="label">
+          <span>משימות פתוחות</span>
+          <span class="icon"><i class="bi bi-check2-square"></i></span>
+        </div>
+        <div class="value" id="kpiTasks">18</div>
+        <div class="hint">4 באיחור</div>
+      </div>
+
+      <div class="kpi" onclick="alert('UI Demo: Time reports / work hours')">
+        <div class="label">
+          <span>שעות עבודה</span>
+          <span class="icon"><i class="bi bi-clock-history"></i></span>
+        </div>
+        <div class="value" id="kpiHours">34.5</div>
+        <div class="hint" id="hintHours">בשבוע הנוכחי</div>
+      </div>
+
+      <div class="kpi" onclick="alert('UI Demo: Distance / mileage')">
+        <div class="label">
+          <span>ק״מ</span>
+          <span class="icon"><i class="bi bi-geo-alt"></i></span>
+        </div>
+        <div class="value" id="kpiKm">216</div>
+        <div class="hint" id="hintKm">במסלולים</div>
+      </div>
+    </div>
+
+    <!--
+    <div class="action-grid">
+      <a class="action-tile secondary" href="/investigator_cases">
+        <div class="tile-icon"><i class="bi bi-briefcase"></i></div>
+        <div>
+          <p class="tile-title">התיקים שלי</p>
+          <p class="tile-sub">רשימת תיקים מוקצים</p>
+        </div>
+      </a>
+
+<a class="action-tile secondary" href="{{ url_for('main.investigator_calendar') }}">
+  <div class="tile-icon">
+    <i class="bi bi-calendar3"></i>
+  </div>
+  <div>
+    <p class="tile-title">יומן</p>
+    <p class="tile-sub">אירועים ותזכורות</p>
+  </div>
+</a>
+
+
+      <a class="action-tile danger" href="javascript:void(0)" onclick="alert('UI Demo: Open Tasks')">
+        <div class="tile-icon"><i class="bi bi-list-task"></i></div>
+        <div>
+          <p class="tile-title">משימות</p>
+          <p class="tile-sub">פתוחות / בוצעו / איחורים</p>
+        </div>
+      </a>
+
+      <a class="action-tile secondary" href="javascript:void(0)" onclick="alert('UI Demo: Search Insured / Open insured page')">
+        <div class="tile-icon"><i class="bi bi-person-vcard"></i></div>
+        <div>
+          <p class="tile-title">מבוטחים</p>
+          <p class="tile-sub">חיפוש + צפייה בלבד</p>
+        </div>
+      </a>
+    </div>
+
+    -->
+
+    <!-- Tasks List -->
+    <div class="section-card">
+      <div class="section-head">
+        <h3 class="section-title">
+          <i class="bi bi-check2-circle text-primary"></i> המשימות שלי
+        </h3>
+
+        <a class="section-link"
+           href="javascript:void(0)"
+           id="toggleTasksView">
+           הצג הכל
+        </a>
+
+      </div>
+      <div class="section-body" id="myTasksContainer">
+
+      </div>
+    </div>
+
+<!-- Upcoming Events -->
+<div class="section-card">
+  <div class="section-head">
+    <h3 class="section-title">
+      <i class="bi bi-calendar-event text-primary"></i> אירועים קרובים
+    </h3>
+    <a class="section-link" href="{{ url_for('main.investigator_calendar') }}">
+      ליומן
+    </a>
+  </div>
+
+  <div class="section-body" id="upcomingEventsContainer">
+    <!-- Dynamic events will load here -->
+  </div>
+</div>
+
+
+
+    <!-- Active Cases Snapshot -->
+    <div class="section-card">
+      <div class="section-head">
+        <h3 class="section-title"><i class="bi bi-folder2 text-primary"></i> תיקים פעילים (תצוגה מהירה)</h3>
+        <a class="section-link" href="/investigator_cases">כל התיקים</a>
+      </div>
+      <div class="section-body">
+        <div class="list-item">
+          <div>
+            <p class="li-title">67590 · יעקב שמואל שי</p>
+            <p class="li-sub">סטטוס: בעבודה · עדכון אחרון: אתמול</p>
+          </div>
+          <span class="badge-soft yellow">פתוח</span>
+        </div>
+
+        <div class="list-item">
+          <div>
+            <p class="li-title">67799 · חואגה סעד</p>
+            <p class="li-sub">סטטוס: בעבודה · משימה: ביקור שטח</p>
+          </div>
+          <span class="badge-soft green">בתהליך</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Bottom Navigation -->
+  <div class="bottom-nav">
+    <div class="wrap">
+      <a class="active" href="{{ url_for('main.investigator_dashboard') }}">
+        <i class="bi bi-grid-1x2"></i>
+        דשבורד
+      </a>
+
+      <a href="/investigator_cases">
+        <i class="bi bi-briefcase"></i>
+        תיקים
+      </a>
+      <a href="javascript:void(0)" onclick="alert('UI Demo: Tasks')">
+        <i class="bi bi-list-task"></i>
+        משימות
+      </a>
+      <a href="{{ url_for('main.investigator_calendar') }}">
+        <i class="bi bi-calendar3"></i>
+        יומן
+      </a>
+      <a href="javascript:void(0)" onclick="alert('UI Demo: Insured search')">
+        <i class="bi bi-person-vcard"></i>
+        מבוטחים
+      </a>
+    </div>
+  </div>
+
+  <script src="static/assets/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  function formatDateForInput(date){
+    // returns YYYY-MM-DD
+    const y = date.getFullYear();
+    const m = String(date.getMonth()+1).padStart(2,'0');
+    const d = String(date.getDate()).padStart(2,'0');
+    return `${y}-${m}-${d}`;
+  }
+
+  function getStartOfWeek(date){
+    const d = new Date(date);
+    const day = d.getDay(); // 0 = Sunday
+    const diff = d.getDate() - day;
+    return new Date(d.setDate(diff));
+  }
+
+  function applyDatePreset(preset){
+    const today = new Date();
+    let from = new Date();
+    let to   = new Date();
+
+    switch(preset){
+      case "today":
+        from = new Date(today);
+        to   = new Date(today);
+        break;
+
+      case "wtd":
+        from = getStartOfWeek(today);
+        to   = new Date(today);
+        break;
+
+      case "mtd":
+        from = new Date(today.getFullYear(), today.getMonth(), 1);
+        to   = new Date(today);
+        break;
+
+      case "custom":
+        return; // don't auto change
+    }
+
+    document.getElementById("fromDate").value = formatDateForInput(from);
+    document.getElementById("toDate").value   = formatDateForInput(to);
+  }
+
+  function formatDateIL(isoYmd){
+    // isoYmd = "YYYY-MM-DD" from <input type="date">
+    if(!isoYmd) return "";
+    const [y,m,d] = isoYmd.split("-");
+    return `${d}/${m}/${y}`;
+  }
+
+  function updateKpiDateRangeHints(){
+    const presetEl = document.getElementById("datePreset");
+    const hintHoursEl = document.getElementById("hintHours");
+    const hintKmEl = document.getElementById("hintKm");
+
+    if(!presetEl || !hintHoursEl || !hintKmEl) return;
+
+    const presetValue = presetEl.value;
+
+    let text = "";
+    if(presetValue === "custom"){
+      const from = document.getElementById("fromDate")?.value || "";
+      const to   = document.getElementById("toDate")?.value || "";
+      if(from && to){
+        text = `${formatDateIL(from)} - ${formatDateIL(to)}`;
+      } else {
+        text = "טווח מותאם";
+      }
+    } else {
+      // use the exact visible label text from the dropdown
+      text = presetEl.options[presetEl.selectedIndex]?.text || "";
+    }
+
+    hintHoursEl.innerText = text;
+    hintKmEl.innerText = text;
+  }
+
+
+
+  let showAllTasks = false;
+
+
+  async function loadTaskSummary() {
+    const res = await fetch("/api/investigator/tasks/summary");
+    const data = await res.json();
+
+    document.getElementById("kpiTasks").innerText = data.open_count;
+    document.querySelector("#kpiTasks").closest(".kpi").querySelector(".hint").innerText =   data.overdue_count + " באיחור";
+
+  }
+
+  function statusBadge(status) {
+    if (status === "הושלמה") return "badge-soft green";
+    if (status === "בתהליך") return "badge-soft green";
+    if (status === "פתוחה" || status === "חדש") return "badge-soft yellow";
+    return "badge-soft red";
+  }
+
+
+  async function loadRecentTasks() {
+    const res = await fetch(`/api/investigator/tasks/recent?show_all=${showAllTasks ? 1 : 0}`);
+    const tasks = await res.json();
+    const container = document.getElementById("myTasksContainer");
+    container.innerHTML = "";
+
+    const today = new Date();
+    // compare dates by day (avoids timezone edge cases)
+    const todayDay = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+
+    tasks.forEach(t => {
+      const div = document.createElement("div");
+      div.className = "list-item";
+
+      let isOverdue = false;
+      if (t.due_date) {
+        const due = new Date(t.due_date); // expects "YYYY-MM-DD"
+        const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+        if (todayDay > dueDay && (t.status || "").trim() !== "הושלמה") {
+          isOverdue = true;
+        }
+      }
+
+    div.innerHTML = `
+      <div>
+        <p class="li-title">${t.title}</p>
+        <p class="li-sub">${(t.insured_name || "—")} · ${(t.case_ref || t.case_id)} · יעד: ${t.due_date || "—"}</p>
+      </div>
+
+      <div class="d-flex align-items-center gap-2">
+        <button
+          type="button"
+          class="btn btn-outline-primary btn-sm btn-open open-case-btn"
+          data-case-id="${t.case_id || ""}"
+          title="פתח תיק"
+        >
+          פתח תיק
+        </button>
+
+        ${isOverdue ? `<span class="badge-soft red">באיחור</span>` : ``}
+        <span class="${statusBadge(t.status)}">${t.status}</span>
+      </div>
+    `;
+
+    const btnOpen = div.querySelector(".open-case-btn");
+    if (btnOpen) {
+      btnOpen.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const caseId = btnOpen.getAttribute("data-case-id");
+        if (!caseId) return;
+
+        // ✅ open insured edit (same as investigator_cases)
+        window.location.href = `/insured/${encodeURIComponent(caseId)}/edit`;
+      });
+    }
+
+
+      div.style.cursor = "pointer";
+
+      div.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        openTaskModal(t.id);
+      });
+
+      container.appendChild(div);
+    });
+  }
+
+
+  document.addEventListener("DOMContentLoaded", function(){
+      loadTaskSummary();
+      loadRecentTasks();
+      loadUpcomingEvents();
+  });
+</script>
+
+<script>
+let taskModal;
+
+async function openTaskModal(taskId) {
+  try {
+    const res = await fetch(`/tasks/${taskId}/json`, {
+      headers: { "Accept": "application/json" }
+    });
+
+    if (!res.ok) {
+      console.error("openTaskModal: bad response", res.status);
+      return;
+    }
+
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const txt = await res.text();
+      console.error("openTaskModal: expected JSON, got:", txt.slice(0, 200));
+      return;
+    }
+
+    const data = await res.json();
+
+    // ✅ support both shapes (old + new) with zero regression risk
+    const t = data.task ? data.task : data;
+
+    // Basic fields
+    const idEl = document.getElementById("tm_id");
+    if (idEl) idEl.value = t.id ?? "";
+
+    document.getElementById("tm_title").innerText  = t.title || "";
+
+    // ✅ show case name instead of case_id
+    const caseDisplay = (t.case_name && t.case_name.trim())
+      ? t.case_name
+      : (t.case_id ? ("תיק #" + t.case_id) : "—");
+    document.getElementById("tm_case").innerText = caseDisplay;
+
+    document.getElementById("tm_due").innerText    = t.due_date || "—";
+    document.getElementById("tm_status").innerText = t.status || "—";
+
+    // ✅ Insured + ref (supports both keys)
+    document.getElementById("tm_insured").innerText =
+      t.insured_name || t.insured || t.case_name || "—";
+
+    document.getElementById("tm_case_ref").innerText =
+      t.case_ref || t.ref || (t.case_id ? String(t.case_id) : "—");
+
+    // ✅ Description
+    document.getElementById("taskDesc").innerText = t.description || "—";
+
+    // Buttons logic
+    const status = (t.status || "").trim();
+
+    const btnAccept = document.getElementById("btnAcceptTask");
+    if (btnAccept) {
+      btnAccept.style.display = (status === "פתוחה" || status === "חדש") ? "inline-block" : "none";
+    }
+
+    const btnComplete = document.getElementById("btnCompleteTask");
+    if (btnComplete) {
+      btnComplete.style.display = (status === "בתהליך") ? "inline-block" : "none";
+    }
+
+    taskModal.show();
+
+  } catch (err) {
+    console.error("openTaskModal error:", err);
+  }
+}
+
+
+async function acceptTask(){
+  const taskId = document.getElementById("tm_id").value;
+
+  const res = await fetch(`/api/investigator/tasks/${taskId}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const data = await res.json();
+
+  if(data.status !== "success"){
+    alert(data.message || "שגיאה בקבלת משימה");
+    return;
+  }
+
+  // refresh dashboard numbers + list
+  await loadTaskSummary();
+  await loadRecentTasks();
+
+  taskModal.hide();
+}
+
+async function completeTask(){
+  const taskId = document.getElementById("tm_id").value;
+
+  const res = await fetch(`/api/investigator/tasks/${taskId}/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" }
+  });
+
+  const data = await res.json();
+
+  if(data.status !== "success"){
+    alert(data.message || "שגיאה בהשלמת משימה");
+    return;
+  }
+
+  // refresh dashboard numbers + list
+  await loadTaskSummary();
+  await loadRecentTasks();
+
+  taskModal.hide();
+}
+
+
+document.addEventListener("DOMContentLoaded", function(){
+  taskModal = new bootstrap.Modal(document.getElementById("taskModal"));
+  document.getElementById("btnAcceptTask").addEventListener("click", acceptTask);
+  document.getElementById("btnCompleteTask").addEventListener("click", completeTask);
+
+  const toggleLink = document.getElementById("toggleTasksView");
+  if (toggleLink) {
+    toggleLink.addEventListener("click", async function(e){
+      e.preventDefault();
+      showAllTasks = !showAllTasks;
+
+      // toggle text
+      toggleLink.textContent = showAllTasks ? "הצג בעבודה" : "הצג הכל";
+
+      // refresh only tasks list
+      await loadRecentTasks();
+    });
+  }
+
+  const presetSelect = document.getElementById("datePreset");
+
+  // Apply default preset on page load
+  applyDatePreset(presetSelect.value);
+  updateKpiDateRangeHints();   // ✅ ADD THIS
+
+  // Update when preset changes
+  presetSelect.addEventListener("change", function(){
+    applyDatePreset(this.value);
+    updateKpiDateRangeHints(); // ✅ ADD THIS
+  });
+
+  // If user edits custom dates manually
+  document.getElementById("fromDate").addEventListener("change", updateKpiDateRangeHints);
+  document.getElementById("toDate").addEventListener("change", updateKpiDateRangeHints);
+
+
+
+});
+
+function openFirstTaskFromList(){
+  const first = document.querySelector("#myTasksContainer .list-item");
+  if (first) first.click();
+}
+
+function getEventBadge(startIso) {
+  const now = new Date();
+  const eventDate = new Date(startIso);
+
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const eventDay = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
+
+  const diffDays = Math.floor((eventDay - today) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0) {
+    return '<span class="badge-soft red">עבר</span>';
+  }
+  if (diffDays === 0) {
+    return '<span class="badge-soft green">היום</span>';
+  }
+  if (diffDays === 1) {
+    return '<span class="badge-soft blue">מחר</span>';
+  }
+  if (diffDays <= 3) {
+    return `<span class="badge-soft yellow">עוד ${diffDays} ימים</span>`;
+  }
+
+  return `<span class="badge-soft blue">${eventDay.toLocaleDateString('he-IL')}</span>`;
+}
+
+let eventDetailsModal;
+
+function formatIsoDateToIL(isoDateStr){
+  // isoDateStr = "YYYY-MM-DD"
+  if(!isoDateStr) return "";
+  const d = new Date(isoDateStr + "T00:00:00");
+  return d.toLocaleDateString("he-IL");
+}
+
+async function openEventDetailsModal(appointmentId){
+  try {
+    const res = await fetch(`/api/investigator/appointments/${appointmentId}/json`, {
+      headers: { "Accept": "application/json" }
+    });
+
+    if (!res.ok) {
+      console.error("openEventDetailsModal bad response", res.status);
+      return;
+    }
+
+    const data = await res.json();
+    if (data.status === "error") {
+      console.error("openEventDetailsModal error:", data.message);
+      return;
+    }
+
+    // Title like your screenshot
+    const fullName = data.insured_name || data.insured_full_name || "";
+    const refNum   = data.case_ref || data.case_id || "";
+
+    document.getElementById("ev_id").value = data.id || "";
+    document.getElementById("ev_date").value = formatIsoDateToIL(data.appointment_date);
+    document.getElementById("ev_from").value = data.time_from || "";
+    document.getElementById("ev_to").value = data.time_to || "";
+    document.getElementById("ev_status").value = data.status || "";
+    document.getElementById("ev_place").value = data.place || "";
+    document.getElementById("ev_address").value = data.address || "";
+    document.getElementById("ev_koopa").value = data.koopa || "";
+    document.getElementById("ev_doctor").value = data.doctor || "";
+    document.getElementById("ev_investigators").value = data.investigators || "";
+    document.getElementById("ev_notes").value = data.notes || "";
+
+    eventDetailsModal.show();
+
+  } catch (err) {
+    console.error("openEventDetailsModal error:", err);
+  }
+}
+
+async function loadUpcomingEvents() {
+  try {
+    const now = new Date();
+    const future = new Date();
+    future.setDate(future.getDate() + 14);
+
+    const url = `/api/investigator/calendar/events?start=${now.toISOString()}&end=${future.toISOString()}`;
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("Failed loading events");
+
+    const events = await res.json();
+    const container = document.getElementById("upcomingEventsContainer");
+    container.innerHTML = "";
+
+    if (!events.length) {
+      container.innerHTML = `
+        <div class="text-center text-muted py-3">
+          אין אירועים קרובים
+        </div>
+      `;
+      return;
+    }
+
+    events.sort((a,b) => new Date(a.start) - new Date(b.start));
+
+    events.slice(0,5).forEach(ev => {
+      const apptId = ev.extendedProps?.appointment_id;
+      if (!apptId) return;
+
+      const div = document.createElement("div");
+      div.className = "event-card";
+      div.setAttribute("data-appointment-id", apptId);
+
+      const typeClass =
+        ev.extendedProps?.place?.includes("טלפון") ? "call" :
+        ev.extendedProps?.place?.includes("בית") ? "meeting" :
+        "visit";
+
+      // ✅ header text we will reuse for modal title (from the UI)
+      const headerText = `${(ev.extendedProps?.case_ref || "")} - ${(ev.extendedProps?.insured_name || "")} - ${(ev.title || "")}`
+        .replace(/\s+/g, " ")
+        .trim();
+
+      div.innerHTML = `
+        <div class="event-left-indicator ${typeClass}"></div>
+
+        <div class="event-info">
+          <p class="event-title" data-modal-title="${headerText.replace(/"/g, "&quot;")}">
+            ${(ev.extendedProps?.case_ref || "")} - ${(ev.extendedProps?.insured_name || "")} -
+            <strong>${ev.title || ""}</strong>
+          </p>
+
+          <p class="event-sub">
+            ${new Date(ev.start).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}
+            –
+            ${new Date(ev.end).toLocaleTimeString('he-IL',{hour:'2-digit',minute:'2-digit'})}
+            · ${(ev.extendedProps?.address || ev.extendedProps?.place || "")}
+          </p>
+        </div>
+
+        ${getEventBadge(ev.start)}
+      `;
+
+      container.appendChild(div);
+    });
+
+
+  } catch (err) {
+    console.error("loadUpcomingEvents error:", err);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", function(){
+  // init modal once
+  eventDetailsModal = new bootstrap.Modal(document.getElementById("eventDetailsModal"));
+
+  // delegate click only inside upcoming events container (no regressions elsewhere)
+  const upc = document.getElementById("upcomingEventsContainer");
+  if (upc) {
+    upc.addEventListener("click", function(e){
+      const card = e.target.closest(".event-card[data-appointment-id]");
+      if (!card) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const apptId = card.getAttribute("data-appointment-id");
+      if (!apptId) return;
+
+      // ✅ Get exact header text from clicked card
+      const titleEl = card.querySelector(".event-title");
+      const modalHeader = titleEl ? titleEl.innerText : "";
+
+      document.getElementById("eventModalTitle").innerText = modalHeader;
+
+      // show immediately (better UX)
+      eventDetailsModal.show();
+
+      // then load rest of data
+      openEventDetailsModal(apptId);
+    });
+
+  }
+});
+
+
+</script>
+
+
+<div class="modal fade" id="taskModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold">פרטי משימה</h5>
+        <button type="button" class="btn-close ms-0" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2"><strong id="tm_title"></strong></div>
+        <div class="mb-2 text-end" id="taskDesc" style="font-weight:600;"></div>
+
+        <div class="text-muted small mb-1">תיק: <span id="tm_case"></span></div>
+        <div class="text-muted small mb-1">מבוטח: <span id="tm_insured"></span></div>
+        <div class="text-muted small mb-1">מס' תיק: <span id="tm_case_ref"></span></div>
+        <div class="text-muted small mb-1">יעד: <span id="tm_due"></span></div>
+        <div class="text-muted small">סטטוס: <span id="tm_status"></span></div>
+        <input type="hidden" id="tm_id">
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">סגור</button>
+
+        <button type="button" class="btn btn-success rounded-pill" id="btnCompleteTask" style="display:none;">
+          השלם משימה
+        </button>
+
+        <button type="button" class="btn btn-primary rounded-pill" id="btnAcceptTask">קבל משימה</button>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="eventDetailsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content rounded-4">
+      <div class="modal-header">
+        <h5 class="modal-title fw-bold" id="eventModalTitle">פרטי אירוע</h5>
+        <button type="button" class="btn-close ms-0" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+
+      <div class="modal-body">
+        <input type="hidden" id="ev_id">
+
+        <div class="row g-2">
+          <div class="col-md-3">
+            <label class="form-label">תאריך</label>
+            <input type="text" class="form-control" id="ev_date" disabled>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">משעה</label>
+            <input type="text" class="form-control" id="ev_from" disabled>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">עד שעה</label>
+            <input type="text" class="form-control" id="ev_to" disabled>
+          </div>
+
+          <div class="col-md-3">
+            <label class="form-label">סטטוס</label>
+            <input type="text" class="form-control" id="ev_status" disabled>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">מקום</label>
+            <input type="text" class="form-control" id="ev_place" disabled>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">כתובת</label>
+            <input type="text" class="form-control" id="ev_address" disabled>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">קופה</label>
+            <input type="text" class="form-control" id="ev_koopa" disabled>
+          </div>
+
+          <div class="col-md-6">
+            <label class="form-label">רופא</label>
+            <input type="text" class="form-control" id="ev_doctor" disabled>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">חוקרים</label>
+            <input type="text" class="form-control" id="ev_investigators" disabled>
+          </div>
+
+          <div class="col-12">
+            <label class="form-label">הערות</label>
+            <textarea class="form-control" id="ev_notes" rows="3" disabled></textarea>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">סגור</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+</body>
+</html>
