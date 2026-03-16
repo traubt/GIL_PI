@@ -323,3 +323,73 @@ def upload_media_file(
         "name": original,
         "stored_name": filename,
     }
+
+# -------------------------
+# Invoice PDF upload
+# -------------------------
+
+INVOICE_SUBFOLDER = "חשבוניות"
+
+
+def upload_invoice_pdf(
+    dbx_client,
+    insurance,
+    claim_type,
+    last_name,
+    first_name,
+    id_number,
+    claim_number,
+    local_pdf_path,
+    stored_filename,
+):
+    """
+    Upload generated invoice PDF to Dropbox under the insured folder.
+
+    Returns:
+        {
+            ok,
+            dropbox_path,
+            dropbox_file_id,
+            size_bytes,
+            name,
+            stored_name
+        }
+    """
+
+    case_root = build_dropbox_folder_path(
+        insurance=insurance,
+        claim_type=claim_type,
+        last_name=last_name,
+        first_name=first_name,
+        id_number=id_number,
+        claim_number=claim_number,
+    )
+
+    if not case_root:
+        raise Exception("Cannot build Dropbox case folder path")
+
+    invoice_folder = _join_dropbox(case_root, INVOICE_SUBFOLDER)
+
+    ensure_folder_exists(dbx_client, invoice_folder)
+
+    with open(local_pdf_path, "rb") as f:
+        data = f.read()
+
+    target_path = _join_dropbox(invoice_folder, stored_filename)
+
+    res = dbx_client.files_upload(
+        data,
+        target_path,
+        mode=WriteMode.add,
+        mute=True,
+    )
+
+    return {
+        "ok": True,
+        "dropbox_path": res.path_display or target_path,
+        "dropbox_file_id": getattr(res, "id", None),
+        "size_bytes": len(data),
+        "name": stored_filename,
+        "stored_name": stored_filename,
+    }
+

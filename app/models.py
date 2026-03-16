@@ -1023,3 +1023,159 @@ class DorCaseStatus(db.Model):
         return f"<DorCaseStatus {self.status_code}>"
 
 
+############################### Invoices #############################
+
+from datetime import datetime
+from . import db
+
+
+class GilInvoice(db.Model):
+    __tablename__ = 'gil_invoice'
+
+    invoice_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    insured_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_insured.id', ondelete='RESTRICT', onupdate='CASCADE'),
+        nullable=False
+    )
+
+    source_type = db.Column(db.String(50), nullable=False)  # tracking_report / insured_case / manual
+    source_id = db.Column(db.Integer, nullable=False)
+    tracking_report_id = db.Column(db.Integer, nullable=True)
+
+    template_type = db.Column(db.String(100), nullable=True)  # menora_life, menora_siudi, etc.
+    status = db.Column(db.String(20), nullable=False, default='Draft')
+    version = db.Column(db.Integer, nullable=False, default=1)
+
+    invoice_number = db.Column(db.String(100), nullable=True)
+    inv_ref = db.Column(db.String(100), nullable=True)
+    inv_date = db.Column(db.Date, nullable=True)
+
+    insurance_company = db.Column(db.String(255), nullable=True)
+    branch_name = db.Column(db.String(255), nullable=True)
+    claim_number = db.Column(db.String(100), nullable=True)
+    claim_subject = db.Column(db.String(255), nullable=True)
+    insured_name = db.Column(db.String(255), nullable=True)
+    insured_id_number = db.Column(db.String(50), nullable=True)
+
+    service_date = db.Column(db.Date, nullable=True)
+    service_date_from = db.Column(db.Date, nullable=True)
+    service_date_to = db.Column(db.Date, nullable=True)
+
+    subtotal = db.Column(db.Numeric(12, 2), nullable=True, default=0.00)
+    vat_percent = db.Column(db.Numeric(5, 2), nullable=True, default=18.00)
+    vat_amount = db.Column(db.Numeric(12, 2), nullable=True, default=0.00)
+    total_amount = db.Column(db.Numeric(12, 2), nullable=True, default=0.00)
+    currency_code = db.Column(db.String(10), nullable=True, default='ILS')
+
+    notes = db.Column(db.Text, nullable=True)
+    render_payload_json = db.Column(db.Text, nullable=True)
+
+    dropbox_folder_path = db.Column(db.String(1000), nullable=True)
+    latest_docx_path = db.Column(db.String(1000), nullable=True)
+    latest_pdf_path = db.Column(db.String(1000), nullable=True)
+    latest_docx_filename = db.Column(db.String(255), nullable=True)
+    latest_pdf_filename = db.Column(db.String(255), nullable=True)
+
+    created_by = db.Column(db.Integer, nullable=True)
+    updated_by = db.Column(db.Integer, nullable=True)
+    finalized_by = db.Column(db.Integer, nullable=True)
+    sent_by = db.Column(db.Integer, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+    finalized_at = db.Column(db.DateTime, nullable=True)
+    sent_at = db.Column(db.DateTime, nullable=True)
+
+    # Relationships
+    items = db.relationship(
+        'GilInvoiceItem',
+        backref='invoice',
+        lazy=True,
+        cascade='all, delete-orphan',
+        order_by='GilInvoiceItem.line_no'
+    )
+
+    documents = db.relationship(
+        'GilInvoiceDocument',
+        backref='invoice',
+        lazy=True,
+        cascade='all, delete-orphan',
+        order_by='GilInvoiceDocument.document_id.desc()'
+    )
+
+    def __repr__(self):
+        return f"<GilInvoice invoice_id={self.invoice_id} insured_id={self.insured_id} status={self.status} version={self.version}>"
+
+
+class GilInvoiceItem(db.Model):
+    __tablename__ = 'gil_invoice_item'
+
+    item_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    invoice_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_invoice.invoice_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=False
+    )
+
+    line_no = db.Column(db.Integer, nullable=False, default=1)
+
+    service_date = db.Column(db.Date, nullable=True)
+    item_code = db.Column(db.String(100), nullable=True)
+    description = db.Column(db.String(500), nullable=False)
+    qty = db.Column(db.Numeric(10, 2), nullable=False, default=1.00)
+    unit_price = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+    amount = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+
+    vat_ind = db.Column(db.Boolean, nullable=False, default=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<GilInvoiceItem item_id={self.item_id} invoice_id={self.invoice_id} line_no={self.line_no}>"
+
+
+class GilInvoiceDocument(db.Model):
+    __tablename__ = 'gil_invoice_document'
+
+    document_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    invoice_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_invoice.invoice_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=False
+    )
+
+    document_type = db.Column(db.String(20), nullable=False)  # docx / pdf
+    version = db.Column(db.Integer, nullable=False, default=1)
+    is_current = db.Column(db.Boolean, nullable=False, default=True)
+
+    storage_type = db.Column(db.String(20), nullable=False, default='dropbox')  # dropbox / local
+    file_name = db.Column(db.String(255), nullable=False)
+    file_ext = db.Column(db.String(20), nullable=True)
+
+    dropbox_path = db.Column(db.String(1000), nullable=True)
+    local_path = db.Column(db.String(1000), nullable=True)
+    file_size = db.Column(db.BigInteger, nullable=True)
+
+    created_by = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<GilInvoiceDocument document_id={self.document_id} invoice_id={self.invoice_id} type={self.document_type} version={self.version}>"
+
+
+class GilEditorState(db.Model):
+    __tablename__ = 'gil_editor_state'
+
+    state_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    insured_id = db.Column(db.Integer, db.ForeignKey('gil_insured.id', ondelete='CASCADE', onupdate='CASCADE'), nullable=False)
+    report_id = db.Column(db.Integer, nullable=True)
+    state_json = db.Column(db.JSON, nullable=False)
+    updated_by = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, server_default=db.func.current_timestamp(), nullable=False)
+    updated_at = db.Column(db.DateTime, server_default=db.func.current_timestamp(), onupdate=db.func.current_timestamp(), nullable=False)

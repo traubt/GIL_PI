@@ -113,6 +113,39 @@ def _extract_taken_at_from_exif_bytes(data: bytes):
     except Exception:
         return None
 
+
+def save_editor_state(insured_id, report_id, state_json, updated_by=None):
+    row = (
+        GilEditorState.query
+        .filter_by(insured_id=insured_id)
+        .first()
+    )
+
+    if row:
+        row.report_id = report_id
+        row.state_json = state_json
+        row.updated_by = updated_by
+        row.updated_at = datetime.now()
+    else:
+        row = GilEditorState(
+            insured_id=insured_id,
+            report_id=report_id,
+            state_json=state_json,
+            updated_by=updated_by
+        )
+        db.session.add(row)
+
+    db.session.commit()
+    return row
+
+
+def load_editor_state(insured_id):
+    return (
+        GilEditorState.query
+        .filter_by(insured_id=insured_id)
+        .first()
+    )
+
 def _pw_get_open_blockers_for_target(case_id, target_status_code):
     """
     Return open blocking PW case activities that block transition to target_status_code.
@@ -6651,6 +6684,178 @@ def get_analytics_report():
     except Exception as e:
         current_app.logger.exception("Analytics report failed")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+############################# invoices ###########################
+
+from .invoice_services import save_invoice_draft
+
+@main.route('/test_save_invoice_draft')
+def test_save_invoice_draft():
+    invoice_data = {
+        "inv_ref": "TEST-001",
+        "inv_date": "2026-03-15",
+        "insurance_company": "מנורה",
+        "branch_name": "סניף ראשי",
+        "claim_number": "CLM123",
+        "claim_subject": "בדיקת מעקב",
+        "insured_name": "יעקב כהן",
+        "insured_id_number": "123456789",
+        "service_date": "2026-03-14",
+        "subtotal": "1000.00",
+        "vat_percent": "18.00",
+        "vat_amount": "180.00",
+        "total_amount": "1180.00",
+        "currency_code": "ILS",
+        "notes": "בדיקת שמירת טיוטה"
+    }
+
+    line_items = [
+        {
+            "service_date": "2026-03-14",
+            "item_code": "TRACK",
+            "description": "מעקב",
+            "qty": "1",
+            "unit_price": "1000.00",
+            "amount": "1000.00",
+            "vat_ind": True,
+            "notes": ""
+        }
+    ]
+
+    result = save_invoice_draft(
+        insured_id=2581,
+        source_type='insured_case',
+        source_id=2581,
+        template_type='menora_siudi',
+        invoice_data=invoice_data,
+        line_items=line_items,
+        user_id=1,
+        tracking_report_id=None
+    )
+
+    return jsonify(result)
+
+@main.route("/api/invoices/save_draft", methods=["POST"])
+def api_invoice_save_draft():
+    try:
+        payload = request.get_json(silent=True) or {}
+
+        insured_id = payload.get("insured_id")
+        source_type = (payload.get("source_type") or "").strip()
+        source_id = payload.get("source_id")
+        template_type = (payload.get("template_type") or "").strip()
+        tracking_report_id = payload.get("tracking_report_id")
+
+        invoice_data = payload.get("invoice_data") or {}
+        line_items = payload.get("line_items") or []
+
+        if not insured_id:
+            return jsonify({"success": False, "message": "insured_id missing"}), 400
+
+        if not source_type:
+            return jsonify({"success": False, "message": "source_type missing"}), 400
+
+        if not source_id:
+            return jsonify({"success": False, "message": "source_id missing"}), 400
+
+        if not template_type:
+            return jsonify({"success": False, "message": "template_type missing"}), 400
+
+        # -----------------------------
+        # Access control
+        # -----------------------------
+        insured = GilInsured.query.get_or_404(int(insured_id))
+        allowed, inv_row, user = require_case_access_or_403(int(insured_id), insured.ref_number or "")
+        if not allowed:
+            return jsonify({"success": False, "message": "Access denied"}), 403
+
+        # only admin/manager for now
+        if not user_is_admin_or_manager(user):
+            return jsonify({"success": False, "message": "Only admin/manager can save invoice draft"}), 403
+
+        user_id = user.get("id")
+
+        result = save_invoice_draft(
+            insured_id=int(insured_id),
+            source_type=source_type,
+            source_id=int(source_id),
+            template_type=template_type,
+            invoice_data=invoice_data,
+            line_items=line_items,
+            user_id=user_id,
+            tracking_report_id=int(tracking_report_id) if tracking_report_id else None
+        )
+
+        status_code = 200 if result.get("success") else 500
+        return jsonify(result), status_code
+
+    except Exception as e:
+        current_app.logger.error(f"api_invoice_save_draft error: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Server error: {str(e)}"
+        }), 500
+
+@main.route('/reports/save_editor_state', methods=['POST'])
+def save_editor_state_route():
+    try:
+        payload = request.get_json(force=True) or {}
+
+        insured_id = payload.get('insured_id')
+        report_id = payload.get('report_id')
+        state_json = payload.get('state_json') or {}
+
+        if not insured_id:
+            return jsonify({'status': 'error', 'message': 'insured_id missing'}), 400
+
+        user_id = None
+        try:
+            user_data = session.get('user')
+            if user_data:
+                import json
+                user = json.loads(user_data)
+                user_id = user.get('id')
+        except Exception:
+            user_id = None
+
+        row = save_editor_state(
+            insured_id=int(insured_id),
+            report_id=int(report_id) if report_id else None,
+            state_json=state_json,
+            updated_by=user_id
+        )
+
+        return jsonify({
+            'status': 'ok',
+            'state_id': row.state_id,
+            'updated_at': row.updated_at.strftime('%Y-%m-%d %H:%M:%S') if row.updated_at else None
+        })
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@main.route('/reports/load_editor_state', methods=['GET'])
+def load_editor_state_route():
+    try:
+        insured_id = request.args.get('insured_id', type=int)
+        if not insured_id:
+            return jsonify({'status': 'error', 'message': 'insured_id missing'}), 400
+
+        row = load_editor_state(insured_id)
+        if not row:
+            return jsonify({'status': 'ok', 'state_json': None})
+
+        return jsonify({
+            'status': 'ok',
+            'state_id': row.state_id,
+            'report_id': row.report_id,
+            'state_json': row.state_json,
+            'updated_at': row.updated_at.strftime('%Y-%m-%d %H:%M:%S') if row.updated_at else None
+        })
+
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

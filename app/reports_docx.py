@@ -21,6 +21,9 @@ from sqlalchemy import func
 from flask import session
 from .activity_logger import log_user_activity
 from .report_naming import build_report_display_name, build_report_filename
+from .dropbox_util import upload_invoice_pdf, get_dbx
+import os
+from .invoice_services import load_invoice_draft
 
 
 DOCX_TEMPLATES_DIR = getattr(
@@ -2469,8 +2472,190 @@ def finalize_tracking_report():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+def render_invoice_docx(invoice, output_path):
+    """
+    Render invoice DOCX using the correct mapped invoice template.
+    """
+
+    # Decide template key from invoice template_type
+    template_type = (invoice.template_type or "").strip().lower()
+
+    if template_type == "menora_siudi":
+        tmpl_key = "siudi_invoice"
+    elif template_type == "menora_life":
+        tmpl_key = "menora_life_invoice"
+    else:
+        raise Exception(f"Unsupported invoice template_type: {invoice.template_type}")
+
+    template_name = map_template_key(tmpl_key)
+    template_path = load_template_docx(template_name)
+
+    doc = DocxTemplate(template_path)
+
+    # Base context objects expected by your invoice templates
+    context = {
+        "claim": {},
+        "insured": {},
+        "totals": {},
+    }
+
+    # Common header fields
+    context["inv_number"] = invoice.invoice_number or ""
+    context["inv_ref"] = invoice.inv_ref or ""
+    context["inv_date"] = ddmmyyyy(invoice.inv_date.isoformat()) if invoice.inv_date else ""
+
+    context["claim"]["number"] = invoice.claim_number or ""
+    context["claim"]["subject"] = invoice.claim_subject or ""
+
+    context["insured"]["id_number"] = invoice.insured_id_number or ""
+
+    # Siudi invoice template fields
+    if tmpl_key == "siudi_invoice":
+        context["totals"]["subtotal"] = str(invoice.subtotal or "")
+        context["totals"]["vat_rate"] = str(invoice.vat_percent or "")
+        context["totals"]["vat_amount"] = str(invoice.vat_amount or "")
+        context["totals"]["total"] = str(invoice.total_amount or "")
+
+    # Menora life invoice template fields
+    elif tmpl_key == "menora_life_invoice":
+        context["life_followup_date"] = (
+            invoice.service_date.strftime("%d/%m/%Y") if invoice.service_date else ""
+        )
+        context["life_subtotal"] = str(invoice.subtotal or "")
+        context["life_vat_amount"] = str(invoice.vat_amount or "")
+        context["life_total"] = str(invoice.total_amount or "")
+
+        items = (
+            GilInvoiceItem.query
+            .filter_by(invoice_id=invoice.invoice_id)
+            .order_by(GilInvoiceItem.line_no.asc())
+            .all()
+        )
+
+        context["life_items"] = [
+            {
+                "text": item.description or "",
+                "amount": str(item.amount or "")
+            }
+            for item in items
+        ]
+
+    doc.render(context)
+    doc.save(output_path)
 
 
+def convert_docx_to_pdf(docx_path, pdf_path):
+    """
+    Convert DOCX → PDF using LibreOffice.
+    """
+
+    subprocess.run(
+        [
+            "libreoffice",
+            "--headless",
+            "--convert-to",
+            "pdf",
+            docx_path,
+            "--outdir",
+            os.path.dirname(pdf_path),
+        ],
+        check=True,
+    )
+
+    # LibreOffice writes PDF with same base filename
+    generated_pdf = docx_path.replace(".docx", ".pdf")
+
+    if generated_pdf != pdf_path:
+        os.rename(generated_pdf, pdf_path)
+
+def generate_invoice_pdf(invoice):
+    """
+    Generate PDF for invoice and upload to Dropbox.
+    Returns Dropbox upload result.
+    """
+
+    from datetime import datetime
+    from .dropbox_util import upload_invoice_pdf, get_dbx
+    import os
+
+    # ----------------------
+    # File naming
+    # ----------------------
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    pdf_filename = f"invoice_{invoice.invoice_id}_{ts}.pdf"
+
+    local_docx = f"/tmp/invoice_{invoice.invoice_id}_{ts}.docx"
+    local_pdf = f"/tmp/invoice_{invoice.invoice_id}_{ts}.pdf"
+
+    # ----------------------
+    # Render DOCX
+    # ----------------------
+
+    render_invoice_docx(invoice, local_docx)
+
+    # ----------------------
+    # Convert DOCX → PDF
+    # ----------------------
+
+    convert_docx_to_pdf(local_docx, local_pdf)
+
+    # ----------------------
+    # Upload PDF to Dropbox
+    # ----------------------
+
+    dbx = get_dbx()
+
+    upload_res = upload_invoice_pdf(
+        dbx,
+        invoice.insurance_company,
+        invoice.claim_type,
+        invoice.last_name,
+        invoice.first_name,
+        invoice.insured_id_number,
+        invoice.claim_number,
+        local_pdf,
+        pdf_filename,
+    )
+
+    return upload_res
+
+@reports_docx_bp.route("/api/invoices/load_draft", methods=["GET"])
+def api_invoice_load_draft():
+    try:
+        insured_id = request.args.get("insured_id", type=int)
+        source_type = (request.args.get("source_type") or "").strip()
+        source_id = request.args.get("source_id", type=int)
+        template_type = (request.args.get("template_type") or "").strip()
+
+        if not insured_id:
+            return jsonify({"success": False, "message": "insured_id missing"}), 400
+
+        if not source_type:
+            return jsonify({"success": False, "message": "source_type missing"}), 400
+
+        if not source_id:
+            return jsonify({"success": False, "message": "source_id missing"}), 400
+
+        if not template_type:
+            return jsonify({"success": False, "message": "template_type missing"}), 400
+
+        result = load_invoice_draft(
+            insured_id=insured_id,
+            source_type=source_type,
+            source_id=source_id,
+            template_type=template_type
+        )
+
+        status_code = 200 if result.get("success") else 500
+        return jsonify(result), status_code
+
+    except Exception as e:
+        return jsonify({
+            "success": False,
+            "message": f"Server error: {str(e)}"
+        }), 500
 
 
 

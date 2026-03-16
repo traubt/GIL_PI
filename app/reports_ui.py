@@ -1267,3 +1267,58 @@ def create_version():
         db.session.rollback()
         current_app.logger.exception("create_version failed")
         return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@reports_ui_bp.route('/invoice/<int:invoice_id>/generate_pdf', methods=['POST'])
+def generate_invoice_pdf_route(invoice_id):
+    from .models import GilInvoice, GilInvoiceDocument
+    from .reports_docx import generate_invoice_pdf
+    from . import db
+
+    invoice = GilInvoice.query.get_or_404(invoice_id)
+
+    payload = request.get_json(silent=True) or {}
+    override = bool(payload.get("override", False))
+
+    # --------------------------------
+    # Business validation: existing PDF
+    # --------------------------------
+    has_existing_pdf = False
+
+    if invoice.latest_pdf_path:
+        has_existing_pdf = True
+    else:
+        existing_pdf_doc = (
+            GilInvoiceDocument.query
+            .filter_by(invoice_id=invoice.invoice_id, document_type='pdf', is_current=True)
+            .first()
+        )
+        if existing_pdf_doc:
+            has_existing_pdf = True
+
+    if has_existing_pdf and not override:
+        return jsonify({
+            "success": False,
+            "requires_confirm": True,
+            "message": "כבר הופקה חשבונית לתיק הזה. האם לדרוס את הקובץ הקיים?"
+        }), 200
+
+    try:
+        upload_res = generate_invoice_pdf(invoice)
+
+        invoice.latest_pdf_path = upload_res["dropbox_path"]
+        invoice.latest_pdf_filename = upload_res["stored_name"]
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "pdf_path": upload_res["dropbox_path"]
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            "success": False,
+            "message": str(e)
+        }), 500
