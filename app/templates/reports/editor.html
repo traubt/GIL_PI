@@ -107,9 +107,12 @@
       <span id="versionBadge" class="badge bg-info text-dark px-3 py-2 shadow-sm">
         <i class="bi bi-git me-1"></i> גרסה: 0
       </span>
-<!--      <span id="statusBadge" class="badge bg-secondary px-3 py-2 shadow-sm">-->
-<!--        <i class="bi bi-clipboard-check me-1"></i> סטטוס: טיוטה-->
-<!--      </span>-->
+
+            <!-- Save Editor -->
+    <button id="saveEditorBtn"
+            class="btn btn-sm btn-outline-primary">
+        שמור עורך
+    </button>
 
       </div>
 
@@ -119,7 +122,7 @@
         <button type="button" id="btnHistoricalReports" class="btn btn-secondary">דוחות הסטוריים</button>
         <button type="button" id="btnManualFinalizeReport" class="btn btn-warning">סיום ידני</button>
         <button id="btnFinalizeReport" class="btn btn-danger"> סיום דו"ח</button>
-        <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>
+<!--        <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>-->
         <button id="sendEmail" class="btn btn-primary">שלח אימייל</button>
 <!--        <button id="btnPreview" class="btn btn-primary">תצוגה מקדימה (PDF)</button>-->
 
@@ -1580,9 +1583,9 @@ function applyTemplateSections() {
   $('#ctx_surv_city')?.addEventListener('input',   e=> state.ctx.surv_city  = e.target.value);
   $('#ctx_injury_type')?.addEventListener('input', e=> state.ctx.injury_type = e.target.value);
 
-  /* ============================== 3) SAVE / FINALIZE / GREEN PREVIEW ============================== */
-  async function saveDraft(){
-    const draftPayload = {
+  /* ============================== 3) SAVE EDITOR / FINALIZE / GREEN PREVIEW ============================== */
+  function collectEditorState() {
+    return {
       report_id: window.state.report_id || null,
       insured_id: window.state.insured_id || "",
       report_type: document.getElementById('reportType')?.value || window.state.report_type || "TRACKING",
@@ -1622,28 +1625,37 @@ function applyTemplateSections() {
       tracking_date: document.getElementById('db_tracking_date')?.value?.trim() || "",
       summary: document.getElementById('db_summary')?.value?.trim() || ""
     };
+  }
 
-    const res = await fetch('/reports/save_draft', {
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify(draftPayload)
+  async function saveEditorState() {
+    const stateJson = collectEditorState();
+
+    const res = await fetch('/reports/save_editor_state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        insured_id: window.state.insured_id || "",
+        report_id: window.state.report_id || null,
+        state_json: stateJson
+      })
     });
 
     const j = await res.json();
+
     if (j.status === 'ok') {
-      state.report_id    = j.report_id;
-      state.version_no   = j.version_no;
-      state.reference_no = j.reference_no;
-      state.status_str   = j.status_str || state.status_str;
-      updateMetaBadges();
       return true;
     }
 
-    alert('שגיאה בשמירה');
+    alert(j.message || 'שגיאה בשמירת העורך');
     return false;
   }
 
-  $('#btnSaveDraft')?.addEventListener('click', async ()=>{ if (await saveDraft()) alert('נשמר כטיוטה ✅'); });
+  document.getElementById('saveEditorBtn')?.addEventListener('click', async () => {
+    const ok = await saveEditorState();
+    if (ok) {
+      alert('העורך נשמר ✅');
+    }
+  });
 
   // Green preview button
   $('#btnPreview')?.addEventListener('click', () => {
@@ -1666,7 +1678,8 @@ function applyTemplateSections() {
 
   applyTemplateSections();
   updateMetaBadges();
-  window.saveDraft = saveDraft;
+  window.saveEditorState = saveEditorState;
+  window.collectEditorState = collectEditorState;
 
 
   (function () {
@@ -1682,51 +1695,45 @@ function applyTemplateSections() {
   })();
 
 
-  async function loadDraftIntoEditor() {
+  async function loadEditorStateIntoEditor() {
     try {
       const insuredId = Number(window.state?.insured_id || 0);
-      const reportId = Number(window.state?.report_id || 0);
 
-      if (!insuredId && !reportId) return;
+      if (!insuredId) return;
 
-      let url = '';
-      if (reportId) {
-        url = `/reports/load_draft?report_id=${reportId}`;
-      } else {
-        url = `/reports/load_draft?insured_id=${insuredId}`;
-      }
+      const url = `/reports/load_editor_state?insured_id=${insuredId}`;
 
       const res = await fetch(url, { method: 'GET' });
       const j = await res.json();
 
-      if (!j || j.status !== 'ok' || !j.editor_json) {
+      if (!j || j.status !== 'ok' || !j.state_json) {
         return;
       }
 
-      const draft = j.editor_json || {};
+      const saved = j.state_json || {};
 
       // ---- state metadata ----
       window.state.report_id    = j.report_id || window.state.report_id || null;
-      window.state.status_str   = j.status_str || window.state.status_str || 'Draft';
-      window.state.version_no   = (j.version_no ?? window.state.version_no ?? 0);
-      window.state.reference_no = j.reference_no || window.state.reference_no || '';
-      window.state.report_type  = j.report_type || draft.report_type || window.state.report_type || 'TRACKING';
+      window.state.report_type  = saved.report_type || window.state.report_type || 'TRACKING';
+      window.state.version_no   = (saved.version_no ?? window.state.version_no ?? 0);
+      window.state.status_str   = saved.status_str || window.state.status_str || 'Draft';
+      window.state.reference_no = saved.reference_no || window.state.reference_no || '';
 
       // ---- merge saved state ----
-      if (draft.db && typeof draft.db === 'object') {
-        window.state.db = { ...(window.state.db || {}), ...draft.db };
+      if (saved.db && typeof saved.db === 'object') {
+        window.state.db = { ...(window.state.db || {}), ...saved.db };
       }
-      if (draft.ctx && typeof draft.ctx === 'object') {
-        window.state.ctx = { ...(window.state.ctx || {}), ...draft.ctx };
+      if (saved.ctx && typeof saved.ctx === 'object') {
+        window.state.ctx = { ...(window.state.ctx || {}), ...saved.ctx };
       }
 
-      if (draft.ref_number) {
-        window.state.ref_number = draft.ref_number;
+      if (saved.ref_number) {
+        window.state.ref_number = saved.ref_number;
       }
 
       // ---- report type dropdown ----
       const rtSel = document.getElementById('reportType');
-      const savedReportType = draft.report_type || j.report_type || '';
+      const savedReportType = saved.report_type || '';
       if (rtSel && savedReportType) {
         rtSel.value = savedReportType;
       }
@@ -1741,7 +1748,6 @@ function applyTemplateSections() {
         }
       }
 
-      // ---- DB / insured fields ----
       const setVal = (id, val) => {
         const el = document.getElementById(id);
         if (el && val !== undefined && val !== null) {
@@ -1749,6 +1755,7 @@ function applyTemplateSections() {
         }
       };
 
+      // ---- DB / insured fields ----
       setVal('db_ref_number', window.state.db?.ref_number || '');
       setVal('db_full_name', window.state.db?.full_name || '');
       setVal('db_birth_date', window.state.db?.birth_date || '');
@@ -1765,53 +1772,48 @@ function applyTemplateSections() {
       setVal('ctx_surv_city', window.state.ctx?.surv_city || '');
       setVal('ctx_injury_type', window.state.ctx?.injury_type || '');
 
-      // ---- text fields we care about ----
+      // ---- editor fields ----
       const directMap = {
-        life_injury_type: draft.life_injury_type,
-        db_background: draft.background || draft.db_background,
-        db_occupation: draft.occupation || draft.db_occupation,
-        db_social_media: draft.social_media || draft.db_social_media,
-        db_social_media_identification: draft.social_media_identification || draft.db_social_media_identification,
-        db_authorities_1: draft.authorities_1 || draft.db_authorities_1,
-        db_authorities_2: draft.authorities_2 || draft.db_authorities_2,
-        db_dnb: draft.dnb || draft.db_dnb,
-        db_summary: draft.summary || draft.db_summary,
-        db_tracking_date: draft.tracking_date || draft.db_tracking_date
+        life_injury_type: saved.life_injury_type,
+        db_background: saved.background || saved.db_background,
+        db_occupation: saved.occupation || saved.db_occupation,
+        db_social_media: saved.social_media || saved.db_social_media,
+        db_social_media_identification: saved.social_media_identification || saved.db_social_media_identification,
+        db_authorities_1: saved.authorities_1 || saved.db_authorities_1,
+        db_authorities_2: saved.authorities_2 || saved.db_authorities_2,
+        db_dnb: saved.dnb || saved.db_dnb,
+        db_summary: saved.summary || saved.db_summary,
+        db_tracking_date: saved.tracking_date || saved.db_tracking_date
       };
 
       Object.entries(directMap).forEach(([id, val]) => setVal(id, val || ''));
 
-      // ---- update UI ----
       applyTemplateSections();
       updateMetaBadges();
 
-      // ---- if tracking date was restored, trigger the same change flow
-      //      so investigator activities (or admin override activities) load too
       const trackingDateEl = document.getElementById('db_tracking_date');
       const restoredTrackingDate = trackingDateEl?.value?.trim() || '';
 
       if (trackingDateEl && restoredTrackingDate) {
-        // wait a tick so the existing listeners/UI are fully ready
         setTimeout(() => {
           trackingDateEl.dispatchEvent(new Event('change', { bubbles: true }));
         }, 0);
       }
 
-      // refresh preview badge text if needed
       const badge = document.getElementById('templateBadge');
       if (badge) {
         badge.innerHTML = `<i class="bi bi-file-earmark-text me-1"></i> תבנית: ${computeTemplateName()}`;
       }
 
-      console.log('[Draft] loaded into editor:', j);
+      console.log('[Editor State] loaded into editor:', j);
 
     } catch (err) {
-      console.error('[Draft] failed to load draft:', err);
+      console.error('[Editor State] failed to load:', err);
     }
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    loadDraftIntoEditor();
+    loadEditorStateIntoEditor();
   });
 
   /* ============================== 4) PHOTOS: LOCAL DROPBOX IMPORT ============================== */

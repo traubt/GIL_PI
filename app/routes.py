@@ -6809,15 +6809,12 @@ def save_editor_state_route():
         if not insured_id:
             return jsonify({'status': 'error', 'message': 'insured_id missing'}), 400
 
-        user_id = None
-        try:
-            user_data = session.get('user')
-            if user_data:
-                import json
-                user = json.loads(user_data)
-                user_id = user.get('id')
-        except Exception:
-            user_id = None
+        insured = GilInsured.query.get_or_404(int(insured_id))
+        allowed, inv_row, user = require_case_access_or_403(int(insured_id), insured.ref_number or "")
+        if not allowed:
+            return jsonify({'status': 'error', 'message': 'Access denied'}), 403
+
+        user_id = user.get('id') if user else None
 
         row = save_editor_state(
             insured_id=int(insured_id),
@@ -6829,11 +6826,14 @@ def save_editor_state_route():
         return jsonify({
             'status': 'ok',
             'state_id': row.state_id,
+            'report_id': row.report_id,
             'updated_at': row.updated_at.strftime('%Y-%m-%d %H:%M:%S') if row.updated_at else None
         })
 
     except Exception as e:
+        current_app.logger.error(f"save_editor_state_route error: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
 
 @main.route('/reports/load_editor_state', methods=['GET'])
 def load_editor_state_route():
@@ -6841,6 +6841,11 @@ def load_editor_state_route():
         insured_id = request.args.get('insured_id', type=int)
         if not insured_id:
             return jsonify({'status': 'error', 'message': 'insured_id missing'}), 400
+
+        insured = GilInsured.query.get_or_404(int(insured_id))
+        allowed, inv_row, user = require_case_access_or_403(int(insured_id), insured.ref_number or "")
+        if not allowed:
+            return jsonify({'status': 'error', 'message': 'Access denied'}), 403
 
         row = load_editor_state(insured_id)
         if not row:
@@ -6855,6 +6860,7 @@ def load_editor_state_route():
         })
 
     except Exception as e:
+        current_app.logger.error(f"load_editor_state_route error: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 if __name__ == '__main__':
