@@ -23,6 +23,7 @@ from sqlalchemy import text, bindparam
 from .activity_logger import log_user_activity as write_user_activity
 from .task_helper import create_task_record
 from .analytics_queries import *
+from .invoice_services import save_invoice_draft, create_final_invoice
 
 from decimal import Decimal, InvalidOperation
 
@@ -6688,7 +6689,6 @@ def get_analytics_report():
 
 ############################# invoices ###########################
 
-from .invoice_services import save_invoice_draft
 
 @main.route('/test_save_invoice_draft')
 def test_save_invoice_draft():
@@ -6862,6 +6862,51 @@ def load_editor_state_route():
     except Exception as e:
         current_app.logger.error(f"load_editor_state_route error: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@main.route("/api/invoices/finalize", methods=["POST"])
+def api_invoice_finalize():
+    try:
+        payload = request.get_json(silent=True) or {}
+
+        insured_id = payload.get("insured_id")
+        report_type = (payload.get("report_type") or "").strip()
+        report_id = payload.get("report_id")
+
+        if not insured_id:
+            return jsonify({"success": False, "message": "insured_id missing"}), 400
+
+        if not report_type:
+            return jsonify({"success": False, "message": "report_type missing"}), 400
+
+        # -----------------------------
+        # Access control
+        # -----------------------------
+        insured = GilInsured.query.get_or_404(int(insured_id))
+        allowed, inv_row, user = require_case_access_or_403(int(insured_id), insured.ref_number or "")
+        if not allowed:
+            return jsonify({"success": False, "message": "Access denied"}), 403
+
+        # only admin/manager for now
+        if not user_is_admin_or_manager(user):
+            return jsonify({"success": False, "message": "Only admin/manager can finalize invoice"}), 403
+
+        user_id = user.get("id")
+
+        # enrich payload with insurance if missing
+        if not payload.get("insured_insurance"):
+            payload["insured_insurance"] = insured.insurance or ""
+
+        result = create_final_invoice(payload, user_id=user_id)
+
+        status_code = 200 if result.get("success") else 500
+        return jsonify(result), status_code
+
+    except Exception as e:
+        current_app.logger.error(f"api_invoice_finalize error: {e}", exc_info=True)
+        return jsonify({
+            "success": False,
+            "message": f"Server error: {str(e)}"
+        }), 500
 
 if __name__ == '__main__':
     app.run(debug=True)

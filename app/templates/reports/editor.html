@@ -120,7 +120,7 @@
       <div class="d-flex gap-2">
         <button type="button" id="btnCreateNewVersion" class="btn btn-outline-dark">  צור גרסה חדשה</button>
         <button type="button" id="btnHistoricalReports" class="btn btn-secondary">דוחות הסטוריים</button>
-        <button type="button" id="btnManualFinalizeReport" class="btn btn-warning">סיום ידני</button>
+        <button type="button" id="btnManualFinalizeReport" class="btn btn-warning" style="display:none;">סיום ידני</button>
         <button id="btnFinalizeReport" class="btn btn-danger"> סיום דו"ח</button>
 <!--        <button id="btnSaveDraft" class="btn btn-outline-secondary">שמור טיוטה</button>-->
         <button id="sendEmail" class="btn btn-primary">שלח אימייל</button>
@@ -1234,7 +1234,6 @@ window.safeUUID = (function () {
 
 </script>
 
-
 <script>
 (function(){
   const sel = document.getElementById('reportType');
@@ -1251,7 +1250,6 @@ window.safeUUID = (function () {
 
 
 </script>
-
 
 <script>
 (function () {
@@ -1302,6 +1300,9 @@ window.safeUUID = (function () {
     const o = document.getElementById('busyOverlay');
     if (o) o.style.display = 'none';
   }
+
+  window.showBusy = showBusy;
+  window.hideBusy = hideBusy;
 
   // Keep GET URLs short: turn data URLs or long paths into a short basename
   function shortenPhotoSrc(val){
@@ -1681,6 +1682,73 @@ function applyTemplateSections() {
   window.saveEditorState = saveEditorState;
   window.collectEditorState = collectEditorState;
 
+  function collectAllEditorValues() {
+    const out = {};
+
+    document.querySelectorAll("input[id], textarea[id], select[id]").forEach(el => {
+      const id = el.id;
+      if (!id) return;
+
+      if (el.type === "checkbox") {
+        out[id] = !!el.checked;
+      } else {
+        out[id] = (el.value || "").trim();
+      }
+    });
+
+    return out;
+  }
+
+  async function finalizeInvoice() {
+    try {
+      const reportType = (document.getElementById("reportType")?.value || "").trim();
+      if (!reportType) {
+        alert("נא לבחור סוג חשבונית");
+        return false;
+      }
+
+      const insuredId = Number(window.state?.insured_id || 0);
+      if (!insuredId) {
+        alert("לא נמצא insured_id");
+        return false;
+      }
+
+      const payload = {
+        insured_id: insuredId,
+        report_id: Number(window.state?.report_id || 0) || null,
+        report_type: reportType,
+        ref_number: window.state?.ref_number || "",
+        reference_no: window.state?.reference_no || "",
+        version_no: window.state?.version_no ?? 0,
+        insured_insurance: window.state?.insured_insurance || "",
+        editor_values: collectAllEditorValues()
+      };
+
+      const res = await fetch("/api/invoices/finalize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const j = await res.json();
+
+      if (!res.ok || !j || !j.success) {
+        throw new Error(j?.message || "Invoice finalize failed");
+      }
+
+      window.state.invoice_id = j.invoice_id;
+      alert("החשבונית נשמרה והועלתה ל-Dropbox");
+      location.reload();
+      return true;
+
+    } catch (err) {
+      console.error("finalizeInvoice failed:", err);
+      alert("שגיאה בסיום החשבונית: " + (err.message || err));
+      return false;
+    }
+  }
+
+  window.finalizeInvoice = finalizeInvoice;
 
   (function () {
     const qs = new URLSearchParams(window.location.search);
@@ -1689,9 +1757,15 @@ function applyTemplateSections() {
 
     const insuredId = Number(qs.get("insured_id") || window.state.insured_id || 0);
     const reportId  = Number(qs.get("report_id")  || window.state.report_id  || 0);
+    const invoiceId = Number(qs.get("invoice_id") || window.state.invoice_id || 0);
 
     if (insuredId) window.state.insured_id = insuredId;
     if (reportId)  window.state.report_id  = reportId;
+    if (invoiceId) window.state.invoice_id = invoiceId;
+
+    console.log("[Init] insured_id=", window.state.insured_id,
+                "report_id=", window.state.report_id,
+                "invoice_id=", window.state.invoice_id);
   })();
 
 
@@ -3396,6 +3470,7 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
     return { el, modal: m };
   }
 
+
   function showInfo(title, text) {
     if (window.bootstrap && bootstrap.Modal) {
       showModal(
@@ -3499,14 +3574,36 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
   });
 
   document.getElementById("btnFinalizeReport").addEventListener("click", async function () {
-      if (!confirm("האם אתה בטוח שברצונך לסיים את הדוח? לאחר סיום לא ניתן לערוך.")) {
-          return;
-      }
+      const btn = this;
+      const rt = (document.getElementById("reportType")?.value || "").trim().toUpperCase();
 
       try {
+          btn.disabled = true;
+
+          // =========================
+          // INVOICE FINALIZATION
+          // =========================
+          if (rt === "SIUDI_INVOICE" || rt === "MENORA_LIFE_INVOICE") {
+              if (!confirm("האם אתה בטוח שברצונך לסיים את החשבונית?")) {
+                  return;
+              }
+
+              window.showBusy("מסיים חשבונית ומעלה ל-Dropbox...");
+              await window.finalizeInvoice();
+              return;
+          }
+
+          // =========================
+          // REPORT FINALIZATION
+          // =========================
+          if (!confirm("האם אתה בטוח שברצונך לסיים את הדוח? לאחר סיום לא ניתן לערוך.")) {
+              return;
+          }
+
+          window.showBusy("מסיים דו\"ח ומעלה ל-Dropbox...");
+
           let reportId = Number(window.state?.report_id || 0);
 
-          // If draft was never saved in this session, save first to get report_id
           if (!reportId) {
               if (typeof window.saveDraft === "function") {
                   const ok = await window.saveDraft();
@@ -3523,7 +3620,6 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
               return;
           }
 
-          // Find the current preview PDF URL exactly as loaded in the page
           const previewEl =
               document.getElementById("preview-pdf") ||
               document.querySelector('iframe[src*="/preview-pdf"]') ||
@@ -3542,7 +3638,6 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
               return;
           }
 
-          // Fetch the exact PDF bytes currently shown in preview
           const pdfRes = await fetch(previewUrl, { method: "GET" });
           if (!pdfRes.ok) {
               throw new Error(`Failed to fetch preview PDF (HTTP ${pdfRes.status})`);
@@ -3550,7 +3645,6 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
 
           const pdfBlob = await pdfRes.blob();
 
-          // Use FormData so we can send the actual PDF file
           const fd = new FormData();
           fd.append("action", "finalize");
           fd.append("report_id", String(reportId));
@@ -3583,8 +3677,11 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
           location.reload();
 
       } catch (err) {
-          console.error("Finalize report failed:", err);
-          alert("שגיאה בסיום הדוח: " + (err.message || err));
+          console.error("Finalize failed:", err);
+          alert("שגיאה בסיום: " + (err.message || err));
+      } finally {
+          window.hideBusy();
+          btn.disabled = false;
       }
   });
 
@@ -3593,13 +3690,56 @@ function initAuthoritiesToggle(textareaId, checkboxId) {
 </script>
 
 <script>
+
+function updateFinalizeButtonLabel() {
+  const btn = document.getElementById("btnFinalizeReport");
+  if (!btn) return;
+
+  const rt = (document.getElementById("reportType")?.value || "").trim().toUpperCase();
+
+  if (rt === "SIUDI_INVOICE" || rt === "MENORA_LIFE_INVOICE") {
+    btn.innerText = "סיום חשבונית";
+    btn.classList.remove("btn-danger");
+    btn.classList.add("btn-warning");
+  } else {
+    btn.innerText = "סיום דו\"ח";
+    btn.classList.remove("btn-warning");
+    btn.classList.add("btn-danger");
+  }
+}
+
+document.getElementById("reportType")?.addEventListener("change", function () {
+  updateFinalizeButtonLabel();
+});
+
 document.addEventListener("DOMContentLoaded", function () {
   let manualFinalizeSelection = null;
   let manualFinalizeModal = null;
   let modalMode = "manual"; // "manual" | "view"
 
+  updateFinalizeButtonLabel();
+
   function getCurrentReportIdForManual() {
     return Number(window.state?.report_id || 0);
+  }
+
+  function isInvoiceModeForHistory() {
+    const rt = (document.getElementById("reportType")?.value || "").trim().toUpperCase();
+    return rt === "SIUDI_INVOICE" || rt === "MENORA_LIFE_INVOICE";
+  }
+
+  function getCurrentHistoryTarget() {
+    if (isInvoiceModeForHistory()) {
+      return {
+        kind: "invoice",
+        id: Number(window.state?.invoice_id || 0)
+      };
+    }
+
+    return {
+      kind: "report",
+      id: Number(window.state?.report_id || 0)
+    };
   }
 
   function setModalMode(mode) {

@@ -24,6 +24,7 @@ from .report_naming import build_report_display_name, build_report_filename
 from .dropbox_util import upload_invoice_pdf, get_dbx
 import os
 from .invoice_services import load_invoice_draft
+from .models import GilInvoiceItem, GilInsured
 
 
 DOCX_TEMPLATES_DIR = getattr(
@@ -2544,29 +2545,46 @@ def render_invoice_docx(invoice, output_path):
     doc.save(output_path)
 
 
+# def convert_docx_to_pdf(docx_path, pdf_path):
+#     """
+#     Convert DOCX → PDF using LibreOffice.
+#     """
+#
+#     subprocess.run(
+#         [
+#             "libreoffice",
+#             "--headless",
+#             "--convert-to",
+#             "pdf",
+#             docx_path,
+#             "--outdir",
+#             os.path.dirname(pdf_path),
+#         ],
+#         check=True,
+#     )
+#
+#     # LibreOffice writes PDF with same base filename
+#     generated_pdf = docx_path.replace(".docx", ".pdf")
+#
+#     if generated_pdf != pdf_path:
+#         os.rename(generated_pdf, pdf_path)
+
 def convert_docx_to_pdf(docx_path, pdf_path):
     """
-    Convert DOCX → PDF using LibreOffice.
+    Convert DOCX -> PDF using the same robust LibreOffice path resolution
+    already used by preview/report flows.
+    Cross-platform: Windows + Linux.
     """
+    with open(docx_path, "rb") as f:
+        docx_bytes = f.read()
 
-    subprocess.run(
-        [
-            "libreoffice",
-            "--headless",
-            "--convert-to",
-            "pdf",
-            docx_path,
-            "--outdir",
-            os.path.dirname(pdf_path),
-        ],
-        check=True,
-    )
+    pdf_bytes = _docx_to_pdf_bytes(docx_bytes)
 
-    # LibreOffice writes PDF with same base filename
-    generated_pdf = docx_path.replace(".docx", ".pdf")
+    os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+    with open(pdf_path, "wb") as f:
+        f.write(pdf_bytes)
 
-    if generated_pdf != pdf_path:
-        os.rename(generated_pdf, pdf_path)
+    return pdf_path
 
 def generate_invoice_pdf(invoice):
     """
@@ -2582,12 +2600,16 @@ def generate_invoice_pdf(invoice):
     # File naming
     # ----------------------
 
+    import tempfile
+
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-    pdf_filename = f"invoice_{invoice.invoice_id}_{ts}.pdf"
+    invoice_no = str(invoice.invoice_number or invoice.invoice_id or "").strip()
+    pdf_filename = f"חברת עוז חקירות חשבונית מס {invoice_no}.pdf"
 
-    local_docx = f"/tmp/invoice_{invoice.invoice_id}_{ts}.docx"
-    local_pdf = f"/tmp/invoice_{invoice.invoice_id}_{ts}.pdf"
+    tmp_dir = tempfile.gettempdir()
+    local_docx = os.path.join(tmp_dir, f"invoice_{invoice.invoice_id}_{ts}.docx")
+    local_pdf = os.path.join(tmp_dir, f"invoice_{invoice.invoice_id}_{ts}.pdf")
 
     # ----------------------
     # Render DOCX
@@ -2606,15 +2628,19 @@ def generate_invoice_pdf(invoice):
     # ----------------------
 
     dbx = get_dbx()
+    insured = GilInsured.query.get(invoice.insured_id)
+
+    if not insured:
+        raise Exception(f"GilInsured not found for insured_id={invoice.insured_id}")
 
     upload_res = upload_invoice_pdf(
         dbx,
-        invoice.insurance_company,
-        invoice.claim_type,
-        invoice.last_name,
-        invoice.first_name,
-        invoice.insured_id_number,
-        invoice.claim_number,
+        insured.insurance or invoice.insurance_company or "",
+        insured.claim_type or "",
+        insured.last_name or "",
+        insured.first_name or "",
+        insured.id_number or invoice.insured_id_number or "",
+        insured.claim_number or invoice.claim_number or "",
         local_pdf,
         pdf_filename,
     )

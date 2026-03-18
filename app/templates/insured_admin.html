@@ -1041,14 +1041,14 @@ $('#appointmentForm').on('submit', function (e) {
 
 
   // ==== Mark insured buttons by future events ====
-  $('.open-appointments').each(function () {
-    const btn = $(this);
-    const caseId = btn.data('case-id');
-    $.getJSON(`/appointments/${caseId}/has_future`, function (res) {
-      if (res.has_future) btn.removeClass('btn-info btn-danger').addClass('btn-success');
-      else btn.removeClass('btn-info btn-success').addClass('btn-danger');
-    });
-  });
+  //$('.open-appointments').each(function () {
+  //  const btn = $(this);
+  //  const caseId = btn.data('case-id');
+  //  $.getJSON(`/appointments/${caseId}/has_future`, function (res) {
+  //    if (res.has_future) btn.removeClass('btn-info btn-danger').addClass('btn-success');
+  //    else btn.removeClass('btn-info btn-success').addClass('btn-danger');
+  //  });
+  //});
 
 });
 
