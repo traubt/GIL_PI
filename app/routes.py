@@ -6736,6 +6736,108 @@ def test_save_invoice_draft():
 
     return jsonify(result)
 
+@main.route('/reports/save_draft', methods=['POST'])
+def save_report_draft():
+    try:
+        payload = request.get_json(silent=True) or {}
+
+        insured_id   = payload.get('insured_id')
+        report_id    = payload.get('report_id')
+        report_type  = (payload.get('report_type') or '').strip()
+        ref_number   = (payload.get('ref_number') or '').strip()
+        version_no   = int(payload.get('version_no') or 0)
+        reference_no = (payload.get('reference_no') or '').strip()
+        state_json   = payload.get('state_json') or {}
+
+        if not insured_id:
+            return jsonify({'status': 'error', 'message': 'insured_id missing'}), 400
+
+        if not report_type:
+            return jsonify({'status': 'error', 'message': 'report_type missing'}), 400
+
+        # -----------------------------
+        # Access control
+        # -----------------------------
+        insured = GilInsured.query.get_or_404(int(insured_id))
+        allowed, inv_row, user = require_case_access_or_403(int(insured_id), insured.ref_number or "")
+        if not allowed:
+            return jsonify({'status': 'error', 'message': 'Access denied'}), 403
+
+        user_id = user.get('id') if user else None
+
+        # -----------------------------
+        # Exclude invoices from this route
+        # -----------------------------
+        rt_upper = report_type.upper()
+        if rt_upper in ('SIUDI_INVOICE', 'MENORA_LIFE_INVOICE'):
+            return jsonify({
+                'status': 'error',
+                'message': 'Invoice type is not supported in report draft route'
+            }), 400
+
+        # -----------------------------
+        # Create / update report draft
+        # -----------------------------
+        report = None
+
+        if report_id:
+            report = GilReport.query.get(int(report_id))
+            if report and int(report.case_id) != int(insured_id):
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Report/insured mismatch'
+                }), 400
+
+        if not report:
+            report = GilReport(
+                case_id=int(insured_id),
+                insurer_id=None,
+                report_type=report_type,
+                template_key=report_type,
+                title=(state_json.get('title') or '').strip() or None,
+                status='Draft',
+                version_no=version_no,
+                reference_no=reference_no or ref_number or insured.ref_number,
+                editor_json=json.dumps(state_json, ensure_ascii=False),
+                created_by=user_id,
+                updated_by=user_id
+            )
+            db.session.add(report)
+            db.session.flush()   # gets report.id
+        else:
+            report.report_type  = report_type
+            report.template_key = report_type
+            report.title        = (state_json.get('title') or report.title or '')
+            report.status       = 'Draft'
+            report.version_no   = version_no
+            report.reference_no = reference_no or ref_number or report.reference_no or insured.ref_number
+            report.editor_json  = json.dumps(state_json, ensure_ascii=False)
+            report.updated_by   = user_id
+
+        # -----------------------------
+        # Sync editor-state table too
+        # -----------------------------
+        row = save_editor_state(
+            insured_id=int(insured_id),
+            report_id=int(report.id),
+            state_json=state_json,
+            updated_by=user_id
+        )
+
+        db.session.commit()
+
+        return jsonify({
+            'status': 'ok',
+            'report_id': report.id,
+            'state_id': row.state_id if row else None,
+            'updated_at': report.updated_at.strftime('%Y-%m-%d %H:%M:%S') if report.updated_at else None
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"save_report_draft error: {e}", exc_info=True)
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
 @main.route("/api/invoices/save_draft", methods=["POST"])
 def api_invoice_save_draft():
     try:

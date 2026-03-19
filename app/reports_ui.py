@@ -9,6 +9,7 @@ from flask import Blueprint, render_template, request, jsonify, current_app, Res
 from .report_naming import build_report_display_name
 from .report_naming import build_report_filename
 from .dropbox_util import get_dbx, build_dropbox_folder_path, ensure_folder_exists, list_pdfs_in_folder
+from .models import db, GilReport, GilInsured, GilInvoice
 
 
 
@@ -1096,17 +1097,20 @@ def serve_report_photo():
 
 @reports_ui_bp.route('/manual-finalize/list-pdfs', methods=['GET'])
 def manual_finalize_list_pdfs():
-    report_id = request.args.get("report_id")
-    if not report_id:
-        return jsonify({"status": "error", "message": "Missing report_id"}), 400
+    kind = (request.args.get("kind") or "report").strip().lower()
+    obj_id = request.args.get("id")
 
-    rpt = db.session.get(GilReport, int(report_id))
-    if not rpt:
-        return jsonify({"status": "error", "message": "Report not found"}), 404
+    if not obj_id:
+        return jsonify({"status": "error", "message": "Missing id"}), 400
 
-    insured = db.session.get(GilInsured, rpt.case_id)
+    insured = db.session.get(GilInsured, int(obj_id))
     if not insured:
         return jsonify({"status": "error", "message": "Insured not found"}), 404
+
+    if kind == "invoice":
+        folder_name = "חשבוניות"
+    else:
+        folder_name = "דוחות"
 
     case_root = build_dropbox_folder_path(
         insurance=_get_first_nonempty(insured, 'insurance'),
@@ -1120,14 +1124,15 @@ def manual_finalize_list_pdfs():
     if not case_root:
         return jsonify({"status": "error", "message": "Could not build Dropbox insured folder path"}), 400
 
-    reports_dir = f"{case_root}/דוחות"
+    folder = f"{case_root}/{folder_name}"
     dbx = get_dbx()
-    pdfs = list_pdfs_in_folder(dbx, reports_dir)
+    pdfs = list_pdfs_in_folder(dbx, folder)
 
     return jsonify({
         "status": "ok",
-        "report_id": rpt.id,
-        "folder": reports_dir,
+        "kind": kind,
+        "insured_id": insured.id,
+        "folder": folder,
         "files": pdfs
     })
 

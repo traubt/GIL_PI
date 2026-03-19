@@ -79,6 +79,28 @@
     text-decoration: underline;
   }
 
+  .historical-pdf-radio {
+    display: inline-block !important;
+    opacity: 1 !important;
+    position: static !important;
+    margin-left: 10px;
+    transform: scale(1.2);
+    accent-color: #0d6efd;
+  }
+
+  #manualFinalizeList .form-check-label {
+    color: #000 !important;
+  }
+
+  #manualFinalizeList .form-check {
+    cursor: pointer;
+    background: #fff;
+  }
+
+  #manualFinalizeList .form-check:hover {
+    background: #f8f9fa;
+  }
+
   </style>
 
   <div class="pagetitle">
@@ -587,7 +609,7 @@
       <div class="col-lg-5">
         <div class="card position-sticky h-100" style="top: 12px;">
 <div class="card-header d-flex align-items-center justify-content-between">
-  <div style="font-weight:600">תצוגה מקדימה (Word)</div>
+<!--  <div style="font-weight:600">תצוגה מקדימה (Word)</div>-->
 
   <!-- actions: dropdown inline with the buttons -->
   <div class="preview-actions d-flex align-items-center gap-2 flex-nowrap">
@@ -632,7 +654,7 @@
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">בחירת דו"ח PDF מסיום ידני</h5>
+        <h5 class="modal-title">בחירת דו"ח PDF </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -1627,6 +1649,58 @@ function applyTemplateSections() {
       summary: document.getElementById('db_summary')?.value?.trim() || ""
     };
   }
+
+  async function saveDraft() {
+    try {
+      const rt = (document.getElementById("reportType")?.value || "").trim().toUpperCase();
+
+      // invoices are excluded from this draft creator
+      if (rt === "SIUDI_INVOICE" || rt === "MENORA_LIFE_INVOICE") {
+        return true;
+      }
+
+      const insuredId = Number(window.state?.insured_id || 0);
+      if (!insuredId) {
+        alert("לא נמצא insured_id");
+        return false;
+      }
+
+      const payload = {
+        insured_id: insuredId,
+        report_id: Number(window.state?.report_id || 0) || null,
+        report_type: document.getElementById("reportType")?.value || "",
+        version_no: window.state?.version_no ?? 0,
+        reference_no: window.state?.reference_no || "",
+        ref_number: window.state?.ref_number || "",
+        state_json: collectEditorState()
+      };
+
+      const res = await fetch("/reports/save_draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      const j = await res.json();
+
+      if (!res.ok || !j || j.status !== "ok") {
+        throw new Error(j?.message || "שגיאה בשמירת טיוטת דוח");
+      }
+
+      window.state.report_id = Number(j.report_id || 0);
+
+      // keep editor state table aligned as well
+      await saveEditorState();
+
+      return !!window.state.report_id;
+    } catch (err) {
+      console.error("saveDraft failed:", err);
+      alert(err.message || err);
+      return false;
+    }
+  }
+
+  window.saveDraft = saveDraft;
 
   async function saveEditorState() {
     const stateJson = collectEditorState();
@@ -3729,16 +3803,22 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   function getCurrentHistoryTarget() {
+    const insuredId = Number(window.state?.insured_id || 0);
+
+    if (!insuredId) {
+      return { kind: "unknown", id: 0 };
+    }
+
     if (isInvoiceModeForHistory()) {
       return {
         kind: "invoice",
-        id: Number(window.state?.invoice_id || 0)
+        id: insuredId
       };
     }
 
     return {
       kind: "report",
-      id: Number(window.state?.report_id || 0)
+      id: insuredId
     };
   }
 
@@ -3761,26 +3841,21 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
-  async function openManualFinalizeModal(mode = "manual") {
-    let reportId = getCurrentReportIdForManual();
+  async function openManualFinalizeModal(mode = "view") {
+      const target = getCurrentHistoryTarget();
+      const targetId = target.id;
 
-    if (!reportId) {
-      if (typeof window.saveDraft === "function") {
-        const ok = await window.saveDraft();
-        if (!ok) {
-          alert("שגיאה בשמירת טיוטה לפני פתיחת הדוחות");
-          return;
-        }
-        reportId = getCurrentReportIdForManual();
+      if (!targetId) {
+        alert("לא נמצא insured_id.");
+        return;
       }
-    }
 
-    if (!reportId) {
-      alert("לא נמצא report_id. שמור טיוטה ונסה שוב.");
-      return;
-    }
+      const qs = new URLSearchParams({
+        kind: target.kind,
+        id: String(targetId)
+      });
 
-    const res = await fetch(`/reports/manual-finalize/list-pdfs?report_id=${reportId}`);
+    const res = await fetch(`/reports/manual-finalize/list-pdfs?${qs.toString()}`);
     const data = await res.json();
 
     if (!res.ok || data.status !== "ok") {
@@ -3792,45 +3867,49 @@ document.addEventListener("DOMContentLoaded", function () {
     const confirmBtn = document.getElementById("btnConfirmManualFinalize");
     const viewBtn = document.getElementById("btnViewHistoricalReport");
 
-    folderEl.textContent = `תיקיית דוחות: ${data.folder || ""}`;
+    folderEl.textContent = `תיקייה: ${data.folder || ""}`;
     listEl.innerHTML = "";
     manualFinalizeSelection = null;
 
+(data.files || []).forEach((file, i) => {
+  const row = document.createElement("div");
+  row.className = "form-check text-end mb-2 p-2 border rounded";
+
+  const radio = document.createElement("input");
+  radio.type = "radio";
+  radio.name = "selected_pdf";
+  radio.id = `pdf_${i}`;
+  radio.className = "form-check-input historical-pdf-radio";
+  radio.value = file.path || "";
+
+  const label = document.createElement("label");
+  label.className = "form-check-label w-100";
+  label.setAttribute("for", `pdf_${i}`);
+  label.style.cursor = "pointer";
+  label.textContent = file.name || file.path || "PDF";
+
+  radio.dataset.path = file.path || "";
+  radio.dataset.name = file.name || "";
+
+  radio.addEventListener("change", function () {
+    if (!radio.checked) return;
+
+    manualFinalizeSelection = {
+      path: radio.dataset.path,
+      name: radio.dataset.name
+    };
+
+    if (confirmBtn) confirmBtn.disabled = true;
+    if (viewBtn) viewBtn.disabled = !manualFinalizeSelection;
+  });
+
+  row.appendChild(radio);
+  row.appendChild(label);
+  listEl.appendChild(row);
+});
+
     if (confirmBtn) confirmBtn.disabled = true;
     if (viewBtn) viewBtn.disabled = true;
-
-    if (!data.files || !data.files.length) {
-      listEl.innerHTML = '<div class="alert alert-warning mb-0">לא נמצאו קבצי PDF בתיקיית דוחות.</div>';
-    } else {
-      const html = data.files.map((f, idx) => `
-        <div class="form-check border rounded p-2 mb-2">
-          <input class="form-check-input"
-                 type="radio"
-                 name="manual_finalize_pdf"
-                 id="manual_pdf_${idx}"
-                 value="${f.path}"
-                 data-name="${f.name}">
-          <label class="form-check-label w-100" for="manual_pdf_${idx}">
-            <div><strong>${f.name}</strong></div>
-            <div class="small text-muted">${f.path}</div>
-          </label>
-        </div>
-      `).join("");
-
-      listEl.innerHTML = html;
-
-      document.querySelectorAll('input[name="manual_finalize_pdf"]').forEach(r => {
-        r.addEventListener("change", function () {
-          manualFinalizeSelection = {
-            path: this.value,
-            name: this.dataset.name || ""
-          };
-
-          if (confirmBtn) confirmBtn.disabled = false;
-          if (viewBtn) viewBtn.disabled = false;
-        });
-      });
-    }
 
     if (!manualFinalizeModal) {
       manualFinalizeModal = new bootstrap.Modal(document.getElementById("manualFinalizeModal"));
@@ -3839,6 +3918,7 @@ document.addEventListener("DOMContentLoaded", function () {
     setModalMode(mode);
     manualFinalizeModal.show();
   }
+
 
   async function confirmManualFinalize() {
     const reportId = getCurrentReportIdForManual();
