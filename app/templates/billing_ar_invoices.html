@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>חשבוניות פתוחות</title>
+
+  <link href="{{ url_for('static', filename='assets/vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='assets/vendor/bootstrap-icons/bootstrap-icons.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='assets/css/style.css') }}" rel="stylesheet">
+</head>
+
+<body>
+  {% include 'header-bar.html' %}
+  {% include 'side-bar.html' %}
+
+  <main id="main" class="main" dir="rtl">
+    <div class="pagetitle">
+      <h1>חשבוניות פתוחות</h1>
+      <nav>
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="{{ url_for('main.admin_dashboard') }}">דף הבית</a></li>
+          <li class="breadcrumb-item"><a href="{{ url_for('main.billing_dashboard') }}">חיובים וגבייה</a></li>
+          <li class="breadcrumb-item active">חשבוניות פתוחות</li>
+        </ol>
+      </nav>
+    </div>
+
+    <section class="section">
+      <div class="card">
+        <div class="card-body">
+          <h5 class="card-title">רשימת חשבוניות ב-AR</h5>
+
+          <div class="table-responsive">
+            <table class="table table-bordered table-hover align-middle text-center">
+              <thead class="table-light">
+                <tr>
+                  <th>מזהה</th>
+                  <th>מספר חשבונית</th>
+                  <th>תאריך</th>
+                  <th>מבוטח</th>
+                  <th>מספר תביעה</th>
+                  <th>מספר הפניה</th>
+                  <th>סכום חשבונית</th>
+                  <th>שולם</th>
+                  <th>יתרה</th>
+                  <th>סטטוס</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if invoices %}
+                  {% for inv in invoices %}
+                  <tr>
+                    <td>{{ inv.ar_id }}</td>
+                    <td>{{ inv.invoice_no }}</td>
+                    <td>{{ inv.invoice_date.strftime('%d/%m/%Y') if inv.invoice_date else '' }}</td>
+                    <td>{{ inv.insured_id or '' }}</td>
+                    <td>{{ inv.claim_no or '' }}</td>
+                    <td>{{ inv.reference_no or '' }}</td>
+                    <td>{{ '%.2f'|format(inv.invoice_total or 0) }}</td>
+                    <td>{{ '%.2f'|format(inv.paid_total or 0) }}</td>
+                    <td>{{ '%.2f'|format(inv.balance_due or 0) }}</td>
+                    <td>{{ inv.status or '' }}</td>
+                  </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="10">אין עדיין חשבוניות ב-AR.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>דשבורד גבייה</title>
+
+  <link href="{{ url_for('static', filename='assets/vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='assets/vendor/bootstrap-icons/bootstrap-icons.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='assets/css/style.css') }}" rel="stylesheet">
+</head>
+
+<body>
+  {% include 'header-bar.html' %}
+  {% include 'side-bar.html' %}
+
+  <main id="main" class="main" dir="rtl">
+    <div class="pagetitle">
+      <h1>חיובים וגבייה</h1>
+      <nav>
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="{{ url_for('main.admin_dashboard') }}">דף הבית</a></li>
+          <li class="breadcrumb-item active">דשבורד גבייה</li>
+        </ol>
+      </nav>
+    </div>
+
+    <section class="section dashboard">
+      <div class="row">
+
+        <div class="col-xxl-3 col-md-6">
+          <div class="card info-card sales-card">
+            <div class="card-body">
+              <h5 class="card-title">חשבוניות פתוחות</h5>
+              <div class="d-flex align-items-center">
+                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                  <i class="bi bi-receipt"></i>
+                </div>
+                <div class="ps-3">
+                  <h6>{{ open_invoice_count if open_invoice_count is defined else 0 }}</h6>
+                  <span class="text-muted small pt-2 ps-1">יושלם בשלב הבא</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-xxl-3 col-md-6">
+          <div class="card info-card revenue-card">
+            <div class="card-body">
+              <h5 class="card-title">יתרה פתוחה</h5>
+              <div class="d-flex align-items-center">
+                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                  <i class="bi bi-cash-stack"></i>
+                </div>
+                <div class="ps-3">
+                  <h6>{{ open_balance if open_balance is defined else '0.00' }}</h6>
+                  <span class="text-muted small pt-2 ps-1">יושלם בשלב הבא</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-xxl-3 col-md-6">
+          <div class="card info-card customers-card">
+            <div class="card-body">
+              <h5 class="card-title">הודעות תשלום</h5>
+              <div class="d-flex align-items-center">
+                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                  <i class="bi bi-envelope-paper"></i>
+                </div>
+                <div class="ps-3">
+                  <h6>{{ payment_notice_count if payment_notice_count is defined else 0 }}</h6>
+                  <span class="text-muted small pt-2 ps-1">יושלם בשלב הבא</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-xxl-3 col-md-6">
+          <div class="card info-card customers-card">
+            <div class="card-body">
+              <h5 class="card-title">שורות לא מותאמות</h5>
+              <div class="d-flex align-items-center">
+                <div class="card-icon rounded-circle d-flex align-items-center justify-content-center">
+                  <i class="bi bi-exclamation-circle"></i>
+                </div>
+                <div class="ps-3">
+                  <h6>{{ unmatched_line_count if unmatched_line_count is defined else 0 }}</h6>
+                  <span class="text-muted small pt-2 ps-1">יושלם בשלב הבא</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="card">
+            <div class="card-body">
+              <h5 class="card-title">פעולות מהירות</h5>
+
+              <div class="d-flex flex-wrap gap-2">
+                <a href="{{ url_for('main.billing_new_payment_notice') }}" class="btn btn-primary">
+                  <i class="bi bi-plus-circle"></i> קליטת הודעת תשלום
+                </a>
+
+                <a href="{{ url_for('main.billing_payment_notices') }}" class="btn btn-outline-primary">
+                  <i class="bi bi-list-ul"></i> רשימת הודעות תשלום
+                </a>
+
+                <a href="{{ url_for('main.billing_ar_invoices') }}" class="btn btn-outline-secondary">
+                  <i class="bi bi-receipt-cutoff"></i> חשבוניות פתוחות
+                </a>
+              </div>
+
+              <hr>
+
+              <div class="alert alert-info mb-0">
+                זהו מסך פתיחה ראשוני למודול חיובים וגבייה. בשלב הבא נוסיף נתוני גבייה חיים, דוחות ופעולות התאמה.
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

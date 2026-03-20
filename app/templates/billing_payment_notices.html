@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>הודעות תשלום</title>
+
+  <link href="{{ url_for('static', filename='assets/vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='assets/vendor/bootstrap-icons/bootstrap-icons.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='assets/css/style.css') }}" rel="stylesheet">
+</head>
+
+<body>
+  {% include 'header-bar.html' %}
+  {% include 'side-bar.html' %}
+
+  <main id="main" class="main" dir="rtl">
+    <div class="pagetitle">
+      <h1>הודעות תשלום</h1>
+      <nav>
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="{{ url_for('main.admin_dashboard') }}">דף הבית</a></li>
+          <li class="breadcrumb-item"><a href="{{ url_for('main.billing_dashboard') }}">חיובים וגבייה</a></li>
+          <li class="breadcrumb-item active">הודעות תשלום</li>
+        </ol>
+      </nav>
+    </div>
+
+    <section class="section">
+      <div class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h5 class="card-title mb-0">רשימת הודעות תשלום</h5>
+            <a href="{{ url_for('main.billing_new_payment_notice') }}" class="btn btn-primary">
+              <i class="bi bi-plus-circle"></i> הודעת תשלום חדשה
+            </a>
+          </div>
+
+          <div class="table-responsive mt-4">
+            <table class="table table-bordered table-hover align-middle text-center">
+              <thead class="table-light">
+                <tr>
+                  <th>מזהה</th>
+                  <th>חברת ביטוח</th>
+                  <th>תאריך הודעה</th>
+                  <th>תאריך תשלום</th>
+                  <th>אסמכתא בנק</th>
+                  <th>סכום כולל</th>
+                  <th>סטטוס</th>
+                  <th>נוצר בתאריך</th>
+                  <th>פעולה</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% if notices %}
+                  {% for n in notices %}
+                    <tr>
+                      <td>{{ n.payment_notice_id }}</td>
+                      <td>{{ n.insurance_company_name or '' }}</td>
+                      <td>{{ n.notice_date.strftime('%d/%m/%Y') if n.notice_date else '' }}</td>
+                      <td>{{ n.payment_date.strftime('%d/%m/%Y') if n.payment_date else '' }}</td>
+                      <td>{{ n.bank_reference or '' }}</td>
+                      <td>{{ '%.2f'|format(n.total_amount or 0) }}</td>
+                      <td>{{ n.status or '' }}</td>
+                      <td>{{ n.creation_date.strftime('%d/%m/%Y %H:%M') if n.creation_date else '' }}</td>
+                      <td>
+                        <a href="{{ url_for('main.billing_edit_payment_notice', payment_notice_id=n.payment_notice_id) }}"
+                           class="btn btn-sm btn-outline-primary">
+                          <i class="bi bi-pencil-square"></i> ערוך
+                        </a>
+                      </td>
+                    </tr>
+                  {% endfor %}
+                {% else %}
+                  <tr>
+                    <td colspan="9">אין עדיין הודעות תשלום במערכת.</td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+</body>
+</html>

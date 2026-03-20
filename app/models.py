@@ -1179,3 +1179,176 @@ class GilEditorState(db.Model):
     updated_by = db.Column(db.Integer, nullable=True)
     created_at = db.Column(db.DateTime, server_default=db.func.current_timestamp(), nullable=False)
     updated_at = db.Column(db.DateTime, server_default=db.func.current_timestamp(), onupdate=db.func.current_timestamp(), nullable=False)
+
+
+############################### Account Receivable #################################
+
+class GilInvoiceAR(db.Model):
+    __tablename__ = 'gil_invoice_ar'
+
+    ar_id = db.Column(db.Integer, primary_key=True)
+    source_invoice_id = db.Column(db.Integer, nullable=True)
+
+    invoice_no = db.Column(db.String(100), unique=True, nullable=False)
+    invoice_date = db.Column(db.Date, nullable=True)
+    due_date = db.Column(db.Date, nullable=True)
+
+    insured_id = db.Column(db.Integer, db.ForeignKey('gil_insured.id', ondelete='SET NULL', onupdate='CASCADE'), nullable=True)
+    insurance_company_id = db.Column(db.Integer, nullable=True)
+
+    claim_no = db.Column(db.String(100), nullable=True)
+    reference_no = db.Column(db.String(100), nullable=True)
+    service_type = db.Column(db.String(100), nullable=True)
+    description = db.Column(db.String(255), nullable=True)
+
+    amount_ex_vat = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+    vat_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+    invoice_total = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+    paid_total = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+    balance_due = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+
+    status = db.Column(db.String(20), nullable=False, default='Sent')
+    pdf_path = db.Column(db.String(1000), nullable=True)
+    dropbox_path = db.Column(db.String(1000), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_by = db.Column(db.Integer, db.ForeignKey('toc_users.id', ondelete='SET NULL', onupdate='CASCADE'), nullable=True)
+    updated_by = db.Column(db.Integer, db.ForeignKey('toc_users.id', ondelete='SET NULL', onupdate='CASCADE'), nullable=True)
+
+    creation_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    update_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    payment_lines = db.relationship(
+        'GilPaymentNoticeLine',
+        backref='matched_invoice',
+        lazy=True,
+        foreign_keys='GilPaymentNoticeLine.matched_ar_id'
+    )
+
+    reconciliations = db.relationship(
+        'GilPaymentReconciliation',
+        backref='invoice_ar',
+        lazy=True,
+        cascade='all, delete-orphan'
+    )
+
+    def __repr__(self):
+        return f"<GilInvoiceAR ar_id={self.ar_id} invoice_no={self.invoice_no} status={self.status}>"
+
+
+class GilPaymentNotice(db.Model):
+    __tablename__ = 'gil_payment_notice'
+
+    payment_notice_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    insurance_company_id = db.Column(db.Integer, nullable=True)
+    insurance_company_name = db.Column(db.String(100), nullable=True)
+
+    notice_date = db.Column(db.Date, nullable=True)
+    payment_date = db.Column(db.Date, nullable=True)
+    bank_reference = db.Column(db.String(100), nullable=True)
+    external_notice_no = db.Column(db.String(100), nullable=True)
+
+    total_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+    currency_code = db.Column(db.String(10), nullable=False, default='ILS')
+
+    status = db.Column(db.String(20), nullable=False, default='Draft')
+    source_file_path = db.Column(db.String(500), nullable=True)
+    source_file_name = db.Column(db.String(255), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+
+    created_by = db.Column(db.Integer, db.ForeignKey('toc_users.id', ondelete='SET NULL', onupdate='CASCADE'), nullable=True)
+    updated_by = db.Column(db.Integer, db.ForeignKey('toc_users.id', ondelete='SET NULL', onupdate='CASCADE'), nullable=True)
+
+    creation_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    update_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    lines = db.relationship(
+        'GilPaymentNoticeLine',
+        backref='payment_notice',
+        lazy=True,
+        cascade='all, delete-orphan'
+    )
+
+    def __repr__(self):
+        return f"<GilPaymentNotice payment_notice_id={self.payment_notice_id} insurer={self.insurance_company_name}>"
+
+class GilPaymentNoticeLine(db.Model):
+    __tablename__ = 'gil_payment_notice_line'
+
+    line_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    payment_notice_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_payment_notice.payment_notice_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=False
+    )
+
+    line_no = db.Column(db.Integer, nullable=False, default=1)
+
+    invoice_no = db.Column(db.String(50), nullable=True)
+    claim_no = db.Column(db.String(100), nullable=True)
+    reference_no = db.Column(db.String(100), nullable=True)
+    insured_name = db.Column(db.String(255), nullable=True)
+    invoice_date = db.Column(db.Date, nullable=True)
+
+    gross_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+    deduction_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+    net_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+
+    remarks = db.Column(db.String(500), nullable=True)
+    match_status = db.Column(db.String(20), nullable=False, default='Unmatched')
+
+    matched_ar_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_invoice_ar.ar_id', ondelete='SET NULL', onupdate='CASCADE'),
+        nullable=True
+    )
+
+    created_by = db.Column(db.Integer, db.ForeignKey('toc_users.id', ondelete='SET NULL', onupdate='CASCADE'), nullable=True)
+    updated_by = db.Column(db.Integer, db.ForeignKey('toc_users.id', ondelete='SET NULL', onupdate='CASCADE'), nullable=True)
+
+    creation_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    update_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    reconciliations = db.relationship(
+        'GilPaymentReconciliation',
+        backref='payment_notice_line',
+        lazy=True,
+        cascade='all, delete-orphan'
+    )
+
+    def __repr__(self):
+        return f"<GilPaymentNoticeLine line_id={self.line_id} invoice_no={self.invoice_no} net_amount={self.net_amount}>"
+
+
+class GilPaymentReconciliation(db.Model):
+    __tablename__ = 'gil_payment_reconciliation'
+
+    reconciliation_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+
+    ar_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_invoice_ar.ar_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=False
+    )
+
+    line_id = db.Column(
+        db.Integer,
+        db.ForeignKey('gil_payment_notice_line.line_id', ondelete='CASCADE', onupdate='CASCADE'),
+        nullable=False
+    )
+
+    matched_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0.00)
+    match_type = db.Column(db.String(20), nullable=False, default='Manual')
+    note = db.Column(db.Text, nullable=True)
+
+    matched_by = db.Column(
+        db.Integer,
+        db.ForeignKey('toc_users.id', ondelete='SET NULL', onupdate='CASCADE'),
+        nullable=True
+    )
+
+    reconciliation_date = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<GilPaymentReconciliation reconciliation_id={self.reconciliation_id} ar_id={self.ar_id} line_id={self.line_id}>"

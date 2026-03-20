@@ -24,6 +24,8 @@ from .activity_logger import log_user_activity as write_user_activity
 from .task_helper import create_task_record
 from .analytics_queries import *
 from .invoice_services import save_invoice_draft, create_final_invoice
+from .billing_ar import sync_invoice_to_ar
+from .billing_reconciliation import recalculate_ar_invoice, match_payment_line_to_ar, clear_line_reconciliation
 
 from decimal import Decimal, InvalidOperation
 
@@ -6647,6 +6649,451 @@ def admin_dashboard():
         roles=roles_list
     )
 
+############################# Billing / Accounts Receivable #############################
+
+@main.route('/billing/dashboard')
+def billing_dashboard():
+    user_data = session.get('user')
+    if not user_data:
+        return redirect(url_for('main.login'))
+
+    user = json.loads(user_data)
+
+    roles = TocRole.query.all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    return render_template(
+        'billing_dashboard.html',
+        user=user,
+        roles=roles_list,
+        active_menu='billing'
+    )
+
+
+@main.route('/billing/payment-notices')
+def billing_payment_notices():
+    user_data = session.get('user')
+    if not user_data:
+        return redirect(url_for('main.login'))
+
+    user = json.loads(user_data)
+
+    roles = TocRole.query.all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    notices = (
+        GilPaymentNotice.query
+        .order_by(GilPaymentNotice.creation_date.desc())
+        .all()
+    )
+
+    return render_template(
+        'billing_payment_notices.html',
+        user=user,
+        roles=roles_list,
+        notices=notices,
+        active_menu='billing'
+    )
+
+
+@main.route('/billing/payment-notices/new')
+def billing_new_payment_notice():
+    user_data = session.get('user')
+    if not user_data:
+        return redirect(url_for('main.login'))
+
+    user = json.loads(user_data)
+
+    roles = TocRole.query.all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    return render_template(
+        'billing_payment_notice_form.html',
+        user=user,
+        roles=roles_list,
+        notice=None,
+        active_menu='billing'
+    )
+
+@main.route('/billing/payment-notices/<int:payment_notice_id>')
+def billing_edit_payment_notice(payment_notice_id):
+    user_data = session.get('user')
+    if not user_data:
+        return redirect(url_for('main.login'))
+
+    user = json.loads(user_data)
+
+    roles = TocRole.query.all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    notice = GilPaymentNotice.query.get_or_404(payment_notice_id)
+
+    return render_template(
+        'billing_payment_notice_form.html',
+        user=user,
+        roles=roles_list,
+        notice=notice,
+        active_menu='billing'
+    )
+
+@main.route('/billing/ar-invoices')
+def billing_ar_invoices():
+    user_data = session.get('user')
+    if not user_data:
+        return redirect(url_for('main.login'))
+
+    user = json.loads(user_data)
+
+    roles = TocRole.query.all()
+    roles_list = [{'role': role.role, 'exclusions': role.exclusions} for role in roles]
+
+    invoices = (
+        GilInvoiceAR.query
+        .order_by(GilInvoiceAR.creation_date.desc())
+        .all()
+    )
+
+    return render_template(
+        'billing_ar_invoices.html',
+        user=user,
+        roles=roles_list,
+        invoices=invoices,
+        active_menu='billing'
+    )
+
+@main.route('/api/billing/payment-notices/<int:payment_notice_id>', methods=['GET'])
+def api_billing_payment_notice_get(payment_notice_id):
+    try:
+        user_data = session.get('user')
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"success": False, "message": "Not logged in"}), 401
+
+        notice = GilPaymentNotice.query.get_or_404(payment_notice_id)
+
+        lines = (
+            GilPaymentNoticeLine.query
+            .filter_by(payment_notice_id=payment_notice_id)
+            .order_by(GilPaymentNoticeLine.line_no.asc(), GilPaymentNoticeLine.line_id.asc())
+            .all()
+        )
+
+        return jsonify({
+            "success": True,
+            "notice": {
+                "payment_notice_id": notice.payment_notice_id,
+                "insurance_company_name": notice.insurance_company_name or "",
+                "notice_date": notice.notice_date.strftime('%Y-%m-%d') if notice.notice_date else "",
+                "payment_date": notice.payment_date.strftime('%Y-%m-%d') if notice.payment_date else "",
+                "bank_reference": notice.bank_reference or "",
+                "external_notice_no": notice.external_notice_no or "",
+                "total_amount": str(notice.total_amount or 0),
+                "notes": notice.notes or "",
+                "status": notice.status or "Draft"
+            },
+            "lines": [
+                {
+                    "line_id": line.line_id,
+                    "line_no": line.line_no,
+                    "invoice_no": line.invoice_no or "",
+                    "claim_no": line.claim_no or "",
+                    "reference_no": line.reference_no or "",
+                    "insured_name": line.insured_name or "",
+                    "invoice_date": line.invoice_date.strftime('%Y-%m-%d') if line.invoice_date else "",
+                    "gross_amount": str(line.gross_amount or 0),
+                    "deduction_amount": str(line.deduction_amount or 0),
+                    "net_amount": str(line.net_amount or 0),
+                    "remarks": line.remarks or "",
+                    "match_status": line.match_status or "Unmatched",
+                    "matched_ar_id": line.matched_ar_id
+                }
+                for line in lines
+            ]
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"api_billing_payment_notice_get error: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Server error: {str(e)}"
+        }), 500
+
+@main.route('/api/billing/ar-invoices/open', methods=['GET'])
+def api_billing_open_ar_invoices():
+    try:
+        user_data = session.get('user')
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"success": False, "message": "Not logged in"}), 401
+
+        q = GilInvoiceAR.query
+
+        status_filter = request.args.get('status')
+        if status_filter == 'open':
+            q = q.filter(GilInvoiceAR.balance_due > 0)
+
+        invoice_no = (request.args.get('invoice_no') or '').strip()
+        claim_no = (request.args.get('claim_no') or '').strip()
+        reference_no = (request.args.get('reference_no') or '').strip()
+        insured_id = request.args.get('insured_id')
+
+        if invoice_no:
+            q = q.filter(GilInvoiceAR.invoice_no.ilike(f"%{invoice_no}%"))
+        if claim_no:
+            q = q.filter(GilInvoiceAR.claim_no.ilike(f"%{claim_no}%"))
+        if reference_no:
+            q = q.filter(GilInvoiceAR.reference_no.ilike(f"%{reference_no}%"))
+        if insured_id:
+            q = q.filter(GilInvoiceAR.insured_id == insured_id)
+
+        rows = (
+            q.order_by(GilInvoiceAR.invoice_date.desc(), GilInvoiceAR.ar_id.desc())
+            .limit(100)
+            .all()
+        )
+
+        return jsonify({
+            "success": True,
+            "items": [
+                {
+                    "ar_id": r.ar_id,
+                    "invoice_no": r.invoice_no,
+                    "invoice_date": r.invoice_date.strftime('%Y-%m-%d') if r.invoice_date else "",
+                    "insured_id": r.insured_id,
+                    "claim_no": r.claim_no or "",
+                    "reference_no": r.reference_no or "",
+                    "invoice_total": str(r.invoice_total or 0),
+                    "paid_total": str(r.paid_total or 0),
+                    "balance_due": str(r.balance_due or 0),
+                    "status": r.status or ""
+                }
+                for r in rows
+            ]
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"api_billing_open_ar_invoices error: {e}")
+        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+
+
+@main.route('/api/billing/payment-lines/<int:line_id>/match', methods=['POST'])
+def api_billing_match_payment_line(line_id):
+    try:
+        user_data = session.get('user')
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"success": False, "message": "Not logged in"}), 401
+
+        if not user_is_admin_or_manager(user):
+            return jsonify({"success": False, "message": "Only admin/manager can reconcile payment lines"}), 403
+
+        payload = request.get_json(silent=True) or {}
+        ar_id = payload.get('ar_id')
+        note = (payload.get('note') or '').strip() or None
+
+        if not ar_id:
+            return jsonify({"success": False, "message": "ar_id is required"}), 400
+
+        result = match_payment_line_to_ar(
+            line_id=line_id,
+            ar_id=int(ar_id),
+            user_id=user.get('id'),
+            note=note
+        )
+
+        db.session.commit()
+
+        line = result["line"]
+        ar = GilInvoiceAR.query.get(result["ar"].ar_id)
+
+        return jsonify({
+            "success": True,
+            "message": "השורה הותאמה לחשבונית בהצלחה",
+            "line": {
+                "line_id": line.line_id,
+                "matched_ar_id": line.matched_ar_id,
+                "match_status": line.match_status
+            },
+            "ar": {
+                "ar_id": ar.ar_id,
+                "invoice_no": ar.invoice_no,
+                "paid_total": str(ar.paid_total or 0),
+                "balance_due": str(ar.balance_due or 0),
+                "status": ar.status or ""
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"api_billing_match_payment_line error: {e}")
+        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+
+
+@main.route('/api/billing/payment-lines/<int:line_id>/unmatch', methods=['POST'])
+def api_billing_unmatch_payment_line(line_id):
+    try:
+        user_data = session.get('user')
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"success": False, "message": "Not logged in"}), 401
+
+        if not user_is_admin_or_manager(user):
+            return jsonify({"success": False, "message": "Only admin/manager can unreconcile payment lines"}), 403
+
+        line = clear_line_reconciliation(line_id)
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "ההתאמה בוטלה בהצלחה",
+            "line": {
+                "line_id": line.line_id,
+                "matched_ar_id": line.matched_ar_id,
+                "match_status": line.match_status
+            }
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"api_billing_unmatch_payment_line error: {e}")
+        return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
+
+@main.route('/api/billing/payment-notices/save', methods=['POST'])
+def api_billing_payment_notice_save():
+    try:
+        user_data = session.get('user')
+        user = json.loads(user_data) if user_data else {}
+        if not user:
+            return jsonify({"success": False, "message": "Not logged in"}), 401
+
+        if not user_is_admin_or_manager(user):
+            return jsonify({"success": False, "message": "Only admin/manager can save payment notices"}), 403
+
+        payload = request.get_json(silent=True) or {}
+
+        payment_notice_id = payload.get('payment_notice_id')
+        insurance_company_name = (payload.get('insurance_company_name') or '').strip()
+        notice_date_raw = (payload.get('notice_date') or '').strip()
+        payment_date_raw = (payload.get('payment_date') or '').strip()
+        bank_reference = (payload.get('bank_reference') or '').strip()
+        external_notice_no = (payload.get('external_notice_no') or '').strip()
+        total_amount_raw = payload.get('total_amount')
+        notes = (payload.get('notes') or '').strip()
+        lines = payload.get('lines') or []
+
+        if not insurance_company_name:
+            return jsonify({"success": False, "message": "חברת ביטוח היא שדה חובה"}), 400
+
+        if not lines:
+            return jsonify({"success": False, "message": "יש להזין לפחות שורת תשלום אחת"}), 400
+
+        def parse_date_or_none(value):
+            if not value:
+                return None
+            return datetime.strptime(value, '%Y-%m-%d').date()
+
+        def parse_decimal_or_zero(value):
+            if value in (None, '', 'null'):
+                return Decimal('0.00')
+            return Decimal(str(value))
+
+        if payment_notice_id:
+            notice = GilPaymentNotice.query.get(payment_notice_id)
+            if not notice:
+                return jsonify({"success": False, "message": "הודעת התשלום לא נמצאה"}), 404
+
+            notice.insurance_company_name = insurance_company_name
+            notice.notice_date = parse_date_or_none(notice_date_raw)
+            notice.payment_date = parse_date_or_none(payment_date_raw)
+            notice.bank_reference = bank_reference or None
+            notice.external_notice_no = external_notice_no or None
+            notice.total_amount = parse_decimal_or_zero(total_amount_raw)
+            notice.notes = notes or None
+            notice.updated_by = user.get('id')
+
+            # remove old lines and recreate current grid state
+            GilPaymentNoticeLine.query.filter_by(payment_notice_id=notice.payment_notice_id).delete()
+            db.session.flush()
+        else:
+            notice = GilPaymentNotice(
+                insurance_company_name=insurance_company_name,
+                notice_date=parse_date_or_none(notice_date_raw),
+                payment_date=parse_date_or_none(payment_date_raw),
+                bank_reference=bank_reference or None,
+                external_notice_no=external_notice_no or None,
+                total_amount=parse_decimal_or_zero(total_amount_raw),
+                status='Draft',
+                notes=notes or None,
+                created_by=user.get('id'),
+                updated_by=user.get('id')
+            )
+            db.session.add(notice)
+            db.session.flush()  # get payment_notice_id
+
+        line_count = 0
+
+        for idx, row in enumerate(lines, start=1):
+            invoice_no = (row.get('invoice_no') or '').strip()
+            claim_no = (row.get('claim_no') or '').strip()
+            reference_no = (row.get('reference_no') or '').strip()
+            insured_name = (row.get('insured_name') or '').strip()
+            invoice_date_raw = (row.get('invoice_date') or '').strip()
+            gross_amount = parse_decimal_or_zero(row.get('gross_amount'))
+            deduction_amount = parse_decimal_or_zero(row.get('deduction_amount'))
+            net_amount = parse_decimal_or_zero(row.get('net_amount'))
+            remarks = (row.get('remarks') or '').strip()
+
+            # skip rows that are fully empty
+            if not any([
+                invoice_no, claim_no, reference_no, insured_name, invoice_date_raw,
+                gross_amount != Decimal('0.00'),
+                deduction_amount != Decimal('0.00'),
+                net_amount != Decimal('0.00'),
+                remarks
+            ]):
+                continue
+
+            notice_line = GilPaymentNoticeLine(
+                payment_notice_id=notice.payment_notice_id,
+                line_no=idx,
+                invoice_no=invoice_no or None,
+                claim_no=claim_no or None,
+                reference_no=reference_no or None,
+                insured_name=insured_name or None,
+                invoice_date=parse_date_or_none(invoice_date_raw),
+                gross_amount=gross_amount,
+                deduction_amount=deduction_amount,
+                net_amount=net_amount,
+                remarks=remarks or None,
+                match_status='Unmatched',
+                created_by=user.get('id'),
+                updated_by=user.get('id')
+            )
+            db.session.add(notice_line)
+            line_count += 1
+
+        if line_count == 0:
+            db.session.rollback()
+            return jsonify({"success": False, "message": "לא נמצאו שורות תקינות לשמירה"}), 400
+
+        db.session.commit()
+
+        return jsonify({
+            "success": True,
+            "message": "הודעת התשלום נשמרה בהצלחה",
+            "payment_notice_id": notice.payment_notice_id,
+            "line_count": line_count,
+            "mode": "update" if payment_notice_id else "create"
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"api_billing_payment_notice_save error: {e}")
+        return jsonify({
+            "success": False,
+            "message": f"Server error: {str(e)}"
+        }), 500
+
 ############################# Analytics #############################
 @main.route('/analytics')
 def analytics():
@@ -6999,6 +7446,22 @@ def api_invoice_finalize():
             payload["insured_insurance"] = insured.insurance or ""
 
         result = create_final_invoice(payload, user_id=user_id)
+
+        if result.get("success"):
+            invoice_id = result.get("invoice_id")
+            if invoice_id:
+                invoice = GilInvoice.query.get(invoice_id)
+                if invoice:
+                    sync_invoice_to_ar(invoice, user_id=user_id)
+                    db.session.commit()
+                else:
+                    current_app.logger.warning(
+                        f"api_invoice_finalize: invoice_id {invoice_id} returned but invoice not found for AR sync"
+                    )
+            else:
+                current_app.logger.warning(
+                    "api_invoice_finalize: success returned from create_final_invoice but no invoice_id for AR sync"
+                )
 
         status_code = 200 if result.get("success") else 500
         return jsonify(result), status_code

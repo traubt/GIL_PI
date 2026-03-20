@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+
+<head>
+  <meta charset="utf-8">
+  <meta content="width=device-width, initial-scale=1.0" name="viewport">
+
+  <title>קליטת הודעת תשלום</title>
+
+  <link href="{{ url_for('static', filename='assets/vendor/bootstrap/css/bootstrap.min.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='assets/vendor/bootstrap-icons/bootstrap-icons.css') }}" rel="stylesheet">
+  <link href="{{ url_for('static', filename='assets/css/style.css') }}" rel="stylesheet">
+
+  <style>
+    .table-input {
+      min-width: 120px;
+    }
+  </style>
+</head>
+
+<body>
+  {% include 'header-bar.html' %}
+  {% include 'side-bar.html' %}
+
+  <main id="main" class="main" dir="rtl">
+    <div class="pagetitle">
+      <h1>קליטת הודעת תשלום</h1>
+      <nav>
+        <ol class="breadcrumb">
+          <li class="breadcrumb-item"><a href="{{ url_for('main.admin_dashboard') }}">דף הבית</a></li>
+          <li class="breadcrumb-item"><a href="{{ url_for('main.billing_dashboard') }}">חיובים וגבייה</a></li>
+          <li class="breadcrumb-item"><a href="{{ url_for('main.billing_payment_notices') }}">הודעות תשלום</a></li>
+          <li class="breadcrumb-item active">קליטה ידנית</li>
+        </ol>
+      </nav>
+    </div>
+
+    <section class="section">
+      <form id="paymentNoticeForm">
+        <input type="hidden" id="payment_notice_id" value="{{ notice.payment_notice_id if notice else '' }}">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">פרטי הודעת תשלום</h5>
+
+            <div class="row g-3">
+              <div class="col-md-4">
+                <label class="form-label">חברת ביטוח</label>
+                <input type="text" class="form-control" id="insurance_company_name" name="insurance_company_name">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">תאריך הודעה</label>
+                <input type="date" class="form-control" id="notice_date" name="notice_date">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">תאריך תשלום</label>
+                <input type="date" class="form-control" id="payment_date" name="payment_date">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">אסמכתא בנק</label>
+                <input type="text" class="form-control" id="bank_reference" name="bank_reference">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">מספר הודעה חיצוני</label>
+                <input type="text" class="form-control" id="external_notice_no" name="external_notice_no">
+              </div>
+
+              <div class="col-md-4">
+                <label class="form-label">סכום כולל</label>
+                <input type="number" step="0.01" class="form-control" id="total_amount" name="total_amount" value="0.00">
+              </div>
+
+              <div class="col-md-12">
+                <label class="form-label">הערות</label>
+                <textarea class="form-control" id="notes" name="notes" rows="3"></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card mt-3">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+              <h5 class="card-title mb-0">שורות הודעת תשלום</h5>
+              <button type="button" class="btn btn-outline-primary" onclick="addLineRow()">
+                <i class="bi bi-plus-circle"></i> הוסף שורה
+              </button>
+            </div>
+
+            <div class="table-responsive mt-4">
+              <table class="table table-bordered align-middle text-center" id="paymentLinesTable">
+                <thead class="table-light">
+                  <tr>
+                    <th>#</th>
+                    <th>מספר חשבונית</th>
+                    <th>מספר תביעה</th>
+                    <th>מספר הפניה</th>
+                    <th>שם מבוטח</th>
+                    <th>תאריך חשבונית</th>
+                    <th>ברוטו</th>
+                    <th>ניכוי</th>
+                    <th>נטו</th>
+                    <th>הערות</th>
+                    <th>פעולה</th>
+                  </tr>
+                </thead>
+                <tbody id="paymentLinesBody"></tbody>
+              </table>
+            </div>
+
+            <div class="alert alert-secondary mb-0">
+              זהו מסך ראשוני בלבד. בשלב הבא נחבר שמירה למסד הנתונים ונוסיף התאמה מול חשבוניות.
+            </div>
+          </div>
+        </div>
+
+                <div class="d-flex gap-2 mt-3">
+                  <button type="button" class="btn btn-primary" id="btnSavePaymentNotice" onclick="savePaymentNotice()">
+                    {{ 'עדכן הודעת תשלום' if notice else 'שמור טיוטה' }}
+                  </button>
+                  <a href="{{ url_for('main.billing_payment_notices') }}" class="btn btn-secondary">חזור</a>
+                </div>
+
+                <div class="alert d-none mt-3" id="paymentNoticeAlert"></div>
+      </form>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
+
+<script>
+  const paymentNoticeId = document.getElementById('payment_notice_id')?.value || '';
+
+  function addLineRow(data = {}) {
+    const tbody = document.getElementById('paymentLinesBody');
+
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td></td>
+      <td><input type="text" class="form-control form-control-sm table-input" name="invoice_no" value="${data.invoice_no || ''}"></td>
+      <td><input type="text" class="form-control form-control-sm table-input" name="claim_no" value="${data.claim_no || ''}"></td>
+      <td><input type="text" class="form-control form-control-sm table-input" name="reference_no" value="${data.reference_no || ''}"></td>
+      <td><input type="text" class="form-control form-control-sm table-input" name="insured_name" value="${data.insured_name || ''}"></td>
+      <td><input type="date" class="form-control form-control-sm table-input" name="invoice_date" value="${data.invoice_date || ''}"></td>
+      <td><input type="number" step="0.01" class="form-control form-control-sm table-input" name="gross_amount" value="${data.gross_amount || '0.00'}"></td>
+      <td><input type="number" step="0.01" class="form-control form-control-sm table-input" name="deduction_amount" value="${data.deduction_amount || '0.00'}"></td>
+      <td><input type="number" step="0.01" class="form-control form-control-sm table-input" name="net_amount" value="${data.net_amount || '0.00'}"></td>
+      <td><input type="text" class="form-control form-control-sm table-input" name="remarks" value="${data.remarks || ''}"></td>
+      <td>
+        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeLineRow(this)">
+          <i class="bi bi-trash"></i>
+        </button>
+      </td>
+    `;
+    tbody.appendChild(tr);
+
+    bindLineEvents(tr);
+    updateLineNet(tr);
+    renumberRows();
+    updateTotalAmount();
+  }
+
+  function clearAllLines() {
+    document.getElementById('paymentLinesBody').innerHTML = '';
+  }
+
+  function toNumber(val) {
+    const n = parseFloat(val);
+    return isNaN(n) ? 0 : n;
+  }
+
+  function format2(val) {
+    return toNumber(val).toFixed(2);
+  }
+
+  function updateLineNet(tr) {
+    if (!tr) return;
+
+    const grossEl = tr.querySelector('[name="gross_amount"]');
+    const deductionEl = tr.querySelector('[name="deduction_amount"]');
+    const netEl = tr.querySelector('[name="net_amount"]');
+
+    if (!grossEl || !deductionEl || !netEl) return;
+
+    const gross = toNumber(grossEl.value);
+    const deduction = toNumber(deductionEl.value);
+    const net = gross - deduction;
+
+    netEl.value = format2(net);
+  }
+
+  function updateTotalAmount() {
+    let total = 0;
+
+    document.querySelectorAll('#paymentLinesBody tr').forEach((tr) => {
+      const netEl = tr.querySelector('[name="net_amount"]');
+      total += toNumber(netEl?.value);
+    });
+
+    const totalAmountEl = document.getElementById('total_amount');
+    if (totalAmountEl) {
+      totalAmountEl.value = format2(total);
+    }
+  }
+
+  function bindLineEvents(tr) {
+    if (!tr) return;
+
+    const grossEl = tr.querySelector('[name="gross_amount"]');
+    const deductionEl = tr.querySelector('[name="deduction_amount"]');
+    const netEl = tr.querySelector('[name="net_amount"]');
+
+    if (grossEl) {
+      grossEl.addEventListener('input', function () {
+        updateLineNet(tr);
+        updateTotalAmount();
+      });
+    }
+
+    if (deductionEl) {
+      deductionEl.addEventListener('input', function () {
+        updateLineNet(tr);
+        updateTotalAmount();
+      });
+    }
+
+    if (netEl) {
+      netEl.addEventListener('input', function () {
+        updateTotalAmount();
+      });
+    }
+  }
+
+  function removeLineRow(btn) {
+    btn.closest('tr').remove();
+    renumberRows();
+    updateTotalAmount();
+  }
+
+  function renumberRows() {
+    document.querySelectorAll('#paymentLinesBody tr').forEach((tr, idx) => {
+      tr.children[0].textContent = idx + 1;
+    });
+  }
+
+  function showAlert(message, type = 'info') {
+    const box = document.getElementById('paymentNoticeAlert');
+    box.className = `alert alert-${type} mt-3`;
+    box.textContent = message;
+    box.classList.remove('d-none');
+    window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
+  }
+
+  function collectLines() {
+    const rows = document.querySelectorAll('#paymentLinesBody tr');
+    const lines = [];
+
+    rows.forEach((tr) => {
+      lines.push({
+        invoice_no: tr.querySelector('[name="invoice_no"]')?.value?.trim() || '',
+        claim_no: tr.querySelector('[name="claim_no"]')?.value?.trim() || '',
+        reference_no: tr.querySelector('[name="reference_no"]')?.value?.trim() || '',
+        insured_name: tr.querySelector('[name="insured_name"]')?.value?.trim() || '',
+        invoice_date: tr.querySelector('[name="invoice_date"]')?.value || '',
+        gross_amount: tr.querySelector('[name="gross_amount"]')?.value || '0.00',
+        deduction_amount: tr.querySelector('[name="deduction_amount"]')?.value || '0.00',
+        net_amount: tr.querySelector('[name="net_amount"]')?.value || '0.00',
+        remarks: tr.querySelector('[name="remarks"]')?.value?.trim() || ''
+      });
+    });
+
+    return lines;
+  }
+
+  async function loadPaymentNotice() {
+    if (!paymentNoticeId) {
+      addLineRow();
+      return;
+    }
+
+    try {
+      const res = await fetch(`/api/billing/payment-notices/${paymentNoticeId}`);
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        showAlert(data.message || 'טעינת הודעת התשלום נכשלה', 'danger');
+        addLineRow();
+        return;
+      }
+
+      const notice = data.notice || {};
+      const lines = data.lines || [];
+
+      document.getElementById('insurance_company_name').value = notice.insurance_company_name || '';
+      document.getElementById('notice_date').value = notice.notice_date || '';
+      document.getElementById('payment_date').value = notice.payment_date || '';
+      document.getElementById('bank_reference').value = notice.bank_reference || '';
+      document.getElementById('external_notice_no').value = notice.external_notice_no || '';
+      document.getElementById('total_amount').value = notice.total_amount || '0.00';
+      document.getElementById('notes').value = notice.notes || '';
+
+      clearAllLines();
+
+      if (lines.length) {
+        lines.forEach(line => addLineRow(line));
+      } else {
+        addLineRow();
+      }
+
+      updateTotalAmount();
+
+    } catch (err) {
+      showAlert('אירעה שגיאה בטעינת הודעת התשלום', 'danger');
+      addLineRow();
+    }
+  }
+
+  async function savePaymentNotice() {
+    const btn = document.getElementById('btnSavePaymentNotice');
+    btn.disabled = true;
+
+    const payload = {
+      payment_notice_id: paymentNoticeId || '',
+      insurance_company_name: document.getElementById('insurance_company_name')?.value?.trim() || '',
+      notice_date: document.getElementById('notice_date')?.value || '',
+      payment_date: document.getElementById('payment_date')?.value || '',
+      bank_reference: document.getElementById('bank_reference')?.value?.trim() || '',
+      external_notice_no: document.getElementById('external_notice_no')?.value?.trim() || '',
+      total_amount: document.getElementById('total_amount')?.value || '0.00',
+      notes: document.getElementById('notes')?.value?.trim() || '',
+      lines: collectLines()
+    };
+
+    if (!payload.insurance_company_name) {
+      showAlert('יש להזין חברת ביטוח', 'warning');
+      btn.disabled = false;
+      return;
+    }
+
+    try {
+      const res = await fetch('/api/billing/payment-notices/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.success) {
+        showAlert(data.message || 'שמירת הודעת התשלום נכשלה', 'danger');
+        btn.disabled = false;
+        return;
+      }
+
+      showAlert(data.message || 'הודעת התשלום נשמרה בהצלחה', 'success');
+
+      setTimeout(() => {
+        window.location.href = `/billing/payment-notices/${data.payment_notice_id}`;
+      }, 700);
+
+    } catch (err) {
+      showAlert('אירעה שגיאה בשמירה', 'danger');
+      btn.disabled = false;
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', function () {
+    loadPaymentNotice();
+  });
+</script>
+</body>
+</html>

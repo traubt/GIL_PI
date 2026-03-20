@@ -28,6 +28,39 @@
     </li>
 
     <li class="nav-item">
+      <a class="nav-link {{ '' if active_menu == 'billing' else 'collapsed' }}"
+         data-bs-target="#billing-nav"
+         data-bs-toggle="collapse"
+         href="#">
+        <i class="bi bi-receipt-cutoff"></i><span>חיובים וגבייה</span><i class="bi bi-chevron-down me-auto"></i>
+      </a>
+      <ul id="billing-nav"
+          class="nav-content collapse {{ 'show' if active_menu == 'billing' else '' }}"
+          data-bs-parent="#sidebar-nav">
+        <li>
+          <a href="{{ url_for('main.billing_dashboard') }}">
+            <i class="bi bi-circle"></i><span>דשבורד גבייה</span>
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('main.billing_payment_notices') }}">
+            <i class="bi bi-circle"></i><span>הודעות תשלום</span>
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('main.billing_new_payment_notice') }}">
+            <i class="bi bi-circle"></i><span>קליטת הודעת תשלום</span>
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('main.billing_ar_invoices') }}">
+            <i class="bi bi-circle"></i><span>חשבוניות פתוחות</span>
+          </a>
+        </li>
+      </ul>
+    </li>
+
+    <li class="nav-item">
       <a class="nav-link collapsed" data-bs-target="#admin-nav" data-bs-toggle="collapse">
         <i class="bi bi-wrench"></i><span>עדכוני מערכת</span><i class="bi bi-chevron-down me-auto"></i>
       </a>
