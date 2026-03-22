@@ -104,6 +104,7 @@
                     <th>ניכוי</th>
                     <th>נטו</th>
                     <th>הערות</th>
+                    <th>התאמה</th>
                     <th>פעולה</th>
                   </tr>
                 </thead>
@@ -111,8 +112,37 @@
               </table>
             </div>
 
+            <div class="row g-3 mb-3">
+              <div class="col-md-4">
+                <div class="card border-0 bg-light">
+                  <div class="card-body py-3">
+                    <div class="text-muted small">סכום הודעה</div>
+                    <div class="fw-bold fs-5" id="summary_notice_total">0.00</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="card border-0 bg-light">
+                  <div class="card-body py-3">
+                    <div class="text-muted small">סכום מותאם</div>
+                    <div class="fw-bold fs-5 text-success" id="summary_matched_total">0.00</div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="col-md-4">
+                <div class="card border-0 bg-light">
+                  <div class="card-body py-3">
+                    <div class="text-muted small">יתרה לא מותאמת</div>
+                    <div class="fw-bold fs-5 text-danger" id="summary_unmatched_total">0.00</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div class="alert alert-secondary mb-0">
-              זהו מסך ראשוני בלבד. בשלב הבא נחבר שמירה למסד הנתונים ונוסיף התאמה מול חשבוניות.
+              מסך זה מציג גם סיכום התאמות: סכום הודעה, סכום מותאם ויתרה לא מותאמת.
             </div>
           </div>
         </div>
@@ -127,6 +157,40 @@
                 <div class="alert d-none mt-3" id="paymentNoticeAlert"></div>
       </form>
     </section>
+
+
+<div class="modal fade" id="matchModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+
+      <div class="modal-header">
+        <h5 class="modal-title">התאמת חשבונית</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+
+      <div class="modal-body">
+
+        <table class="table table-bordered table-hover text-center">
+          <thead>
+            <tr>
+              <th>בחר</th>
+              <th>מספר חשבונית</th>
+              <th>לקוח</th>
+              <th>סכום</th>
+              <th>שולם</th>
+              <th>יתרה</th>
+            </tr>
+          </thead>
+          <tbody id="arInvoiceTableBody">
+          </tbody>
+        </table>
+
+      </div>
+
+    </div>
+  </div>
+</div>
+
   </main>
 
   <script src="{{ url_for('static', filename='assets/vendor/bootstrap/js/bootstrap.bundle.min.js') }}"></script>
@@ -148,12 +212,35 @@
       <td><input type="number" step="0.01" class="form-control form-control-sm table-input" name="gross_amount" value="${data.gross_amount || '0.00'}"></td>
       <td><input type="number" step="0.01" class="form-control form-control-sm table-input" name="deduction_amount" value="${data.deduction_amount || '0.00'}"></td>
       <td><input type="number" step="0.01" class="form-control form-control-sm table-input" name="net_amount" value="${data.net_amount || '0.00'}"></td>
-      <td><input type="text" class="form-control form-control-sm table-input" name="remarks" value="${data.remarks || ''}"></td>
-      <td>
-        <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeLineRow(this)">
-          <i class="bi bi-trash"></i>
-        </button>
-      </td>
+<td><input type="text" class="form-control form-control-sm table-input" name="remarks" value="${data.remarks || ''}"></td>
+
+<td>
+  ${data.match_status === 'Matched'
+    ? `
+      <span class="badge bg-success">✔ מותאם</span>
+      <br>
+      <button type="button"
+              class="btn btn-sm btn-outline-danger mt-1"
+              onclick="unmatchLine(${data.line_id})">
+        ביטול התאמה
+      </button>
+    `
+    : `
+      <button type="button" class="btn btn-sm btn-outline-success"
+              onclick="openMatchModal(${data.line_id || 0})">
+        התאמה
+      </button>
+    `
+  }
+</td>
+
+<td>
+  <button type="button" class="btn btn-sm btn-outline-danger"
+          onclick="removeLineRow(this)"
+          title="מחק שורה">
+    <i class="bi bi-trash"></i>
+  </button>
+</td>
     `;
     tbody.appendChild(tr);
 
@@ -204,6 +291,35 @@
     if (totalAmountEl) {
       totalAmountEl.value = format2(total);
     }
+
+    updatePaymentSummary();
+  }
+
+  function updatePaymentSummary() {
+    const noticeTotal = toNumber(document.getElementById('total_amount')?.value);
+
+    let matchedTotal = 0;
+
+    document.querySelectorAll('#paymentLinesBody tr').forEach((tr) => {
+      const isMatched = tr.querySelector('.badge.bg-success');
+      const netEl = tr.querySelector('[name="net_amount"]');
+      const lineNet = toNumber(netEl?.value);
+
+      if (isMatched) {
+        matchedTotal += lineNet;
+      }
+    });
+
+    let unmatchedTotal = noticeTotal - matchedTotal;
+    if (unmatchedTotal < 0) unmatchedTotal = 0;
+
+    const noticeEl = document.getElementById('summary_notice_total');
+    const matchedEl = document.getElementById('summary_matched_total');
+    const unmatchedEl = document.getElementById('summary_unmatched_total');
+
+    if (noticeEl) noticeEl.textContent = format2(noticeTotal);
+    if (matchedEl) matchedEl.textContent = format2(matchedTotal);
+    if (unmatchedEl) unmatchedEl.textContent = format2(unmatchedTotal);
   }
 
   function bindLineEvents(tr) {
@@ -371,5 +487,124 @@
     loadPaymentNotice();
   });
 </script>
+
+<script>
+let currentLineId = null;
+let matchModalInstance = null;
+
+function openMatchModal(lineId) {
+  console.log("Line ID:", lineId);
+  currentLineId = lineId;
+
+  fetch('/api/billing/ar-invoices/open')
+    .then(r => r.json())
+    .then(data => {
+      const tbody = document.getElementById('arInvoiceTableBody');
+      tbody.innerHTML = '';
+
+      if (!data.success || !data.items || !data.items.length) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="text-center text-muted">לא נמצאו חשבוניות פתוחות להתאמה</td>
+          </tr>
+        `;
+      } else {
+        data.items.forEach(inv => {
+          tbody.innerHTML += `
+            <tr>
+              <td>
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  title="התאם את שורת התשלום לחשבונית זו. הפעולה תקשר את התשלום לחשבונית ותעדכן את היתרה."
+                  onclick="matchLine(${inv.ar_id}, '${(inv.invoice_no || '').replace(/'/g, "\\'")}')"
+                >
+                  התאם לחשבונית
+                </button>
+              </td>
+              <td>${inv.invoice_no || ''}</td>
+              <td>${inv.claim_no || inv.reference_no || inv.insured_id || ''}</td>
+              <td>${inv.invoice_total || 0}</td>
+              <td>${inv.paid_total || 0}</td>
+              <td>${inv.balance_due || 0}</td>
+            </tr>
+          `;
+        });
+      }
+
+      const modalEl = document.getElementById('matchModal');
+      matchModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+      matchModalInstance.show();
+    })
+    .catch(err => {
+      console.error('Error loading AR invoices:', err);
+      alert('אירעה שגיאה בטעינת החשבוניות הפתוחות');
+    });
+}
+
+function matchLine(arId, invoiceNo = '') {
+  if (!currentLineId) {
+    alert('לא נמצאה שורת תשלום להתאמה');
+    return;
+  }
+
+  const confirmed = confirm(
+    `האם להתאים את שורת התשלום לחשבונית ${invoiceNo || arId}?\nהפעולה תעדכן את יתרת החשבונית.`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  fetch(`/api/billing/payment-lines/${currentLineId}/match`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ar_id: arId })
+  })
+    .then(r => r.json())
+    .then(res => {
+      if (res.success) {
+        if (matchModalInstance) {
+          matchModalInstance.hide();
+        }
+        alert('התשלום הותאם לחשבונית בהצלחה');
+        location.reload();
+      } else {
+        alert(res.message || 'שגיאה בהתאמת התשלום לחשבונית');
+      }
+    })
+    .catch(err => {
+      console.error('Match error:', err);
+      alert('אירעה שגיאת שרת בעת התאמת התשלום');
+    });
+}
+
+function unmatchLine(lineId) {
+  if (!lineId) {
+    alert('לא נמצאה שורה לביטול התאמה');
+    return;
+  }
+
+  if (!confirm("לבטל התאמה לשורה זו?")) return;
+
+  fetch(`/api/billing/payment-lines/${lineId}/unmatch`, {
+    method: 'POST'
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (res.success) {
+      alert('ההתאמה בוטלה בהצלחה');
+      location.reload();
+    } else {
+      alert(res.message || 'שגיאה');
+    }
+  })
+  .catch(err => {
+    console.error(err);
+    alert('שגיאת שרת');
+  });
+}
+</script>
+
 </body>
 </html>

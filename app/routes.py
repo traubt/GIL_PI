@@ -6928,6 +6928,46 @@ def api_billing_match_payment_line(line_id):
         current_app.logger.error(f"api_billing_match_payment_line error: {e}")
         return jsonify({"success": False, "message": f"Server error: {str(e)}"}), 500
 
+@main.route('/api/billing/payment-lines/<int:line_id>/unmatch', methods=['POST'])
+def api_billing_unmatch_line(line_id):
+    from .models import GilPaymentNoticeLine, GilPaymentReconciliation, GilInvoiceAR
+    from app import db
+
+    line = GilPaymentNoticeLine.query.get(line_id)
+    if not line or not line.matched_ar_id:
+        return jsonify({"success": False, "message": "Line not matched"}), 400
+
+    ar = GilInvoiceAR.query.get(line.matched_ar_id)
+    rec = GilPaymentReconciliation.query.filter_by(line_id=line_id).first()
+
+    if not rec or not ar:
+        return jsonify({"success": False, "message": "Invalid state"}), 400
+
+    amount = rec.matched_amount or 0
+
+    # reverse AR
+    ar.paid_total = (ar.paid_total or 0) - amount
+    ar.balance_due = (ar.balance_due or 0) + amount
+
+    # update status
+    if ar.paid_total <= 0:
+        ar.status = "Sent"
+    elif ar.balance_due <= 0:
+        ar.status = "Paid"
+    else:
+        ar.status = "Partially Paid"
+
+    # delete reconciliation
+    db.session.delete(rec)
+
+    # reset line
+    line.matched_ar_id = None
+    line.match_status = "Unmatched"
+
+    db.session.commit()
+
+    return jsonify({"success": True})
+
 
 @main.route('/api/billing/payment-lines/<int:line_id>/unmatch', methods=['POST'])
 def api_billing_unmatch_payment_line(line_id):
